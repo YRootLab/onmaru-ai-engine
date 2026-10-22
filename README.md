@@ -4,9 +4,9 @@ Python/FastAPI AI engine for OnMaru. This repository will own query processing, 
 
 ## Repository status
 
-The AI-RAG documentation was copied from `OnMaru-backend/docs/ai-rag/` on 2026-10-22 and published on the `docs/ai-rag-transfer` review branch (commit `00847c174043ccf6d542a6ac15c595556ce8da3f`). It is not yet the canonical default-branch documentation. Backend-owned cross-references still need to be pinned to reviewed backend commits. This migration does not imply that the FastAPI runtime or AWS deployment has moved.
+The AI-RAG documentation was copied from `OnMaru-backend/docs/ai-rag/` on 2026-10-22 and published in this repository. Backend-owned cross-references still need to be pinned to reviewed backend commits. This documentation migration does not imply that the FastAPI runtime or AWS deployment has moved.
 
-The intended canonical design entry point is [`docs/ai-rag/README.md`](docs/ai-rag/README.md). Once this review branch is merged, it becomes the AI design source of truth. The backend copy is now a short pointer plus Spring implementation planning. Backend links will be pinned to immutable commits after the corresponding backend planning changes are reviewed and merged.
+The canonical design entry point is [`docs/ai-rag/README.md`](docs/ai-rag/README.md). The backend copy is now a short pointer plus Spring implementation planning. Backend links will be pinned to immutable commits after the corresponding backend planning changes are reviewed and merged.
 
 ## Runtime and deployment boundary
 

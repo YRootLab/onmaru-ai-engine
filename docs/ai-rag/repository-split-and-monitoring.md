@@ -1,6 +1,6 @@
 # AI 저장소 분리와 관측 운영 결정
 
-> 상태: 2026-10-22 문서 이전 review branch 게시. AI-RAG 설계 문서는 [`docs/ai-rag-transfer`](https://github.com/YRootLab/onmaru-ai-engine/tree/docs/ai-rag-transfer/docs/ai-rag) branch에 복사됐고 기본 브랜치 병합 전이다. FastAPI 코드·배포 경로는 이전되지 않았다. AI-RAG 정본은 이 review branch가 기본 브랜치에 병합된 뒤 해당 저장소가 된다. 백엔드 저장소에는 Spring 구현·연동 계획과 계약을 유지한다. 이 문서는 현재 운영 계측 완료를 주장하지 않는다.
+> 상태: 2026-10-22 AI-RAG 문서 이전 완료. 설계 문서·보고서는 이 저장소의 기본 브랜치에 있다. FastAPI runtime 코드·CI·운영 배포 경로는 아직 백엔드 저장소에서 이전되지 않았다. 백엔드 저장소에는 Spring 구현·연동 계획과 계약을 유지한다. 이 문서는 현재 운영 계측 완료를 주장하지 않는다.
 
 ## 1. 저장소와 정본 소유권
 
