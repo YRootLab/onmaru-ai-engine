@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://onmaru.site/schemas/internal/run-observation.v1.schema.json",
+  "title": "RunObservation.v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "runId", "stateVersion", "observedAt", "route", "retrievalMode", "outcome", "observationStatus", "traceCoverage", "versions", "stages"],
+  "properties": {
+    "schemaVersion": {"const": "run-observation.v1"},
+    "runId": {"type": "string", "format": "uuid"},
+    "stateVersion": {"type": "integer", "minimum": 0},
+    "observedAt": {"type": "string", "format": "date-time"},
+    "traceId": {"type": "string", "pattern": "^[0-9a-f]{32}$"},
+    "traceCoverage": {"enum": ["AVAILABLE", "SAMPLED_OUT", "EXPORT_FAILED", "EXPIRED", "UNKNOWN"]},
+    "route": {"enum": ["SQL_ONLY", "LEXICAL_ONLY", "DENSE_ONLY", "HYBRID", "SQL_PLUS_RETRIEVAL", "CLARIFICATION", "FIXED_GUIDANCE"]},
+    "retrievalMode": {"enum": ["NONE", "LEXICAL_ONLY", "DENSE_ONLY", "HYBRID"]},
+    "outcome": {"enum": ["SUCCESS", "DEGRADED", "FAILED", "CANCELLED"]},
+    "observationStatus": {"enum": ["COMPLETE", "PARTIAL"]},
+    "recovery": {"enum": ["NONE", "OTHER_RETRIEVER", "RRF_ORDER", "VERIFIED_BASELINE", "CLARIFICATION", "FAILED_CLOSED"]},
+    "versions": {
+      "type": "object", "additionalProperties": false,
+      "required": ["configHash", "corpusRevision", "planVersion"],
+      "properties": {
+        "configHash": {"type": "string", "minLength": 1, "maxLength": 128},
+        "corpusRevision": {"type": "string", "minLength": 1, "maxLength": 128},
+        "planVersion": {"type": "string", "minLength": 1, "maxLength": 128},
+        "embeddingProfile": {"type": "string", "maxLength": 128},
+        "rankerVersion": {"type": "string", "maxLength": 128},
+        "promptVersion": {"type": "string", "maxLength": 128},
+        "providerModelVersion": {"type": "string", "maxLength": 128}
+      }
+    },
+    "stages": {"type": "array", "maxItems": 32, "items": {"$ref": "#/$defs/stageOutcome"}}
+  },
+  "$defs": {
+    "stageOutcome": {
+      "type": "object", "additionalProperties": false,
+      "required": ["stage", "status", "durationMs"],
+      "properties": {
+        "stage": {"enum": ["AUTH_CONTRACT", "INPUT_PRIVACY", "QUERY_PREPROCESSING", "QUERY_INTERPRETATION", "SEARCH_ROUTING", "PLAN_PROPOSAL", "PLAN_AUTHORIZATION", "CANONICAL_SQL", "APPROVED_PLAN_VALIDATION", "QUERY_MATERIALIZATION", "BM25_SEARCH", "QUERY_EMBEDDING", "VECTOR_SEARCH", "RRF_FUSION", "CANDIDATE_POLICY", "RERANK", "EVIDENCE_SELECT", "CONTEXT_ASSEMBLY", "GENERATION", "PROPOSAL_PARSE", "LOCAL_EVIDENCE_VALIDATION", "FINAL_VALIDATION", "PERSISTENCE", "SSE_DELIVERY"]},
+        "status": {"enum": ["SUCCESS", "EMPTY", "DEGRADED", "FAILED", "SKIPPED"]},
+        "durationMs": {"type": "integer", "minimum": 0},
+        "errorCode": {"enum": ["AUTH_REJECTED", "SCHEMA_MISMATCH", "VERSION_MISMATCH", "PLAN_REJECTED", "CONCEPT_LOSS", "DB_TIMEOUT", "DB_ERROR", "EMBEDDING_ERROR", "DIMENSION_MISMATCH", "MODEL_TIMEOUT", "MODEL_ERROR", "INVALID_SCORE", "SOURCE_REVOKED", "EVIDENCE_EMPTY", "PROVIDER_RATE_LIMIT", "PROVIDER_TIMEOUT", "PROVIDER_ERROR", "RESPONSE_SCHEMA_INVALID", "CLAIM_UNSUPPORTED", "FINAL_POLICY_REJECTED", "PERSISTENCE_ERROR", "DELIVERY_INTERRUPTED", "UNKNOWN"]},
+        "recovery": {"enum": ["NONE", "OTHER_RETRIEVER", "RRF_ORDER", "VERIFIED_BASELINE", "CLARIFICATION", "FAILED_CLOSED"]},
+        "candidateCount": {"type": "integer", "minimum": 0},
+        "uniquePlaceCount": {"type": "integer", "minimum": 0},
+        "evidenceCount": {"type": "integer", "minimum": 0},
+        "claimAcceptedCount": {"type": "integer", "minimum": 0},
+        "claimHeldCount": {"type": "integer", "minimum": 0},
+        "attemptCount": {"type": "integer", "minimum": 0}
+      }
+    }
+  }
+}

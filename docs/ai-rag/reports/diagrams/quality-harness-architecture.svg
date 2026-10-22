@@ -1,0 +1,82 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1900" height="980" viewBox="0 0 1900 980" role="img" aria-labelledby="title desc">
+<title id="title">OnMaru Quality Harness · 다섯 책임으로 구성한 비동기 품질 개선 흐름</title>
+<desc id="desc">비동기 trace와 고정 gold 평가를 Evaluation Analyzer가 결정적으로 분류한다. 운영자가 검토 큐에서 사례를 선택한 뒤 Root Cause Investigator와 Experiment Planner를 실행할 수 있다. 결정적 격리 실험 결과를 Human Review Gate가 검토하고 승인된 경우에만 설정 승격 절차로 전달한다. 자동 LLM 호출이나 운영 중 설정 변경은 없다.</desc>
+<defs><marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto"><path d="M1 1 L9 5 L1 9" fill="none" stroke="#80609a" stroke-width="1.8"/></marker></defs>
+<style>text{font-family:'Noto Sans KR','Apple SD Gothic Neo',sans-serif}</style>
+<rect width="100%" height="100%" fill="#faf9fc"/>
+
+<text x="52" y="58" font-size="30" font-weight="800" fill="#342640" text-anchor="start">QUALITY HARNESS · 품질 감독과 개선 실험</text>
+<text x="52" y="91" font-size="16" font-weight="500" fill="#5f6870" text-anchor="start">비동기 · 결정적 분석 우선 · 운영자가 조사와 실험을 시작 · 사람 승인 후 다음 버전에만 반영</text>
+<rect x="62" y="145" width="350" height="100" rx="16" fill="#eef4fb" stroke="#85a9d0" stroke-width="2"/>
+<text x="80" y="179" font-size="19" font-weight="800" fill="#513c62" text-anchor="start">입력 artifact</text>
+<text x="80" y="203" font-size="13" font-weight="600" fill="#695778" text-anchor="start">비동기 수집</text>
+<text x="80" y="217" font-size="13" font-weight="500" fill="#35454d" text-anchor="start">OTel stage trace · version/hash</text>
+<text x="80" y="238" font-size="13" font-weight="500" fill="#35454d" text-anchor="start">고정 gold 질문 · 정답 근거 ID</text>
+<rect x="770" y="145" width="360" height="100" rx="16" fill="#f1edf6" stroke="#a18bb5" stroke-width="2"/>
+<text x="788" y="179" font-size="19" font-weight="800" fill="#513c62" text-anchor="start">Quality Supervisor</text>
+<text x="788" y="203" font-size="13" font-weight="600" fill="#695778" text-anchor="start">상태 관리 · 단일 writer</text>
+<text x="788" y="217" font-size="13" font-weight="500" fill="#35454d" text-anchor="start">정기 replay · 중복 병합 · 비용/권한 gate</text>
+<text x="788" y="238" font-size="13" font-weight="500" fill="#35454d" text-anchor="start">운영자 시작 전에는 분석/실험 대기</text>
+<rect x="1485" y="145" width="350" height="100" rx="16" fill="#f2f5f3" stroke="#8da99a" stroke-width="2"/>
+<text x="1503" y="179" font-size="19" font-weight="800" fill="#513c62" text-anchor="start">운영 관측</text>
+<text x="1503" y="203" font-size="13" font-weight="600" fill="#695778" text-anchor="start">집계·알림</text>
+<text x="1503" y="217" font-size="13" font-weight="500" fill="#35454d" text-anchor="start">Grafana: 지표·trace·큐 추이</text>
+<text x="1503" y="238" font-size="13" font-weight="500" fill="#35454d" text-anchor="start">Discord / 이메일: 주간 요약</text>
+<path d="M412 195 L760 195" fill="none" stroke="#80609a" stroke-width="2.4" marker-end="url(#arrow)"/>
+<text x="586.0" y="185.0" font-size="12" font-weight="600" fill="#80609a" text-anchor="middle">고정 입력 참조</text>
+<path d="M1130 195 L1475 195" fill="none" stroke="#80609a" stroke-width="2.4" marker-end="url(#arrow)"/>
+<text x="1302.5" y="185.0" font-size="12" font-weight="600" fill="#80609a" text-anchor="middle">낮은 카디널리티 지표</text>
+<rect x="50" y="330" width="300" height="230" rx="16" fill="#f2edf7" stroke="#a88cbd" stroke-width="2"/>
+<text x="68" y="364" font-size="19" font-weight="800" fill="#513c62" text-anchor="start">1 · Evaluation Analyzer</text>
+<text x="68" y="388" font-size="13" font-weight="600" fill="#695778" text-anchor="start">결정적 Python</text>
+<text x="68" y="428" font-size="14" font-weight="500" fill="#35454d" text-anchor="start">gold replay · Recall@K / MRR / nDCG</text>
+<text x="68" y="453" font-size="14" font-weight="500" fill="#35454d" text-anchor="start">단계별 비교 → FailureCase 생성</text>
+<text x="68" y="478" font-size="14" font-weight="500" fill="#35454d" text-anchor="start">LLM 호출 없음</text>
+<rect x="425" y="330" width="300" height="230" rx="16" fill="#f2edf7" stroke="#a88cbd" stroke-width="2"/>
+<text x="443" y="364" font-size="19" font-weight="800" fill="#513c62" text-anchor="start">2 · Root Cause Investigator</text>
+<text x="443" y="388" font-size="13" font-weight="600" fill="#695778" text-anchor="start">규칙 우선 · 증거 연결</text>
+<text x="443" y="428" font-size="14" font-weight="500" fill="#35454d" text-anchor="start">retrieval / ranking / grounding 추적</text>
+<text x="443" y="453" font-size="14" font-weight="500" fill="#35454d" text-anchor="start">지지·반증 artifact ID를 기록</text>
+<text x="443" y="478" font-size="14" font-weight="500" fill="#35454d" text-anchor="start">모호할 때만 운영자 시작 LLM</text>
+<rect x="800" y="330" width="300" height="230" rx="16" fill="#f2edf7" stroke="#a88cbd" stroke-width="2"/>
+<text x="818" y="364" font-size="19" font-weight="800" fill="#513c62" text-anchor="start">3 · Experiment Planner</text>
+<text x="818" y="388" font-size="13" font-weight="600" fill="#695778" text-anchor="start">승인 템플릿 우선</text>
+<text x="818" y="428" font-size="14" font-weight="500" fill="#35454d" text-anchor="start">가설 → allowlist ExperimentSpec</text>
+<text x="818" y="453" font-size="14" font-weight="500" fill="#35454d" text-anchor="start">변경변수·예상효과·실패기준</text>
+<text x="818" y="478" font-size="14" font-weight="500" fill="#35454d" text-anchor="start">운영자 확인 전 실행 불가</text>
+<rect x="1175" y="330" width="300" height="230" rx="16" fill="#f2edf7" stroke="#a88cbd" stroke-width="2"/>
+<text x="1193" y="364" font-size="19" font-weight="800" fill="#513c62" text-anchor="start">4 · Experiment Runner</text>
+<text x="1193" y="388" font-size="13" font-weight="600" fill="#695778" text-anchor="start">격리된 결정적 실행</text>
+<text x="1193" y="428" font-size="14" font-weight="500" fill="#35454d" text-anchor="start">고정 corpus/config snapshot 재생</text>
+<text x="1193" y="453" font-size="14" font-weight="500" fill="#35454d" text-anchor="start">baseline ↔ candidate 비교·회귀검사</text>
+<text x="1193" y="478" font-size="14" font-weight="500" fill="#35454d" text-anchor="start">운영 DB/config 쓰기 권한 없음</text>
+<rect x="1550" y="330" width="300" height="230" rx="16" fill="#f2edf7" stroke="#a88cbd" stroke-width="2"/>
+<text x="1568" y="364" font-size="19" font-weight="800" fill="#513c62" text-anchor="start">5 · Human Review Gate</text>
+<text x="1568" y="388" font-size="13" font-weight="600" fill="#695778" text-anchor="start">사람의 판정</text>
+<text x="1568" y="428" font-size="14" font-weight="500" fill="#35454d" text-anchor="start">결과·비용·품질·rollback 검토</text>
+<text x="1568" y="453" font-size="14" font-weight="500" fill="#35454d" text-anchor="start">승인 / 거절 / 재실험</text>
+<text x="1568" y="478" font-size="14" font-weight="500" fill="#35454d" text-anchor="start">승인 후 별도 승격·canary</text>
+<path d="M350 444 L415 444" fill="none" stroke="#80609a" stroke-width="2.4" marker-end="url(#arrow)"/>
+<path d="M725 444 L790 444" fill="none" stroke="#80609a" stroke-width="2.4" marker-end="url(#arrow)"/>
+<path d="M1100 444 L1165 444" fill="none" stroke="#80609a" stroke-width="2.4" marker-end="url(#arrow)"/>
+<path d="M1475 444 L1540 444" fill="none" stroke="#80609a" stroke-width="2.4" marker-end="url(#arrow)"/>
+<rect x="405" y="630" width="400" height="120" rx="16" fill="#fff5e5" stroke="#d0a65e" stroke-width="2"/>
+<text x="423" y="664" font-size="19" font-weight="800" fill="#513c62" text-anchor="start">운영자 시작 gate</text>
+<text x="423" y="688" font-size="13" font-weight="600" fill="#695778" text-anchor="start">관리자 검토 화면에서 선택</text>
+<text x="423" y="702" font-size="13" font-weight="500" fill="#35454d" text-anchor="start">case 범위 · 입력 artifact · CLI quota/비용 확인</text>
+<text x="423" y="723" font-size="13" font-weight="500" fill="#35454d" text-anchor="start">시작 전에는 Root Cause / Planner를 실행하지 않음</text>
+<path d="M575 620 L575 560" fill="none" stroke="#bd8b37" stroke-width="2.4" marker-end="url(#arrow)"/>
+<text x="575.0" y="580.0" font-size="12" font-weight="600" fill="#bd8b37" text-anchor="middle">사례 선택 후 조사 시작</text>
+<text x="1138" y="423" font-size="12" font-weight="700" fill="#bd8b37" text-anchor="middle">운영자 시작</text>
+<rect x="60" y="630" width="300" height="120" rx="16" fill="#f7f0fa" stroke="#b89acb" stroke-width="2"/>
+<text x="78" y="664" font-size="19" font-weight="800" fill="#513c62" text-anchor="start">선택적 LLM / Antigravity CLI</text>
+<text x="78" y="688" font-size="13" font-weight="600" fill="#695778" text-anchor="start">기본 경로에 포함되지 않음</text>
+<text x="78" y="702" font-size="13" font-weight="500" fill="#35454d" text-anchor="start">운영자가 사례와 비용을 확인해 실행</text>
+<text x="78" y="723" font-size="13" font-weight="500" fill="#35454d" text-anchor="start">가설 초안만 작성 · 자동 수정 금지</text>
+<path d="M360 690 L415 470" fill="none" stroke="#8b6aa5" stroke-width="2.4" stroke-dasharray="7 7" marker-end="url(#arrow)"/>
+<text x="387.5" y="570.0" font-size="12" font-weight="600" fill="#8b6aa5" text-anchor="middle">필요할 때만</text>
+<text x="65" y="815" font-size="15" font-weight="800" fill="#342640" text-anchor="start">원칙</text>
+<text x="125" y="815" font-size="14" font-weight="500" fill="#263942" text-anchor="start">‘다섯 agent’는 다섯 개의 책임 경계입니다. Evaluation Analyzer·Experiment Runner는 코드로 결정적으로 실행합니다.</text>
+<text x="125" y="842" font-size="14" font-weight="500" fill="#263942" text-anchor="start">Root Cause / Planner의 LLM 보조도 운영자가 명시적으로 시작한 경우에만 허용하며, 운영 요청 중 검색 전략을 바꾸지 않습니다.</text>
+<text x="65" y="917" font-size="14" font-weight="700" fill="#4f3b5c" text-anchor="start">산출물: FailureCase → evidence-linked Finding → ExperimentSpec → immutable ExperimentReport → 서명된 승인/거절 기록</text>
+</svg>

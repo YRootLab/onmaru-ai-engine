@@ -1,0 +1,38 @@
+@startuml OnMaru Spring Components
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Component.puml
+LAYOUT_LEFT_RIGHT()
+skinparam backgroundColor #F9FAF7
+skinparam defaultFontName "Noto Sans KR"
+LAYOUT_WITH_LEGEND()
+title Spring API · 회원 경계와 최종 응답 책임
+
+Container(web, "Next.js Client", "Vercel", "대화 UI")
+Container(ai, "FastAPI AI Engine", "onmaru-ai-engine", "계획 제안·승인 검색·근거 제한 생성")
+ContainerDb(db, "PostgreSQL", "Spring-owned business schema + PostGIS", "대화·장소·권리의 canonical facts")
+
+Container_Boundary(spring, "Spring Boot API Server · BE repository / independent process") {
+  Component(admission, "Journey Controller + Admission", "Spring MVC", "인증·소유권·사용량·멱등성·run 생성")
+  Component(state, "Conversation State", "Application service", "확정 맥락·pin/exclude·조건·요약 읽기")
+  Component(privacy, "Input Privacy Gate", "Policy module", "원문 보존, AI plan용 safeQuery 생성")
+  Component(authority, "Plan Authority Gate", "Allowlist + policy", "PlanProposal의 route·ID·필드·필터·version 승인")
+  Component(sql, "Canonical SQL Executor", "Parameterized SQL", "정형 질문의 허용 필드 조회")
+  Component(execute, "AI Execute Client", "Internal HTTP client", "approvedPlanHash·CanonicalFacts를 전달; traceparent 전파")
+  Component(finalCheck, "Final Answer Validator", "Grounding / rights policy", "현재 공개 상태·철회·hard filters·claim/evidence 재검사")
+  Component(persist, "Run Persistence + SSE", "Transaction + replay", "snapshot 저장 뒤 검증된 단계와 답변을 SSE로 전달")
+}
+
+Rel(web, admission, "run 요청 + SSE 연결", "HTTPS")
+Rel(admission, state, "load confirmed context")
+Rel(admission, privacy, "original query")
+Rel(privacy, ai, "PlanRequest · safeQuery")
+Rel(ai, authority, "PlanProposal")
+Rel(authority, sql, "permitted SQL fields")
+Rel(sql, db, "canonical facts", "Spring role")
+Rel(authority, execute, "approved plan")
+Rel(execute, ai, "ExecuteRequest", "private HTTP · traceparent")
+Rel(ai, finalCheck, "ValidatedProposal")
+Rel(finalCheck, persist, "verified snapshot")
+Rel(persist, db, "turn/run/snapshot write", "Spring role")
+Rel(persist, web, "Last-Event-ID replay / SSE", "text/event-stream")
+SHOW_LEGEND()
+@enduml

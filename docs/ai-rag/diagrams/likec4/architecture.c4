@@ -1,0 +1,233 @@
+specification {
+  element actor { notation "Actor"; style { shape person } }
+  element system { notation "Software System" }
+  element container { notation "Application / Process"; style { shape component } }
+  element component { notation "Module"; style { shape component } }
+  element database { notation "Database"; style { shape storage } }
+  element external { notation "External Provider"; style { shape component } }
+
+  deploymentNode environment { notation "Environment" }
+  deploymentNode cloud { notation "Cloud Provider" }
+  deploymentNode host { notation "Virtual Host" }
+  deploymentNode process { notation "Container / Process" }
+  deploymentNode databaseHost { notation "Database Process" }
+
+  relationship https { technology "HTTPS" }
+  relationship internalHttp { technology "Private HTTP + service auth" }
+  relationship sql { technology "PostgreSQL protocol" }
+  relationship sse { technology "Server-Sent Events" }
+  relationship async { technology "Async artifact / operator initiated" }
+}
+
+model {
+  traveler = actor "여행자" { description "OnMaru 웹에서 대화형 여정 검색을 요청하고 검증된 결과를 받는다." }
+  admin = actor "운영자" { description "Grafana 검토 큐에서 품질 저하 사례를 선택해 격리 실험을 시작하고 승격을 승인한다." }
+
+  onmaru = system "OnMaru" {
+    web = container "Next.js Web" "Next.js · Vercel" "대화 입력, SSE 표시, 장소 카드, 출처, 이어하기 UI." {
+      style { shape browser }
+    }
+    nginx = container "Public API Ingress" "Nginx · Lightsail" "외부에 80/443만 열고 HTTPS와 SSE를 Spring API로 전달한다."
+    spring = container "Spring API Server" "Spring Boot · 독립 프로세스" "회원 인증·대화·쿼리 권한·정형 SQL·최종 검증·영속화·SSE를 소유한다." {
+      admission = component "Admission & Conversation" "auth / run / state" "소유권, 사용량, 대화 컨텍스트, 멱등성 검사."
+      privacy = component "Input Privacy Gate" "safeQuery" "원문을 유지하고 AI plan용 비식별 질문을 만든다."
+      authority = component "Plan Authority Gate" "allowlist / hard filters" "route·정형 필드·ID·공개 필터·version을 승인한다."
+      sqlExecutor = component "Canonical SQL Executor" "parameterized SQL" "허용된 정형 사실만 업무 schema에서 조회한다."
+      finalValidator = component "Final Validator" "claim / rights / state" "장소·출처·철회·조건·claim을 다시 검증한다."
+      persistence = component "Run Persistence & SSE" "snapshot / replay" "확정 답변을 저장한 뒤 상태와 답변 조각을 SSE로 전송한다."
+    }
+    ai = container "FastAPI AI Server" "Python · 독립 프로세스 · onmaru-ai-engine 저장소" "비공개 AI API. 질문 해석·route 제안·승인 plan 검색·근거 제한 생성·비동기 평가 코드를 소유한다." {
+      planApi = component "Plan API" "POST /internal/v1/plans" "safeQuery와 구조화 맥락을 해석하고 PlanProposal을 반환한다."
+      queryProcessing = component "Query Processing Layer" "Preprocessing → Interpretation → Search Router" "검색 계획 API 안에서 순차 실행하는 논리 계층이며 별도 서비스가 아니다." {
+        preprocessing = component "Query Preprocessing" "normalization / aliases" "표기·검수 별칭을 정리하되 원문 의미·부정 범위를 보존한다."
+        interpretation = component "Query Interpretation" "intent / entities / constraints / context" "질문을 QueryFrame으로 구조화하고 모호성·범위를 판정한다."
+        searchRouter = component "Search Router" "SQL / keyword / semantic / hybrid" "결정적 route와 조회 제약을 PlanProposal로 제안한다."
+      }
+      executeApi = component "Execute API" "POST /internal/v1/runs/{id}/execute" "Spring이 승인한 plan hash와 필요한 CanonicalFacts만 받는다."
+      planValidator = component "Approved Plan Validator" "hash / revision / policy" "승인 plan·config·corpus·철회 sequence를 검증한다."
+      lexical = component "Keyword Search" "exact / alias / BM25" "정확어·검수 별칭·한국어 full-text 후보와 순위를 반환한다."
+      dense = component "Semantic Search" "e5-small 384D / pgvector" "질문과 청크 임베딩의 의미 유사도로 후보를 반환한다."
+      fusion = component "Hybrid Fusion" "conditional RRF" "Keyword·Semantic Search 두 결과가 있을 때만 RRF로 순위를 결합한다."
+      reranker = component "Reranker" "cross-encoder / versioned model" "fusion 또는 단일 검색 후보의 관련도를 다시 채점하며 제한적 복귀를 지원한다."
+      evidence = component "Evidence Selector" "max 12 chunks" "장소별 출처·revision·본문 span을 고른다."
+      prompt = component "Prompt Assembler" "task templates" "추천·수정·해설·비교 템플릿과 공개 근거만 구성한다."
+      generator = component "Grounded Generator" "Gemini provider adapter" "근거 기반 구조화 claim을 제안한다."
+      proposalValidator = component "Proposal Validator" "closed schema / evidence allowlist" "claim별 evidence ID·장소 ID·길이·schema를 검증한다."
+      corpusWorker = component "Corpus Worker" "offline / serialized" "공개 projection을 파싱·청킹·enrichment·임베딩·색인한다."
+      qualityHarness = component "Quality Harness" "asynchronous / human controlled" "trace·gold 평가에서 실패를 분류하고 선택된 격리 실험 결과를 만든다."
+    }
+    db = database "PostgreSQL" "PostGIS + pgvector + Korean full-text" "업무 schema와 ai schema를 논리·role 권한으로 분리한다." {
+      businessSchema = component "Business Schema" "Spring-owned" "회원·대화·장소·권리의 canonical data."
+      aiSchema = component "AI Corpus Schema" "AI least-privilege role" "source/revision/chunk/vector/BM25 metadata와 active pointer."
+      evalSchema = component "Evaluation Artifacts" "access-controlled" "dataset hash·expected evidence·version·review queue."
+    }
+  }
+  gemini = external "Gemini API" "Google AI" "공개 근거와 허용된 주제 code만 받고 구조화된 claim proposal을 반환한다."
+  observability = external "Grafana Cloud" "OTel / Prometheus compatible" "공통 trace 조회, metric/dashboard/alerts, 품질 검토 화면."
+
+  // Spring-owned transaction, authority and delivery boundary.
+  onmaru.spring.admission -> onmaru.spring.privacy "load confirmed context · create safeQuery"
+  onmaru.spring.privacy -> onmaru.ai.planApi "plan request · transient safeQuery"
+  onmaru.spring.authority -> onmaru.spring.sqlExecutor "authorize canonical fields"
+  onmaru.spring.sqlExecutor -> onmaru.db.businessSchema "read permitted facts"
+  onmaru.spring.authority -> onmaru.ai.executeApi "approved plan · planHash"
+  onmaru.spring.finalValidator -> onmaru.spring.persistence "persist validated snapshot"
+  onmaru.spring.persistence -> onmaru.web "verified SSE / replay"
+
+  // FastAPI query, retrieval and grounded generation module relationships.
+  onmaru.ai.planApi -> onmaru.ai.queryProcessing.preprocessing "preprocess safeQuery"
+  onmaru.ai.queryProcessing.preprocessing -> onmaru.ai.queryProcessing.interpretation "normalized query"
+  onmaru.ai.queryProcessing.interpretation -> onmaru.ai.queryProcessing.searchRouter "QueryFrame"
+  onmaru.ai.queryProcessing.searchRouter -> onmaru.spring.authority "PlanProposal"
+  onmaru.ai.executeApi -> onmaru.ai.planValidator "validate approved envelope"
+  onmaru.ai.planValidator -> onmaru.ai.lexical "keyword route when requested"
+  onmaru.ai.planValidator -> onmaru.ai.dense "semantic route when requested"
+  onmaru.ai.lexical -> onmaru.ai.fusion "ranked candidates"
+  onmaru.ai.dense -> onmaru.ai.fusion "ranked candidates"
+  onmaru.ai.fusion -> onmaru.ai.reranker "RRF-ranked hybrid candidates"
+  onmaru.ai.lexical -> onmaru.ai.reranker "single Keyword Search route bypasses fusion"
+  onmaru.ai.dense -> onmaru.ai.reranker "single Semantic Search route bypasses fusion"
+  onmaru.ai.reranker -> onmaru.ai.evidence "reranked candidates"
+  onmaru.ai.evidence -> onmaru.ai.prompt "EvidenceSet"
+  onmaru.ai.prompt -> onmaru.ai.generator "bounded prompt"
+  onmaru.ai.generator -> gemini "public evidence only"
+  gemini -> onmaru.ai.generator "structured proposal"
+  onmaru.ai.generator -> onmaru.ai.proposalValidator "claim + evidence IDs"
+  onmaru.ai.proposalValidator -> onmaru.spring.finalValidator "ValidatedProposal"
+
+  // Offline indexing and supervised quality loop.
+  onmaru.db.businessSchema -> onmaru.ai.corpusWorker "public projection + rights revision"
+  onmaru.ai.corpusWorker -> onmaru.db.aiSchema "inactive revision → validate → activate"
+  onmaru.spring.persistence -> onmaru.ai.qualityHarness "privacy-safe run observation"
+  onmaru.db.evalSchema -> onmaru.ai.qualityHarness "gold set + expected evidence"
+  onmaru.ai.qualityHarness -> onmaru.db.evalSchema "metrics + review artifact"
+  admin -> onmaru.ai.qualityHarness "operator-selected investigation / experiment"
+
+  traveler -> onmaru.web "대화 질문 입력" { technology "HTTPS" }
+  onmaru.web -> onmaru.nginx "API request / SSE connection" { technology "HTTPS · api.onmaru.site" }
+  onmaru.nginx -> onmaru.spring "proxy API / SSE; buffering disabled" { technology "private Docker network" }
+  onmaru.spring -> onmaru.ai "1. 비식별 PlanRequest" { technology "Private HTTP + W3C traceparent" }
+  onmaru.ai -> onmaru.spring "PlanProposal · 실행 전 반환" { technology "Private HTTP" }
+  onmaru.spring -> onmaru.db "정형 사실 조회·대화 저장" { technology "Spring DB role" }
+  onmaru.spring -> onmaru.ai "2. 승인된 ExecuteRequest" { technology "Private HTTP + planHash" }
+  onmaru.ai -> onmaru.db "공개 corpus 검색·평가 artifact" { technology "AI least-privilege DB role" }
+  onmaru.ai -> gemini "근거 제한 생성 요청" { technology "HTTPS · no member transcript" }
+  gemini -> onmaru.ai "구조화 claim proposal" { technology "HTTPS" }
+  onmaru.ai -> onmaru.spring "ValidatedProposal · 게시 권한 없음" { technology "Private HTTP" }
+  onmaru.spring -> onmaru.web "저장된 snapshot을 SSE replay" { technology "SSE · Last-Event-ID" }
+  onmaru.spring -> observability "root span / low-cardinality metrics" { technology "OTLP" }
+  onmaru.ai -> observability "child spans / retrieval stage metrics" { technology "W3C trace context" }
+  admin -> onmaru.ai "선택한 품질 사례 조사·격리 실험 시작" { technology "operator initiated" }
+}
+
+deployment {
+  environment production {
+    cloud vercel {
+      host webRuntime {
+        webInstance = instanceOf onmaru.web
+      }
+    }
+    cloud aws {
+      host lightsail2gb {
+        process nginx {
+          nginxInstance = instanceOf onmaru.nginx
+        }
+        process springProcess {
+          springInstance = instanceOf onmaru.spring
+        }
+        process fastapiProcess {
+          aiInstance = instanceOf onmaru.ai
+        }
+        databaseHost postgresProcess {
+          dbInstance = instanceOf onmaru.db
+        }
+      }
+    }
+    cloud google {
+      host geminiService {
+        geminiInstance = instanceOf gemini
+      }
+    }
+    cloud grafanaCloud {
+      host telemetryBackend {
+        grafanaInstance = instanceOf observability
+      }
+    }
+  }
+}
+
+views {
+  view system-context {
+    title "1 · OnMaru 시스템 경계"
+    include *
+    autoLayout LeftRight 100 70 ortho
+  }
+  view service-containers of onmaru {
+    title "2 · FE, Spring, FastAPI, PostgreSQL 경계"
+    include *
+    include -> onmaru
+    include onmaru -> *
+    autoLayout LeftRight 100 60 ortho
+  }
+  view spring-components of onmaru.spring {
+    title "3A · Spring 서버 책임"
+    include *
+    include -> onmaru.spring
+    include onmaru.spring -> *
+    autoLayout TopBottom 80 45 ortho
+  }
+  view fastapi-components of onmaru.ai {
+    title "3B · FastAPI AI Engine 내부 모듈"
+    include *
+    include -> onmaru.ai
+    include onmaru.ai -> *
+    autoLayout TopBottom 90 48 ortho
+  }
+  deployment view production-deployment {
+    title "4 · 운영 배포 토폴로지"
+    include * -> *
+  }
+  dynamic view online-rag-sse {
+    title "5 · 대화형 RAG 요청과 SSE 응답"
+    variant sequence
+    onmaru.web -> onmaru.nginx "HTTPS · create run + open SSE"
+    onmaru.nginx -> onmaru.spring.admission "POST /api/v1/journeys/{threadId}/runs"
+    onmaru.spring.admission -> onmaru.spring.privacy "authenticate · load confirmed context"
+    onmaru.spring.privacy -> onmaru.ai.planApi "POST /internal/v1/plans · safeQuery"
+    onmaru.ai.planApi -> onmaru.ai.queryProcessing.preprocessing "Query Preprocessing"
+    onmaru.ai.queryProcessing.preprocessing -> onmaru.ai.queryProcessing.interpretation "Query Interpretation"
+    onmaru.ai.queryProcessing.interpretation -> onmaru.ai.queryProcessing.searchRouter "QueryFrame"
+    onmaru.spring.authority <- onmaru.ai.queryProcessing.searchRouter "PlanProposal"
+    onmaru.spring.authority -> onmaru.spring.sqlExecutor "execute permitted fields when route needs SQL"
+    onmaru.spring.sqlExecutor -> onmaru.db.businessSchema "parameterized SQL · business role"
+    onmaru.spring.authority -> onmaru.ai.executeApi "POST /internal/v1/runs/{id}/execute · approved plan"
+    onmaru.ai.executeApi -> onmaru.ai.planValidator "verify planHash · corpus/config/revocation"
+    onmaru.ai.planValidator -> onmaru.ai.lexical "Keyword Search · BM25 when requested"
+    onmaru.ai.planValidator -> onmaru.ai.dense "Semantic Search · 384D when requested"
+    onmaru.ai.lexical -> onmaru.ai.fusion "ranked candidates"
+    onmaru.ai.dense -> onmaru.ai.fusion "ranked candidates"
+    onmaru.ai.fusion -> onmaru.ai.reranker "Hybrid Fusion · RRF only when both lists exist"
+    onmaru.ai.reranker -> onmaru.ai.evidence "Reranker · reranked candidates"
+    onmaru.ai.evidence -> onmaru.ai.prompt "EvidenceSet · source spans"
+    onmaru.ai.prompt -> onmaru.ai.generator "bounded prompt"
+    onmaru.ai.generator -> gemini "grounded structured generation"
+    onmaru.ai.proposalValidator <- gemini "claim/evidence proposal"
+    onmaru.spring.finalValidator <- onmaru.ai.proposalValidator "ValidatedProposal"
+    onmaru.spring.finalValidator -> onmaru.spring.persistence "rights · claim · filters re-check"
+    onmaru.nginx <- onmaru.spring.persistence "verified SSE events / replay"
+    onmaru.web <- onmaru.nginx "SSE stream to browser"
+    include onmaru
+  }
+  dynamic view offline-corpus-quality {
+    title "6 · 오프라인 Corpus와 비동기 Quality Harness"
+    variant sequence
+    onmaru.spring -> onmaru.ai.corpusWorker "versioned public projection · rights/revocation"
+    onmaru.ai.corpusWorker -> onmaru.db.aiSchema "parse · chunk · enrich · embed · index inactive revision"
+    onmaru.db.businessSchema -> onmaru.ai.corpusWorker "public-only source manifest"
+    onmaru.ai.qualityHarness -> onmaru.db.evalSchema "persist run observations · evaluation artifacts"
+    onmaru.db.evalSchema -> onmaru.ai.qualityHarness "gold replay · expected evidence"
+    admin -> onmaru.ai.qualityHarness "select case · start isolated experiment"
+    onmaru.ai.qualityHarness -> onmaru.ai.queryProcessing.searchRouter "candidate config only after human approval"
+    include onmaru
+  }
+}

@@ -1,0 +1,48 @@
+@startuml OnMaru C4 Deployment View
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Deployment.puml
+LAYOUT_LEFT_RIGHT()
+skinparam backgroundColor #F9FAF7
+skinparam defaultFontName "Noto Sans KR"
+LAYOUT_WITH_LEGEND()
+title OnMaru · 목표 배포 토폴로지
+
+Person(traveler, "여행자", "Browser")
+Deployment_Node(vercel, "Vercel", "Managed hosting") {
+  Container(webRuntime, "Next.js Production", "Vercel deployment", "onmaru.site / www.onmaru.site")
+}
+Deployment_Node(aws, "AWS", "ap-northeast-2 · Seoul") {
+  Deployment_Node(lightsail, "Lightsail $12 target", "2 GB RAM · 2 vCPU · 60 GB SSD · one instance") {
+    Deployment_Node(nginxNode, "Nginx", "Public ingress · TLS termination · SSE proxy") {
+      Container(nginx, "Nginx", "80/443 public", "Only public app ports; SSE buffering disabled")
+    }
+    Deployment_Node(springNode, "Spring server process", "Docker container · BE repository/image") {
+      Container(spring, "Spring Boot API", "private app port", "Auth, conversation, query authority, canonical SQL, final validation, SSE")
+    }
+    Deployment_Node(aiNode, "FastAPI server process", "Docker container · onmaru-ai-engine repository/image") {
+      Container(ai, "FastAPI AI Engine", "private app port only", "Plan API, approved execute API, RAG, corpus job, quality harness")
+    }
+    Deployment_Node(dbNode, "PostgreSQL process", "Docker container · persistent volume") {
+      ContainerDb(db, "PostgreSQL", "PostGIS + pgvector + full-text", "5432 not exposed publicly; Spring/AI roles and schemas separated")
+    }
+  }
+}
+Deployment_Node(google, "Google Cloud", "External provider") {
+  Container(gemini, "Gemini API", "HTTPS", "Only grounded generation proposal leaves the AI process")
+}
+Deployment_Node(grafanaCloud, "Grafana Cloud", "External observability backend") {
+  Container(telemetry, "OTel / metrics intake", "OTLP", "Shared traces, metrics, dashboards and alerts")
+}
+
+Rel(traveler, webRuntime, "대화형 여정 UI", "HTTPS")
+Rel(webRuntime, nginx, "API request / SSE connection", "HTTPS · api.onmaru.site")
+Rel(nginx, spring, "TLS terminated at Nginx; proxy to app", "private Docker network")
+Rel_R(spring, nginx, "verified SSE response / Last-Event-ID replay", "private HTTP")
+Rel(spring, ai, "Plan then approved Execute", "private address · TLS/service auth")
+Rel(spring, db, "business schema", "private database network · Spring role")
+Rel(ai, db, "ai schema only", "private database network · AI role")
+Rel(ai, gemini, "grounded generation only", "outbound HTTPS")
+Rel(spring, telemetry, "root trace + metrics", "OTLP outbound")
+Rel(ai, telemetry, "child trace + metrics", "OTLP outbound")
+
+SHOW_LEGEND()
+@enduml

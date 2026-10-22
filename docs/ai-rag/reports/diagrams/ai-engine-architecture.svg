@@ -1,0 +1,158 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1850" height="1050" viewBox="0 0 1850 1050" role="img" aria-labelledby="title desc">
+<title id="title">OnMaru AI Engine 레이어별 모듈 아키텍처</title>
+<desc id="desc">클라이언트에서 Spring Boot로 질문을 보내고, AWS Lightsail 안의 Spring Boot가 AI Engine의 계획과 실행을 승인한다. AI Engine은 PostgreSQL의 정형 장소와 검색 corpus를 사용하고 Gemini에서 근거 기반 제안을 받아 Spring으로 보낸다. Spring의 검증된 답변은 SSE로 클라이언트에 전달된다. 하단에는 오프라인 corpus와 비동기 품질 하네스가 분리되어 있다.</desc>
+<defs>
+  <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto" markerUnits="userSpaceOnUse"><path d="M1 1 L9 5 L1 9" fill="none" stroke="#3d6ea2" stroke-width="1.8"/></marker>
+  <marker id="greenarrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto" markerUnits="userSpaceOnUse"><path d="M1 1 L9 5 L1 9" fill="none" stroke="#527b65" stroke-width="1.8"/></marker>
+  <marker id="amberarrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto" markerUnits="userSpaceOnUse"><path d="M1 1 L9 5 L1 9" fill="none" stroke="#ad7b36" stroke-width="1.8"/></marker>
+  <marker id="purplearrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto" markerUnits="userSpaceOnUse"><path d="M1 1 L9 5 L1 9" fill="none" stroke="#8666a3" stroke-width="1.8"/></marker>
+</defs>
+<style>text{font-family:'Noto Sans KR','Apple SD Gothic Neo',sans-serif} .small{font-size:12px}</style>
+<rect width="1850" height="1050" fill="#f9faf7"/>
+
+<text x="45" y="55" font-size="30" font-weight="800" fill="#172d30" text-anchor="start">OnMaru AI Engine · 레이어와 모듈 관계도</text>
+<text x="45" y="83" font-size="15" font-weight="400" fill="#586a70" text-anchor="start">목표 설계 · 온라인 요청, corpus 준비, 품질 감독을 분리한 논리 아키텍처</text>
+<rect x="30" y="120" width="215" height="830" rx="20" fill="#eff4ed" stroke="#c6dac9" stroke-width="2"/>
+<text x="50" y="159" font-size="19" font-weight="800" fill="#285b43" text-anchor="start">CLIENT</text>
+<text x="50" y="182" font-size="13" font-weight="500" fill="#557366" text-anchor="start">Next.js · 브라우저</text>
+<rect x="270" y="120" width="1290" height="830" rx="22" fill="#edf2fa" stroke="#a8c1e5" stroke-width="2.5"/>
+<text x="292" y="160" font-size="20" font-weight="800" fill="#2a5089" text-anchor="start">AWS LIGHTSAIL · OnMaru 운영 인스턴스</text>
+<text x="292" y="184" font-size="13" font-weight="500" fill="#587098" text-anchor="start">한 인스턴스에 별도 서버 프로세스 2개 + PostgreSQL 공존 · 저장소와 배포 산출물 분리 목표</text>
+<rect x="292" y="215" width="280" height="505" rx="18" fill="#e4f3e8" stroke="#a7cbb3" stroke-width="2"/>
+<text x="312" y="250" font-size="17" font-weight="800" fill="#276044" text-anchor="start">SPRING SERVER</text>
+<text x="312" y="272" font-size="13" font-weight="500" fill="#467b5d" text-anchor="start">Spring Boot · BE 저장소 · API/SSE</text>
+<rect x="600" y="215" width="620" height="505" rx="18" fill="#e6eefc" stroke="#a2bcea" stroke-width="2"/>
+<text x="620" y="250" font-size="17" font-weight="800" fill="#315d9e" text-anchor="start">FASTAPI SERVER · AI ENGINE</text>
+<text x="620" y="272" font-size="13" font-weight="500" fill="#607eb1" text-anchor="start">onmaru-ai-engine 저장소 · plan/execute private REST 기준선</text>
+<rect x="1246" y="215" width="290" height="505" rx="18" fill="#f9f0de" stroke="#dccb9c" stroke-width="2"/>
+<text x="1266" y="250" font-size="17" font-weight="800" fill="#795b27" text-anchor="start">DATA LAYER</text>
+<text x="1266" y="272" font-size="13" font-weight="500" fill="#9a7842" text-anchor="start">PostgreSQL · PostGIS · pgvector</text>
+<rect x="50" y="290" width="175" height="78" rx="11" fill="#ffffff" stroke="#b4cfbc" stroke-width="1.5"/>
+<text x="65" y="317" font-size="16" font-weight="700" fill="#253342" text-anchor="start">질문·대화</text>
+<text x="65" y="339" font-size="12" font-weight="400" fill="#536572" text-anchor="start">조건 · 후속 질문</text>
+<rect x="50" y="610" width="175" height="78" rx="11" fill="#ffffff" stroke="#b4cfbc" stroke-width="1.5"/>
+<text x="65" y="637" font-size="16" font-weight="700" fill="#253342" text-anchor="start">결과·장소 카드</text>
+<text x="65" y="659" font-size="12" font-weight="400" fill="#536572" text-anchor="start">출처 · 찜 · 이어가기</text>
+<rect x="312" y="290" width="240" height="65" rx="11" fill="#ffffff" stroke="#93bda2" stroke-width="1.5"/>
+<text x="327" y="317" font-size="16" font-weight="700" fill="#253342" text-anchor="start">Admission + Privacy</text>
+<text x="327" y="339" font-size="12" font-weight="400" fill="#536572" text-anchor="start">인증 · 한도 · safeQuery</text>
+<rect x="312" y="385" width="240" height="65" rx="11" fill="#ffffff" stroke="#93bda2" stroke-width="1.5"/>
+<text x="327" y="412" font-size="16" font-weight="700" fill="#253342" text-anchor="start">PlanAuthorityGate</text>
+<text x="327" y="434" font-size="12" font-weight="400" fill="#536572" text-anchor="start">route · 필터 · ID 승인</text>
+<rect x="312" y="472" width="240" height="58" rx="11" fill="#ffffff" stroke="#93bda2" stroke-width="1.5"/>
+<text x="327" y="499" font-size="16" font-weight="700" fill="#253342" text-anchor="start">PlaceQueryPort inbound adapter</text>
+<text x="327" y="521" font-size="12" font-weight="400" fill="#536572" text-anchor="start">private REST 기본 · MCP 선택</text>
+<rect x="312" y="542" width="240" height="64" rx="11" fill="#ffffff" stroke="#93bda2" stroke-width="1.5"/>
+<text x="327" y="569" font-size="16" font-weight="700" fill="#253342" text-anchor="start">PlaceQueryPort + Service</text>
+<text x="327" y="591" font-size="12" font-weight="400" fill="#536572" text-anchor="start">grant 검증 · 고정 query</text>
+<rect x="312" y="632" width="240" height="60" rx="11" fill="#ffffff" stroke="#93bda2" stroke-width="1.5"/>
+<text x="327" y="659" font-size="16" font-weight="700" fill="#253342" text-anchor="start">FinalValidator + SSE</text>
+<text x="327" y="681" font-size="12" font-weight="400" fill="#536572" text-anchor="start">claim · 권리 · 저장 · 전송</text>
+<rect x="620" y="290" width="580" height="150" rx="12" fill="#f8fbff" stroke="#b9cdee" stroke-width="1.5"/>
+<text x="638" y="317" font-size="13" font-weight="800" fill="#4265a2" text-anchor="start">01 · QUERY PROCESSING LAYER</text>
+<rect x="638" y="330" width="174" height="82" rx="11" fill="#ffffff" stroke="#a7bce1" stroke-width="1.5"/>
+<text x="653" y="357" font-size="16" font-weight="700" fill="#253342" text-anchor="start">Query Preprocessing</text>
+<text x="653" y="379" font-size="12" font-weight="400" fill="#536572" text-anchor="start">표기 · 검수 별칭 정리</text>
+<rect x="823" y="330" width="174" height="82" rx="11" fill="#ffffff" stroke="#a7bce1" stroke-width="1.5"/>
+<text x="838" y="357" font-size="16" font-weight="700" fill="#253342" text-anchor="start">Query Interpretation</text>
+<text x="838" y="379" font-size="12" font-weight="400" fill="#536572" text-anchor="start">조건 · 부정 · 맥락</text>
+<rect x="1008" y="330" width="174" height="82" rx="11" fill="#ffffff" stroke="#a7bce1" stroke-width="1.5"/>
+<text x="1023" y="357" font-size="16" font-weight="700" fill="#253342" text-anchor="start">Search Router</text>
+<text x="1023" y="379" font-size="12" font-weight="400" fill="#536572" text-anchor="start">5개 route 제안</text>
+<rect x="620" y="460" width="580" height="130" rx="12" fill="#f8fbff" stroke="#b9cdee" stroke-width="1.5"/>
+<text x="638" y="488" font-size="13" font-weight="800" fill="#4265a2" text-anchor="start">02 · RETRIEVAL &amp; RANKING</text>
+<rect x="638" y="505" width="245" height="65" rx="11" fill="#ffffff" stroke="#a7bce1" stroke-width="1.5"/>
+<text x="653" y="532" font-size="16" font-weight="700" fill="#253342" text-anchor="start">Keyword + Semantic Search</text>
+<text x="653" y="554" font-size="12" font-weight="400" fill="#536572" text-anchor="start">BM25 · 384D vector</text>
+<rect x="895" y="505" width="135" height="65" rx="11" fill="#ffffff" stroke="#a7bce1" stroke-width="1.5"/>
+<text x="910" y="532" font-size="16" font-weight="700" fill="#253342" text-anchor="start">Hybrid Fusion</text>
+<text x="910" y="554" font-size="12" font-weight="400" fill="#536572" text-anchor="start">RRF</text>
+<rect x="1040" y="505" width="140" height="65" rx="11" fill="#ffffff" stroke="#a7bce1" stroke-width="1.5"/>
+<text x="1055" y="532" font-size="16" font-weight="700" fill="#253342" text-anchor="start">Reranker</text>
+<text x="1055" y="554" font-size="12" font-weight="400" fill="#536572" text-anchor="start">후보 재채점</text>
+<rect x="620" y="610" width="580" height="105" rx="12" fill="#f8fbff" stroke="#b9cdee" stroke-width="1.5"/>
+<text x="638" y="638" font-size="13" font-weight="800" fill="#4265a2" text-anchor="start">03 · GROUNDED GENERATION</text>
+<rect x="638" y="650" width="260" height="55" rx="11" fill="#ffffff" stroke="#a7bce1" stroke-width="1.5"/>
+<text x="653" y="677" font-size="16" font-weight="700" fill="#253342" text-anchor="start">PromptAssembler</text>
+<text x="653" y="699" font-size="12" font-weight="400" fill="#536572" text-anchor="start">근거 제한 템플릿</text>
+<rect x="920" y="650" width="260" height="55" rx="11" fill="#ffffff" stroke="#a7bce1" stroke-width="1.5"/>
+<text x="935" y="677" font-size="16" font-weight="700" fill="#253342" text-anchor="start">ProposalValidator</text>
+<text x="935" y="699" font-size="12" font-weight="400" fill="#536572" text-anchor="start">claim ↔ evidence ID</text>
+<rect x="1266" y="290" width="250" height="72" rx="11" fill="#ffffff" stroke="#d3bd85" stroke-width="1.5"/>
+<text x="1281" y="317" font-size="16" font-weight="700" fill="#253342" text-anchor="start">업무 schema / PostGIS</text>
+<text x="1281" y="339" font-size="12" font-weight="400" fill="#536572" text-anchor="start">회원 대화 · 정형 장소</text>
+<rect x="1266" y="390" width="250" height="85" rx="11" fill="#ffffff" stroke="#d3bd85" stroke-width="1.5"/>
+<text x="1281" y="417" font-size="16" font-weight="700" fill="#253342" text-anchor="start">AI corpus schema</text>
+<text x="1281" y="439" font-size="12" font-weight="400" fill="#536572" text-anchor="start">청크 · BM25 · pgvector</text>
+<rect x="1266" y="505" width="250" height="72" rx="11" fill="#ffffff" stroke="#d3bd85" stroke-width="1.5"/>
+<text x="1281" y="532" font-size="16" font-weight="700" fill="#253342" text-anchor="start">평가 artifact</text>
+<text x="1281" y="554" font-size="12" font-weight="400" fill="#536572" text-anchor="start">gold · trace · version</text>
+<rect x="1582" y="560" width="245" height="160" rx="16" fill="#f9f2fa" stroke="#c9a9ca" stroke-width="2"/>
+<text x="1601" y="595" font-size="16" font-weight="800" fill="#795487" text-anchor="start">EXTERNAL PROVIDER</text>
+<rect x="1601" y="618" width="207" height="72" rx="11" fill="#ffffff" stroke="#c9a9ca" stroke-width="1.5"/>
+<text x="1616" y="645" font-size="16" font-weight="700" fill="#253342" text-anchor="start">Gemini API</text>
+<text x="1616" y="667" font-size="12" font-weight="400" fill="#536572" text-anchor="start">구조화 claim 제안</text>
+<path d="M225 328 H302" fill="none" stroke="#3d6ea2" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrow)"/>
+<text x="235" y="314" font-size="12" font-weight="600" fill="#315e96" text-anchor="start">질문</text>
+<path d="M552 322 H628" fill="none" stroke="#3d6ea2" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrow)"/>
+<text x="565" y="308" font-size="12" font-weight="600" fill="#315e96" text-anchor="start">safeQuery</text>
+<path d="M812 371 H817" fill="none" stroke="#527b65" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#greenarrow)"/>
+<path d="M997 371 H1002" fill="none" stroke="#527b65" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#greenarrow)"/>
+<path d="M1095 412 V425 H590 V418 H560" fill="none" stroke="#3d6ea2" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrow)"/>
+<text x="739" y="445" font-size="12" font-weight="600" fill="#315e96" text-anchor="start">PlanProposal → Spring 승인</text>
+<path d="M552 432 H590 V535 H628" fill="none" stroke="#3d6ea2" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrow)"/>
+<text x="566" y="481" font-size="12" font-weight="600" fill="#315e96" text-anchor="start">ApprovedPlan</text>
+<path d="M638 548 H580 V501 H560" fill="none" stroke="#527b65" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#greenarrow)"/>
+<text x="578" y="490" font-size="10" font-weight="600" fill="#527b65" text-anchor="start">queryGrant</text>
+<path d="M552 574 H600 V570 H628" fill="none" stroke="#527b65" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#greenarrow)"/>
+<text x="587" y="585" font-size="10" font-weight="600" fill="#527b65" text-anchor="start">PlaceLookupResult</text>
+<path d="M432 530 V537" fill="none" stroke="#527b65" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#greenarrow)"/>
+<path d="M883 537 H889" fill="none" stroke="#527b65" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#greenarrow)"/>
+<path d="M1030 537 H1034" fill="none" stroke="#527b65" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#greenarrow)"/>
+<path d="M1110 570 V601 H766 V643" fill="none" stroke="#527b65" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#greenarrow)"/>
+<text x="870" y="599" font-size="12" font-weight="600" fill="#527b65" text-anchor="start">EvidenceSet</text>
+<path d="M898 677 H910" fill="none" stroke="#527b65" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#greenarrow)"/>
+<path d="M1180 675 H1565 V654 H1591" fill="none" stroke="#527b65" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#greenarrow)"/>
+<text x="1290" y="664" font-size="12" font-weight="600" fill="#527b65" text-anchor="start">공개 근거만 외부 호출</text>
+<path d="M1601 689 H1568 V704 H1190 V690 H1180" fill="none" stroke="#527b65" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#greenarrow)"/>
+<text x="1330" y="701" font-size="11" font-weight="600" fill="#527b65" text-anchor="start">구조화 제안</text>
+<path d="M920 704 H585 V662 H560" fill="none" stroke="#3d6ea2" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrow)"/>
+<text x="700" y="719" font-size="12" font-weight="600" fill="#315e96" text-anchor="start">ValidatedProposal → Spring 최종 검사</text>
+<path d="M302 662 H235" fill="none" stroke="#3d6ea2" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrow)"/>
+<text x="246" y="646" font-size="12" font-weight="700" fill="#315e96" text-anchor="start">확정 답변 · SSE</text>
+<path d="M552 574 H583 V205 H1238 V326 H1256" fill="none" stroke="#ad7b36" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="5 5" marker-end="url(#amberarrow)"/>
+<text x="840" y="200" font-size="11" font-weight="600" fill="#986e36" text-anchor="start">Spring PlaceQueryPort → fixed query → 업무 schema</text>
+<path d="M1180 537 H1229 V432 H1256" fill="none" stroke="#ad7b36" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#amberarrow)"/>
+<text x="1203" y="488" font-size="11" font-weight="600" fill="#986e36" text-anchor="start">corpus</text>
+<rect x="292" y="765" width="595" height="150" rx="14" fill="#fff5e8" stroke="#dfbf90" stroke-width="1.6"/>
+<text x="312" y="798" font-size="16" font-weight="800" fill="#88602f" text-anchor="start">04 · CORPUS PIPELINE  |  오프라인</text>
+<rect x="312" y="820" width="175" height="67" rx="11" fill="#ffffff" stroke="#d9b680" stroke-width="1.5"/>
+<text x="327" y="847" font-size="16" font-weight="700" fill="#253342" text-anchor="start">SourceAdapter</text>
+<text x="327" y="869" font-size="12" font-weight="400" fill="#536572" text-anchor="start">권리 · revision · 철회</text>
+<rect x="502" y="820" width="175" height="67" rx="11" fill="#ffffff" stroke="#d9b680" stroke-width="1.5"/>
+<text x="517" y="847" font-size="16" font-weight="700" fill="#253342" text-anchor="start">Parser + Chunker</text>
+<text x="517" y="869" font-size="12" font-weight="400" fill="#536572" text-anchor="start">본문 · 출처 metadata</text>
+<rect x="692" y="820" width="175" height="67" rx="11" fill="#ffffff" stroke="#d9b680" stroke-width="1.5"/>
+<text x="707" y="847" font-size="16" font-weight="700" fill="#253342" text-anchor="start">Embed + Index</text>
+<text x="707" y="869" font-size="12" font-weight="400" fill="#536572" text-anchor="start">384D · BM25 색인</text>
+<path d="M487 854 H495" fill="none" stroke="#ad7b36" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#amberarrow)"/>
+<path d="M677 854 H685" fill="none" stroke="#ad7b36" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#amberarrow)"/>
+<rect x="910" y="765" width="626" height="150" rx="14" fill="#f5eef8" stroke="#cbb7d9" stroke-width="1.6"/>
+<text x="930" y="798" font-size="16" font-weight="800" fill="#78558f" text-anchor="start">05 · QUALITY HARNESS  |  비동기</text>
+<rect x="930" y="820" width="175" height="67" rx="11" fill="#ffffff" stroke="#c6aed5" stroke-width="1.5"/>
+<text x="945" y="847" font-size="16" font-weight="700" fill="#253342" text-anchor="start">OTel + Gold Replay</text>
+<text x="945" y="869" font-size="12" font-weight="400" fill="#536572" text-anchor="start">trace · 합성 질문</text>
+<rect x="1118" y="820" width="175" height="67" rx="11" fill="#ffffff" stroke="#c6aed5" stroke-width="1.5"/>
+<text x="1133" y="847" font-size="16" font-weight="700" fill="#253342" text-anchor="start">Evaluation Analyzer</text>
+<text x="1133" y="869" font-size="12" font-weight="400" fill="#536572" text-anchor="start">Recall@K · MRR · nDCG</text>
+<rect x="1306" y="820" width="210" height="67" rx="11" fill="#ffffff" stroke="#c6aed5" stroke-width="1.5"/>
+<text x="1321" y="847" font-size="16" font-weight="700" fill="#253342" text-anchor="start">Review + Experiment</text>
+<text x="1321" y="869" font-size="12" font-weight="400" fill="#536572" text-anchor="start">검토 큐 · 사람 승인</text>
+<path d="M1105 854 H1111" fill="none" stroke="#8666a3" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#purplearrow)"/>
+<path d="M1293 854 H1299" fill="none" stroke="#8666a3" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#purplearrow)"/>
+<path d="M867 854 H890 V747 H1238 V432 H1256" fill="none" stroke="#ad7b36" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#amberarrow)"/>
+<text x="916" y="742" font-size="11" font-weight="600" fill="#986e36" text-anchor="start">검증 후 active revision 승격</text>
+<path d="M1390 577 V735 H980 V811" fill="none" stroke="#8666a3" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="5 5" marker-end="url(#purplearrow)"/>
+<path d="M1060 715 V811" fill="none" stroke="#8666a3" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="5 5" marker-end="url(#purplearrow)"/>
+<text x="294" y="985" font-size="14" font-weight="500" fill="#5b6d75" text-anchor="start">실선: 온라인 호출·데이터 전달   ·   주황 점선: 오프라인 색인   ·   보라 점선: 비동기 평가</text>
+</svg>

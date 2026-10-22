@@ -1,0 +1,70 @@
+@startuml OnMaru FastAPI Components
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Component.puml
+LAYOUT_TOP_DOWN()
+skinparam backgroundColor #F9FAF7
+skinparam defaultFontName "Noto Sans KR"
+LAYOUT_WITH_LEGEND()
+title FastAPI AI Engine · 승인 기반 RAG 모듈
+
+Container(spring, "Spring Boot API", "BE repository / separate server process", "plan authority, canonical SQL, final validation, persistence/SSE")
+ContainerDb(db, "PostgreSQL", "AI schema role", "active corpus · BM25 · pgvector · evaluation artifacts")
+System_Ext(gemini, "Gemini API", "External grounded generation provider")
+System_Ext(grafana, "Grafana Cloud", "Shared OTel/metrics backend")
+
+Container_Boundary(ai, "FastAPI · onmaru-ai-engine repository / independent server process") {
+  Component(planApi, "Plan API", "FastAPI route", "safeQuery/context in; PlanProposal out")
+  ' These three sequential components are stages within one logical Query Processing Layer.
+  Component(preprocessing, "Query Preprocessing", "Deterministic normalization", "reviewed aliases and spelling; preserve original meaning and negation")
+  Component(interpretation, "Query Interpretation", "QueryFrame construction", "intent · entities · constraints · polarity · confirmed context · ambiguity")
+  Component(searchRouter, "Search Router", "Deterministic route proposal", "SQL_ONLY · LEXICAL_ONLY · DENSE_ONLY · HYBRID · SQL_PLUS_RETRIEVAL")
+  Component(executeApi, "Execute API", "FastAPI route", "only Spring-approved planHash and retrieval inputs")
+  Component(planValidator, "Approved Plan Validator", "Hash/version/security check", "route, filters, corpus/config/revocation sequence")
+  Component(lexical, "Keyword Search", "Exact alias + PostgreSQL BM25", "only route-requested keyword candidates")
+  Component(dense, "Semantic Search", "E5-small 384D + pgvector", "query: prefix; same profile as passage vectors")
+  Component(fusion, "Hybrid Fusion", "Reciprocal Rank Fusion", "RRF only when both keyword and semantic result lists are present")
+  Component(reranker, "Reranker", "Versioned local cross-encoder", "rescore fused or single-search candidates; controlled fallback on timeout")
+  Component(evidence, "Evidence Selector", "Hard filters + diversification", "max 12 chunks; source revision and offsets")
+  Component(prompt, "Prompt Assembler", "Versioned templates", "recommend · refine · explain · compare")
+  Component(generator, "Grounded Generator", "Provider adapter", "structured claims from public evidence only")
+  Component(proposalCheck, "Proposal Validator", "Closed schema + evidence allowlist", "reject invalid IDs, unsupported claims and unsafe output")
+  Component(corpus, "Corpus Pipeline", "Offline/serialized", "source policy → parse → chunk/enrich → passage embed → index → activate")
+  Component(harness, "Quality Harness", "Async; operator-controlled workflow", "gold replay → deterministic failure cases → selected investigation → isolated experiment → human approval. See the dedicated Quality Harness view.")
+}
+
+Rel(spring, planApi, "PlanRequest · safeQuery")
+Rel(planApi, preprocessing, "safeQuery")
+Rel(preprocessing, interpretation, "normalized query; meaning preserved")
+Rel(interpretation, searchRouter, "QueryFrame")
+Rel(searchRouter, spring, "PlanProposal; Spring approval required")
+note bottom of searchRouter
+  Query Processing Layer is a logical layer within the Plan API flow,
+  not a separate service or independent deployment.
+end note
+Rel(spring, executeApi, "ExecuteRequest · approved planHash")
+Rel(executeApi, planValidator, "validate before any retrieval")
+Rel(planValidator, lexical, "if lexical route")
+Rel(planValidator, dense, "if dense route")
+Rel(lexical, fusion, "ranked list")
+Rel(dense, fusion, "ranked list")
+Rel(fusion, reranker, "hybrid RRF-ranked list")
+Rel(lexical, reranker, "single Keyword Search list; bypass fusion")
+Rel(dense, reranker, "single Semantic Search list; bypass fusion")
+Rel(reranker, evidence, "reranked candidates")
+Rel(evidence, prompt, "EvidenceSet")
+Rel(prompt, generator, "bounded prompt")
+Rel(generator, gemini, "grounded request", "HTTPS")
+Rel(gemini, generator, "structured claim proposal", "HTTPS")
+Rel(generator, proposalCheck, "model proposal")
+Rel(proposalCheck, spring, "ValidatedProposal · not publishable by itself")
+Rel(lexical, db, "BM25 / alias lookup", "AI DB role")
+Rel(dense, db, "vector similarity", "AI DB role")
+Rel(corpus, db, "inactive revision then activate", "AI DB role")
+Rel(harness, db, "gold · trace refs · review queue · experiment artifacts", "AI DB role")
+Rel(harness, grafana, "stage metrics · queue aggregates", "OTLP")
+note bottom of harness
+  Five bounded responsibilities are expanded in the dedicated Quality Harness view.
+  Analyzer and runner are deterministic; optional LLM investigation/planning
+  starts only after an operator selects a case and reviews its budget.
+end note
+SHOW_LEGEND()
+@enduml

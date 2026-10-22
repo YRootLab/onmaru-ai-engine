@@ -1,0 +1,32 @@
+@startuml OnMaru C4 Container View
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Container.puml
+LAYOUT_LEFT_RIGHT()
+skinparam backgroundColor #F9FAF7
+skinparam defaultFontName "Noto Sans KR"
+LAYOUT_WITH_LEGEND()
+title OnMaru · 서비스 컨테이너 경계
+
+Person(traveler, "여행자", "대화형 여정 검색을 사용")
+System_Boundary(onmaru, "OnMaru") {
+  Container(web, "Web Client", "Next.js · Vercel", "대화 입력, SSE 연결, 장소 카드·출처·후속 질문")
+  Container(nginx, "Public API Ingress", "Nginx · Lightsail", "api.onmaru.site HTTPS 종료, SSE buffering off; 80/443만 공개")
+  Container(spring, "Spring API Server", "Spring Boot · 별도 프로세스/저장소", "인증·대화·계획 승인·정형 SQL·최종 검증·저장·SSE")
+  Container(ai, "AI Engine Server", "FastAPI · onmaru-ai-engine 별도 프로세스/저장소", "query processing·BM25/vector retrieval·RRF/rerank·근거 생성·검증·비동기 품질")
+  ContainerDb(db, "PostgreSQL", "PostGIS + pgvector + 한국어 full-text", "업무 schema와 AI corpus schema를 DB role로 분리")
+}
+System_Ext(gemini, "Gemini API", "근거 기반 구조화 claim 생성 provider")
+System_Ext(grafana, "Grafana Cloud", "OTel trace·Prometheus 호환 metrics·dashboard/alerts")
+
+Rel(traveler, web, "대화 요청", "HTTPS")
+Rel(web, nginx, "API 요청 + SSE 연결", "HTTPS · text/event-stream")
+Rel(nginx, spring, "API proxy · SSE streaming", "private Docker network")
+Rel(spring, web, "저장·검증된 답변 events", "SSE · Last-Event-ID replay")
+Rel(spring, ai, "PlanRequest / 승인 ExecuteRequest", "비공개 HTTP · mTLS/service auth · W3C traceparent")
+Rel(spring, db, "회원 대화·정형 사실 읽기/쓰기", "Spring DB role")
+Rel(ai, db, "공개 corpus·평가 artifact 접근", "AI 최소 권한 role · 비공개 network")
+Rel(ai, gemini, "공개 근거만 전달해 생성 요청", "HTTPS")
+Rel(spring, grafana, "root spans·운영 metrics", "OTLP")
+Rel(ai, grafana, "child spans·검색 단계 metrics", "OTLP · propagated trace context")
+
+SHOW_LEGEND()
+@enduml
