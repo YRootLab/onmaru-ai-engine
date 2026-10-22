@@ -1,10 +1,10 @@
-from pathlib import Path
 import ast
 import unittest
+from pathlib import Path
 
 
 class ReportSourceOwnershipTest(unittest.TestCase):
-    def test_report_sources_are_owned_by_ai_rag_directory(self):
+    def test_report_sources_are_owned_by_ai_rag_directory(self) -> None:
         root = Path(__file__).resolve().parents[1]
         source = (root / "docs/ai-rag/reports/build_system_briefing.py").read_text()
         module = ast.parse(source)
