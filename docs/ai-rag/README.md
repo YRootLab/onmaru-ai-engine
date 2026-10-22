@@ -8,7 +8,7 @@ AI 엔진 저장소는 **`onmaru-ai-engine`**이다. `Engine`은 사용자 요�
 
 이전 완료 후에도 이 저장소에는 Spring이 구현해야 하는 연동 항목을 남긴다. [Spring 통합 설계](https://github.com/YRootLab/OnMaru-backend/blob/develop/docs/ai-rag-spring/README.md), [공유 API·JSON Schema 계약](https://github.com/YRootLab/OnMaru-backend/blob/develop/docs/contracts/README.md), [DB 소유권과 migration 계획](https://github.com/YRootLab/OnMaru-backend/blob/develop/docs/database/schema.md), Spring 구현의 테스트 및 배포 인수 기준이 해당한다. 이전 대상 AI 문서를 여기서 계속 복제·수정하지 않고, 이 진입 문서는 AI 저장소의 고정 링크로 전환한다.
 
-전체 흐름을 한 화면에서 보려면 [AI-RAG 시스템 설계 HTML 보고서](reports/2026-10-21-system-briefing.html)를 연다. 앞부분에는 세 파이프라인과 다섯 query route, 사용자 답변 화면, 합성 질의의 단계별 평가·검토·승격 흐름을 시각화했다. 뒷부분에는 AI-RAG 목표 설계와 관련 ADR·운영 절차·현행 AI 계약의 전체 본문을 담았다. Mermaid는 로컬 SVG로 렌더링하며, 보고서 목차·문서 간 링크는 HTML 내부로 이동한다. 세부 계약의 정본은 아래 Markdown 문서다.
+전체 흐름을 한 화면에서 보려면 [AI-RAG 시스템 설계 HTML 보고서](reports/2026-10-21-system-briefing.html)를 연다. 앞부분에는 세 파이프라인과 다섯 query route, 사용자 답변 화면, 합성 질의의 단계별 평가·검토·승격 흐름을 시각화했다. 본문에는 AI 엔진이 소유하는 AI-RAG 문서를 담는다. Spring API·DB 계약·Lightsail 운영 문서는 백엔드 저장소 소유이므로 복사하지 않고 고정 링크로 참조한다. Mermaid는 로컬 SVG로 렌더링하며, 보고서 목차·문서 간 링크는 HTML 내부로 이동한다. 세부 계약의 정본은 아래 Markdown 문서다.
 
 AI 엔진 구조를 빠르게 설명할 때는 보고서의 **「모듈 실행 지도」**를 본다. 서버 경계와 내부 책임을 더 자세히 설명할 때는 보고서의 C4 구조도 4장과 [LikeC4 인터랙티브 구조도](reports/likec4-site/index.html)를 연다. Next.js·Spring Boot·FastAPI·PostgreSQL을 각각 구분하고, Spring의 계획 승인 왕복과 최종 SSE 반환, FastAPI 내부의 query processing·retrieval·generation·corpus·quality harness를 확대해 볼 수 있다. 상세 입출력·실패 규칙은 [모듈 경계 문서](module-boundaries-and-pipelines.md)가 정본이다.
 

@@ -1,6 +1,6 @@
 # AI 저장소 분리와 관측 운영 결정
 
-> 상태: 2026-10-22 결정 반영, 이전 대기. GitHub의 [`YRootLab/onmaru-ai-engine`](https://github.com/YRootLab/onmaru-ai-engine)은 공개 빈 저장소로 생성됐지만 코드·설계 문서·배포 경로는 아직 이전하지 않았다. AI-RAG 제품·엔진 설계의 정본은 이전 완료 후 해당 저장소가 된다. 이 저장소에는 Spring 구현·연동에 필요한 계획과 계약을 유지한다. 이 문서는 현재 운영 계측 완료를 주장하지 않는다.
+> 상태: 2026-10-22 문서 이전 review branch 게시. AI-RAG 설계 문서는 [`docs/ai-rag-transfer`](https://github.com/YRootLab/onmaru-ai-engine/tree/docs/ai-rag-transfer/docs/ai-rag) branch에 복사됐고 기본 브랜치 병합 전이다. FastAPI 코드·배포 경로는 이전되지 않았다. AI-RAG 정본은 이 review branch가 기본 브랜치에 병합된 뒤 해당 저장소가 된다. 백엔드 저장소에는 Spring 구현·연동 계획과 계약을 유지한다. 이 문서는 현재 운영 계측 완료를 주장하지 않는다.
 
 ## 1. 저장소와 정본 소유권
 
@@ -18,7 +18,7 @@
 | 현행 FastAPI 코드·테스트·`evals/`·`pyproject.toml`·`uv.lock`·Dockerfile | AI 저장소 루트 | 기존 `ai/`에서 이전한다. 기존 `evals/`를 `quality_harness` 구현 완료로 간주하거나 이름만 바꾸지 않는다. |
 | SSAFY 요구사항 PDF | 원래 승인된 보관 위치 | PDF에 `對外秘`가 표시돼 있다. 공개 AI 레포·README·생성 HTML·CI artifact에 복사하지 않는다. 과제 재사용·제출 범위는 담당 교수·코치 안내를 확인한다. |
 
-이전 전까지는 BE의 `docs/ai-rag/README.md`가 작업 정본이다. 이전 완료 시 AI 저장소의 `docs/ai-rag/README.md`를 정본 진입점으로 두고, BE에는 새 정본을 가리키는 짧은 이전 안내만 남긴다. **복사된 두 Markdown을 각각 정본으로 운영하지 않는다.** AI 보고서와 도식도 함께 이전하며, 빌더의 BE 문서 참조는 버전 고정 링크로 바꾼다. BE 전용 구현 항목은 `docs/ai-rag-spring/` 및 `docs/contracts/`에 구체적인 인수 기준과 검증 방법을 유지한다. 이전 전에는 현재 설계 변경을 검토 가능한 BE commit으로 고정하고, 이전 PR에서 링크·생성기·검증 명령을 함께 갱신한다.
+BE의 `docs/ai-rag/README.md`는 AI 정본으로 가는 안내 문서로 전환했다. AI 문서 이전 PR을 병합한 뒤에는 AI 저장소의 `docs/ai-rag/README.md`를 정본 진입점으로 사용한다. **두 저장소에 동일한 Markdown을 복제해 각각 수정하지 않는다.** 보고서 빌더는 AI 소유 문서만 본문으로 묶으며, BE 소유 계약은 고정 링크로 연결한다. BE 전용 구현 항목은 `docs/ai-rag-spring/` 및 `docs/contracts/`에 구현 인수 기준과 검증 방법을 유지한다. 코드·운영 배포 이전은 별도의 호환성 gate를 통과한 뒤 진행한다.
 
 ## 2. 저장소 분리와 단일 Lightsail 배포
 

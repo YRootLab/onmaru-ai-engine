@@ -49,21 +49,7 @@ DOCS = [
     ("telemetry-and-harness-schema.md", "관측 스키마·하네스 입력", "13B 관측 스키마"),
     ("quality-engineering-agent.md", "품질 감독 workflow", "14 품질 감독"),
     ("quality-agent-prompt-contracts.md", "Quality Harness prompt·guardrail 계약", "14C 품질 감독"),
-    ("../ai-rag-spring/README.md", "Spring 측 AI-RAG 통합", "14A Spring 통합"),
-    ("../ai-rag-spring/quality-tools-mcp.md", "Spring Quality MCP tool 계약", "14B Spring 통합"),
-    ("../ai-rag-spring/journey-query-mcp.md", "Spring PlaceQueryPort · REST/MCP/gRPC adapter 계약", "14C Spring 통합"),
     ("production-readiness-gaps.md", "미검증 사항·차단 조건", "16 준비도"),
-    ("../decisions/0017-home-journey-hybrid-rag.md", "ADR-0017 · 구조 결정", "17 결정"),
-    ("../decisions/0018-quality-harness-spring-mcp-tools.md", "ADR-0018 · Spring MCP tools 제안", "17A 결정"),
-    ("../decisions/0019-journey-query-mcp-tools.md", "ADR-0019 · 여정 query MCP tools 제안", "17B 결정"),
-    ("../operations/runbooks/lightsail-2gb-migration.md", "Lightsail 2GB 이전 절차", "18 인프라"),
-    ("../ai/application-architecture.md", "공통 AI 응용 경계", "19 현행 계약"),
-    ("../ai/corpus-sync-contract.md", "공통 corpus 동기화 계약", "20 현행 계약"),
-    ("../ai/evaluation-harness.md", "현행 AI 평가 harness", "20A 현행 계약"),
-    ("../ai/gemini-provider-adapter.md", "Gemini provider adapter", "20B 현행 계약"),
-    ("../ai/internal-service-authentication.md", "서비스 간 인증·TLS", "20C 현행 계약"),
-    ("../ai/journey-guardrails.md", "현행 여정 guardrails", "21 현행 구현"),
-    ("../ai/proposal-validation.md", "현행 proposal 검증", "22 현행 구현"),
 ]
 
 def key(path: Path) -> str:
@@ -205,7 +191,7 @@ layers = f'''{LAYER_START}<section id="layer-map"><div class="eyebrow">Architect
 html_text = html_text.replace('<section id="experience">', layers + '<section id="experience">', 1)
 module_flow = (REPORT_DIR / "module-flow.fragment.html").read_text(encoding="utf-8")
 html_text = html_text.replace('<section id="overview">', MODULE_START + module_flow + MODULE_END + '<section id="overview">', 1)
-full = f'''{START}<section id="full-design"><div class="eyebrow">11 · Complete design corpus</div><h2>설계 문서 전체 본문</h2><p class="lead">AI-RAG 목표 설계, 관련 ADR·이전 절차와 현재 AI 공통 계약을 원문 순서대로 담았습니다. 문서 간 링크는 가능한 경우 이 페이지의 해당 절로 이동합니다. <strong>현행·과거 계약은 새 RAG 목표 계약과 구분해</strong> 현재 동작과 전환 차이를 확인하는 자료로 읽어야 합니다.</p><div class="search-row"><input id="docFilter" type="search" placeholder="문서 제목·본문 검색 (예: RRF, SSE, 철회)" aria-label="설계 문서 검색"><button id="clearFilter" type="button">지우기</button></div><div class="full-count" id="filterCount">{len(paths)}개 문서</div><div class="full-index" id="fullIndex">{''.join(index)}</div>{''.join(articles)}</section>{END}'''
+full = f'''{START}<section id="full-design"><div class="eyebrow">11 · AI Engine design corpus</div><h2>AI 엔진 설계 문서 전체</h2><p class="lead">이 보고서는 AI Engine이 소유하는 RAG 제품·데이터·검색·생성·품질 harness 설계를 원문 순서로 담습니다. Spring API·DB·Lightsail 인프라의 구현 정본은 백엔드 저장소가 소유하며, 이 보고서는 해당 문서를 복사하지 않고 소유 저장소의 링크로 참조합니다. 문서 간 내부 링크는 가능한 경우 이 페이지의 해당 절로 이동합니다.</p><div class="search-row"><input id="docFilter" type="search" placeholder="문서 제목·본문 검색 (예: RRF, SSE, 철회)" aria-label="설계 문서 검색"><button id="clearFilter" type="button">지우기</button></div><div class="full-count" id="filterCount">{len(paths)}개 문서</div><div class="full-index" id="fullIndex">{''.join(index)}</div>{''.join(articles)}</section>{END}'''
 html_text = html_text.replace("<footer>OnMaru AI RAG", full + "<footer>OnMaru AI RAG", 1)
 script = """
 const docDetails=[...document.querySelectorAll('.doc-details')];function openHash(){const id=decodeURIComponent(location.hash.slice(1));if(!id)return;const target=document.getElementById(id);if(!target)return;const detail=target.closest('.doc-details');if(detail){detail.hidden=false;detail.open=true;setTimeout(()=>target.scrollIntoView({block:'start'}),20)}}window.addEventListener('hashchange',openHash);openHash();
