@@ -24,6 +24,8 @@ This diagram illustrates how downstream clients may display the events; it is no
 
 ## Event flow
 
+The concrete cross-repository payload and public SSE mapping are in [the progress event contract proposal](../../ai-rag/progress-event-contract.md).
+
 1. Spring sends the existing approved plan to FastAPI `execute`. Planning and approval remain separate from execution.
 2. The AI Engine publishes an event when it actually enters one of these coarse stages: `PREPARING_INPUT`, `RETRIEVING`, `SELECTING_EVIDENCE`, `GENERATING`, `CHECKING_OUTPUT`. Each event has `runId`, approved `planHash`, stage code, and a monotonically increasing AI ordinal. It has no arbitrary display text or unverified content. Route-specific stages that do not run are omitted.
 3. A transport-independent `ProgressSink` receives these events from the pipeline. The initial private REST adapter forwards them to a private authenticated Spring progress endpoint. Callback failure is recorded but does not fail the answer; duplicate callbacks are safe through the ordinal and run identity. If delivery is delayed, later events must not overwrite a newer stage.
