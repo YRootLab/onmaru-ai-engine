@@ -1,28 +1,28 @@
 # Handoff
 
 Current work:
-- Summary: W0 implementation and review are complete; prepare its `develop` PR and start dependency-safe Wave 1 branches from the reviewed W0 head.
-- Issue/PR: [W0 Issue #4](https://github.com/YRootLab/onmaru-ai-engine/issues/4), under AI-RAG Root Issue #3.
-- Branch: `feature/ai-rag-w0`, isolated worktree `.worktrees/feature-ai-rag-w0`.
+- Summary: W1 public projection manifest intake and source eligibility validation implemented from the reviewed W0 head; awaiting parent review and integration.
+- Issue/PR: [W1 Issue #5](https://github.com/YRootLab/onmaru-ai-engine/issues/5), under AI-RAG Root Issue #3; dependency [W0 #4](https://github.com/YRootLab/onmaru-ai-engine/issues/4).
+- Branch: `feature/ai-rag-w1`, isolated worktree `.worktrees/feature-ai-rag-w1`.
 
 Touched files:
-- `src/onmaru_ai/contracts/`: frozen closed models, JSON schemas, authority/hash validation, contract and fixture instructions.
-- `tests/contracts/`: synthetic shared fixtures and schema/model/context validation tests, including both review rounds: authority/vocabulary, claim kind/evidence caps, strict publicOnly and clarification-pair cases.
-- `docs/ai-rag/progress-event-contract.md`: implemented private payload references; Spring receiver/public SSE remains future work.
+- `src/onmaru_ai/corpus/source_sync.py`: closed immutable manifest/tombstone models, idempotent preparation-only intake, hash/revision/count/duplicate/order checks, contiguous tombstone watermark handling.
+- `src/onmaru_ai/corpus/source_policy.py`: public/license/eligibility/revocation and source-specific preparation gates.
+- `tests/corpus/source_sync/`: fixed signed public fixture, 33 focused cases, interface and canonicalization notes.
 
 Verification:
-- TDD RED: initial 15 focused tests failed because the package did not exist; Fix Round 1 added 28 expected failures reproducing empty-scope artifact acceptance, failure-stage vocabulary mismatch and open code vocabularies. Final review fix added 29 expected failures for claim kinds/counts, strict publicOnly and clarification pair mapping.
-- GREEN: `uv run pytest tests/contracts -q` → 259 passed; `uv run pytest -q` → 564 passed, 1 skipped (opt-in live provider test); `uv run ruff check src tests scripts` → passed; `uv run mypy` → no issues in 69 source files.
+- TDD RED: 33 focused failures because `source_sync` was absent; corrected a local fixture setup command before recording the final RED run.
+- GREEN: `uv run pytest tests/corpus/source_sync -q` → 33 passed; `uv run pytest -q` → 597 passed, 1 skipped (opt-in live provider test).
+- `uv run ruff check src tests scripts` passed; `uv run mypy` → no issues in 72 source files; `git diff --check` passed.
 
 Next step:
-- Open the W0 PR into `develop`; then begin W1, W3, W7, W8, W12, W15, and W16 only from this reviewed contract head.
-- Share the pinned schema/fixture files with Spring CI. No cross-repository import has been performed or claimed.
+- Parent review W1 against Issue #5 acceptance criteria; open an Issue-linked PR into `develop` following the W0 dependency integration strategy.
+- W2 can consume `prepared_documents`; W6 must implement durable revocation state, runtime blocking/freshness, rollback and restore behavior.
 
 Open risk or decision:
-- Spring must adopt the documented canonical SHA-256 serialization, fixed reason/question IDs, `questions-1` dictionary and fixture validation stages.
-- W0 has no HTTP endpoint, progress transport, public SSE serializer, retrieval executor, or publication authority.
-- Inclusion filter `null` means unrestricted public scope; `[]` means deny all. Approval must exactly echo the proposed narrowed filters.
+- Intake is serial and process-local; a new receiver requires history from sequence 1. Durable watermark/checkpoint state is not claimed.
+- The synthetic private manifest shape is documented with its fixture; Spring generation and cross-repository contract adoption remain separate.
+- Existing REST/sync activation is not wired to this preparation boundary and is unchanged. There is no DB access, content fetch, normalization, chunking or activation here.
 
 Ad hoc requests captured this session:
-- Implement W0/#4 as the foundation for later AI-RAG issues, with focused TDD, full checks, and a reviewable commit.
-- Continue the GitHub AI-RAG issue graph and parallelize dependency-safe work.
+- Implement W1/#5 in its isolated branch with strict TDD, focused/full checks, self-review and a reviewable commit; keep later W2/W6 features outside this change.
