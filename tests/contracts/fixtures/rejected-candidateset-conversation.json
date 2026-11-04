@@ -1,0 +1,32 @@
+{
+  "name": "rejected-candidateset-conversation",
+  "model": "CandidateSet",
+  "payload": {
+    "schemaVersion": "ai-candidate-set.v1",
+    "runId": "45e6a7f5-31bc-469d-9e30-6f510a1dc497",
+    "planHash": "sha256:5b378f462da239732826ee9d9f9e0a535fe95aa1d1ffb02cdc0a5a4fa935baba",
+    "versions": {
+      "corpusRevision": "corpus-1",
+      "configHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "questionDictionaryVersion": "questions-1",
+      "sourceRevocationSequence": 7
+    },
+    "stage": "FUSION",
+    "candidates": [
+      {
+        "chunkId": "chunk-1",
+        "placeId": "place-1",
+        "sourceId": "source-1",
+        "sourceRevision": "source-r1",
+        "rank": 1,
+        "score": 0.95,
+        "exclusionReason": null
+      }
+    ],
+    "retrievalStatus": "COMPLETE",
+    "latencyMs": 12,
+    "conversation": "FORBIDDEN"
+  },
+  "expected": "UNEXPECTED_FIELD",
+  "schemaValid": false
+}

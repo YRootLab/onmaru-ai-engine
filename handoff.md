@@ -1,20 +1,27 @@
 # Handoff
 
 Current work:
-- Summary: Commit repository operating guidance after the AI-RAG design and issue plan merged into `develop`.
-- Issue/PR: AI-RAG Root Issue #3; design PR #27 merged into `develop`; repository guidance PR #28 open.
-- Branch: `docs/ai-rag-planning-harness`
+- Summary: W0 fixes seven private AI↔Spring versioned DTOs, schemas, authority/hash checks, and portable accepted/rejected fixtures.
+- Issue/PR: [W0 Issue #4](https://github.com/YRootLab/onmaru-ai-engine/issues/4), under AI-RAG Root Issue #3. No W0 PR opened in this implementation task.
+- Branch: `feature/ai-rag-w0`, isolated worktree `.worktrees/feature-ai-rag-w0`.
 
 Touched files:
-- `AGENTS.md`, harness entry files, `handoff.md`, `improvements.md`, `changelog.md`, `project-roadmap.md`
+- `src/onmaru_ai/contracts/`: frozen closed models, JSON schemas, authority/hash validation, contract and fixture instructions.
+- `tests/contracts/`: synthetic shared fixtures and schema/model/context validation tests.
+- `docs/ai-rag/progress-event-contract.md`: implemented private payload references; Spring receiver/public SSE remains future work.
+
+Verification:
+- TDD RED: 15 focused tests failed because the W0 contract package did not exist.
+- GREEN: `uv run pytest tests/contracts -q` → 157 passed; `uv run pytest -q` → 462 passed, 1 skipped (opt-in live provider test); `uv run ruff check src tests scripts` → passed; `uv run mypy` → no issues in 68 source files.
 
 Next step:
-- Review and merge the repository guidance PR into `develop`; then protect `develop` and align CI/release rules when the team is ready.
+- Review W0 against Issue #4 and open its PR into `develop` after reconciling logs and verification.
+- Share the pinned schema/fixture files with Spring CI. No cross-repository import has been performed or claimed.
 
 Open risk or decision:
-- `develop` exists, but branch protection has not been confirmed. CI verifies pull requests; image publication remains tied to `main`.
+- Spring must adopt the documented canonical SHA-256 serialization and fixture validation stages.
+- W0 has no HTTP endpoint, progress transport, public SSE serializer, retrieval executor, or publication authority.
+- Inclusion filter `null` means unrestricted public scope; `[]` means deny all. Approval must exactly echo the proposed narrowed filters.
 
 Ad hoc requests captured this session:
-- Pull the production branch and initialize the project harness with Git Flow guidance.
-- Add coarse, actual-stage progress events to the AI Engine pipeline for Spring to relay through SSE; Spring and FE implementation are outside this repository. Benchmark gRPC bidirectional streaming after the current transport works.
-- PR #27 merged the AI-RAG progress contract and W0–W22 issue plan into `develop`; 23 implementation sub-issues remain open.
+- Implement W0/#4 as the foundation for later AI-RAG issues, with focused TDD, full checks, and a reviewable commit.
