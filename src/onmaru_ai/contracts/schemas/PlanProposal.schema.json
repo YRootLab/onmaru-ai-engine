@@ -14,11 +14,7 @@
           "type": "string"
         },
         "questionCode": {
-          "maxLength": 64,
-          "minLength": 1,
-          "pattern": "^[A-Z][A-Z0-9_]*$",
-          "title": "Questioncode",
-          "type": "string"
+          "$ref": "#/$defs/ClarificationQuestionCode"
         }
       },
       "required": [
@@ -27,6 +23,44 @@
       ],
       "title": "Clarification",
       "type": "object"
+    },
+    "ClarificationQuestionCode": {
+      "description": "Fixed Spring renderer IDs for the four clarification reasons.",
+      "enum": [
+        "CHOOSE_TARGET",
+        "RESOLVE_CONDITIONS",
+        "SUPPORTED_TRAVEL_SCOPE",
+        "PRESERVE_MEANING"
+      ],
+      "title": "ClarificationQuestionCode",
+      "type": "string"
+    },
+    "ConceptCode": {
+      "description": "Searchable concepts from question-understanding.md's initial code table.",
+      "enum": [
+        "HISTORY",
+        "HISTORICAL_SIGNIFICANCE",
+        "ARCHITECTURE",
+        "CULTURAL_PRACTICE",
+        "VISIT_POINT",
+        "FAMILY_SUITABILITY",
+        "QUIETNESS",
+        "ACCESSIBILITY",
+        "INDEPENDENCE_MOVEMENT",
+        "JOSEON_PERIOD",
+        "TRADITIONAL_MARKET",
+        "HANOK",
+        "K_CONTENT",
+        "SOLO",
+        "COUPLE",
+        "FAMILY",
+        "FRIENDS",
+        "QUIET",
+        "LIVELY",
+        "WALKABLE"
+      ],
+      "title": "ConceptCode",
+      "type": "string"
     },
     "HardFilters": {
       "additionalProperties": false,
@@ -135,6 +169,22 @@
       "title": "HardFilters",
       "type": "object"
     },
+    "PlanReasonCode": {
+      "description": "Fixed reason IDs for the routing/clarification cases in query-processing.md.",
+      "enum": [
+        "CANONICAL_FACT_ONLY",
+        "EXACT_PUBLIC_TERM",
+        "SINGLE_SEMANTIC_TOPIC",
+        "COMPOSITE_QUERY",
+        "CANONICAL_FACT_WITH_RETRIEVAL",
+        "AMBIGUOUS_TARGET",
+        "CONFLICTING_CONDITIONS",
+        "UNSUPPORTED_SCOPE",
+        "SEMANTIC_LOSS"
+      ],
+      "title": "PlanReasonCode",
+      "type": "string"
+    },
     "QuestionFrame": {
       "additionalProperties": false,
       "properties": {
@@ -162,10 +212,7 @@
         },
         "subjectConceptCodes": {
           "items": {
-            "maxLength": 64,
-            "minLength": 1,
-            "pattern": "^[A-Z][A-Z0-9_]*$",
-            "type": "string"
+            "$ref": "#/$defs/ConceptCode"
           },
           "maxItems": 4,
           "title": "Subjectconceptcodes",
@@ -186,10 +233,7 @@
       "properties": {
         "positiveConceptCodes": {
           "items": {
-            "maxLength": 64,
-            "minLength": 1,
-            "pattern": "^[A-Z][A-Z0-9_]*$",
-            "type": "string"
+            "$ref": "#/$defs/ConceptCode"
           },
           "maxItems": 4,
           "title": "Positiveconceptcodes",
@@ -198,10 +242,7 @@
         },
         "negativeConceptCodes": {
           "items": {
-            "maxLength": 64,
-            "minLength": 1,
-            "pattern": "^[A-Z][A-Z0-9_]*$",
-            "type": "string"
+            "$ref": "#/$defs/ConceptCode"
           },
           "maxItems": 2,
           "title": "Negativeconceptcodes",
@@ -503,10 +544,7 @@
     },
     "reasonCodes": {
       "items": {
-        "maxLength": 64,
-        "minLength": 1,
-        "pattern": "^[A-Z][A-Z0-9_]*$",
-        "type": "string"
+        "$ref": "#/$defs/PlanReasonCode"
       },
       "maxItems": 32,
       "minItems": 1,

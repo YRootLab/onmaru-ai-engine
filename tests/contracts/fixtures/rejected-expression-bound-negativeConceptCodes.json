@@ -22,9 +22,9 @@
         "QUIET"
       ],
       "negativeConceptCodes": [
-        "A",
-        "B",
-        "C"
+        "LIVELY",
+        "TRADITIONAL_MARKET",
+        "HISTORY"
       ],
       "publicEntityIds": []
     },
@@ -64,7 +64,7 @@
       "maxPlaces": 5
     },
     "clarification": null,
-    "planHash": "sha256:5b378f462da239732826ee9d9f9e0a535fe95aa1d1ffb02cdc0a5a4fa935baba"
+    "planHash": "sha256:1c011f93f934f48a0c918a07370ca25058e2e8fc45980671d389694823359d2f"
   },
   "expected": "INVALID_PAYLOAD",
   "schemaValid": false

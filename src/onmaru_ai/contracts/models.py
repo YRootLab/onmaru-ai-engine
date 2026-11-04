@@ -9,10 +9,11 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from pydantic.alias_generators import to_camel
 from pydantic.config import JsonDict
 
+from .vocabulary import ClarificationQuestionCode, ConceptCode, FailureStage, PlanReasonCode
+
 Identifier = Annotated[
     str, Field(min_length=1, max_length=128, pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]*$")
 ]
-Code = Annotated[str, Field(min_length=1, max_length=64, pattern=r"^[A-Z][A-Z0-9_]*$")]
 Digest = Annotated[str, Field(pattern=r"^sha256:[a-f0-9]{64}$")]
 RunId = Annotated[
     str, Field(pattern=r"^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$")
@@ -22,16 +23,20 @@ NonnegativeInt = Annotated[int, Field(ge=0, strict=True)]
 Ids = Annotated[
     tuple[Identifier, ...], Field(max_length=1000, json_schema_extra={"uniqueItems": True})
 ]
-Codes = Annotated[tuple[Code, ...], Field(max_length=32, json_schema_extra={"uniqueItems": True})]
+ReasonCodes = Annotated[
+    tuple[PlanReasonCode, ...], Field(max_length=32, json_schema_extra={"uniqueItems": True})
+]
 PlaceIds = Annotated[
     tuple[Identifier, ...], Field(max_length=5, json_schema_extra={"uniqueItems": True})
 ]
 EntityIds = Annotated[
     tuple[Identifier, ...], Field(max_length=2, json_schema_extra={"uniqueItems": True})
 ]
-Concepts = Annotated[tuple[Code, ...], Field(max_length=4, json_schema_extra={"uniqueItems": True})]
+Concepts = Annotated[
+    tuple[ConceptCode, ...], Field(max_length=4, json_schema_extra={"uniqueItems": True})
+]
 NegativeConcepts = Annotated[
-    tuple[Code, ...], Field(max_length=2, json_schema_extra={"uniqueItems": True})
+    tuple[ConceptCode, ...], Field(max_length=2, json_schema_extra={"uniqueItems": True})
 ]
 SemanticQuery = Annotated[str, Field(min_length=1, max_length=240)]
 CanonicalField = Literal["PUBLIC_ADDRESS", "REGION_CODE", "CATEGORY_CODE", "PUBLIC_STATUS"]
@@ -142,7 +147,7 @@ class Clarification(ClosedModel):
     reason: Literal[
         "AMBIGUOUS_TARGET", "CONFLICTING_CONDITIONS", "UNSUPPORTED_SCOPE", "SEMANTIC_LOSS"
     ]
-    question_code: Code
+    question_code: ClarificationQuestionCode
 
 
 def route_schema() -> JsonDict:
@@ -218,7 +223,7 @@ class PlanProposal(ClosedModel):
     run_id: RunId
     route: Route
     retrieval_mode: RetrievalMode
-    reason_codes: Annotated[Codes, Field(min_length=1)]
+    reason_codes: Annotated[ReasonCodes, Field(min_length=1)]
     question_frame: QuestionFrame
     retrieval_expression: RetrievalExpression
     requested_canonical_fields: CanonicalFields
@@ -369,7 +374,7 @@ class ValidatedProposal(RunArtifact):
     summary_claims: Annotated[tuple[Claim, ...], Field(max_length=12)]
     retrieval_status: RetrievalStatus
     generation_status: Literal["NOT_RUN", "GENERATED", "REJECTED", "FAILED"]
-    failure_stage: Stage | None
+    failure_stage: FailureStage | None
 
     @model_validator(mode="after")
     def unique_claims_and_places(self) -> Self:

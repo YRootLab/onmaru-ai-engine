@@ -20,6 +20,7 @@ from .models import (
     ValidatedProposal,
     Versions,
 )
+from .vocabulary import QUESTION_DICTIONARIES
 
 ViolationCode = Literal[
     "RUN_MISMATCH",
@@ -82,6 +83,16 @@ def validate_plan(
     if plan.run_id != request.run_id:
         raise ContractViolation("RUN_MISMATCH")
     _versions_match(plan.versions, request.versions, current_versions)
+    dictionary = QUESTION_DICTIONARIES.get(plan.versions.question_dictionary_version)
+    if dictionary is None:
+        raise ContractViolation("VERSION_MISMATCH")
+    concepts = (
+        set(plan.question_frame.subject_concept_codes)
+        | set(plan.retrieval_expression.positive_concept_codes)
+        | set(plan.retrieval_expression.negative_concept_codes)
+    )
+    if not concepts <= dictionary:
+        raise ContractViolation("INVALID_PLAN")
     _filter_subset(plan.proposed_filters, request.authority_bounds.filters)
     if plan.limits != request.limits or not set(plan.requested_canonical_fields) <= set(
         request.authority_bounds.allowed_canonical_fields
@@ -130,6 +141,8 @@ def validate_approval(
 
 def _place_allowed(place_id: str, approved: ApprovedQueryPlan) -> bool:
     filters = approved.approved_filters
+    if () in (filters.place_ids, filters.region_codes, filters.category_codes):
+        return False
     return place_id not in filters.excluded_place_ids and (
         filters.place_ids is None or place_id in filters.place_ids
     )

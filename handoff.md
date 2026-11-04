@@ -7,19 +7,19 @@ Current work:
 
 Touched files:
 - `src/onmaru_ai/contracts/`: frozen closed models, JSON schemas, authority/hash validation, contract and fixture instructions.
-- `tests/contracts/`: synthetic shared fixtures and schema/model/context validation tests.
+- `tests/contracts/`: synthetic shared fixtures and schema/model/context validation tests, including Fix Round 1 rejection and failure-response cases.
 - `docs/ai-rag/progress-event-contract.md`: implemented private payload references; Spring receiver/public SSE remains future work.
 
 Verification:
-- TDD RED: 15 focused tests failed because the W0 contract package did not exist.
-- GREEN: `uv run pytest tests/contracts -q` → 157 passed; `uv run pytest -q` → 462 passed, 1 skipped (opt-in live provider test); `uv run ruff check src tests scripts` → passed; `uv run mypy` → no issues in 68 source files.
+- TDD RED: initial 15 focused tests failed because the package did not exist; Fix Round 1 added 28 expected failures reproducing empty-scope artifact acceptance, failure-stage vocabulary mismatch and open code vocabularies.
+- GREEN: `uv run pytest tests/contracts -q` → 224 passed; `uv run pytest -q` → 529 passed, 1 skipped (opt-in live provider test); `uv run ruff check src tests scripts` → passed; `uv run mypy` → no issues in 69 source files.
 
 Next step:
 - Review W0 against Issue #4 and open its PR into `develop` after reconciling logs and verification.
 - Share the pinned schema/fixture files with Spring CI. No cross-repository import has been performed or claimed.
 
 Open risk or decision:
-- Spring must adopt the documented canonical SHA-256 serialization and fixture validation stages.
+- Spring must adopt the documented canonical SHA-256 serialization, fixed reason/question IDs, `questions-1` dictionary and fixture validation stages.
 - W0 has no HTTP endpoint, progress transport, public SSE serializer, retrieval executor, or publication authority.
 - Inclusion filter `null` means unrestricted public scope; `[]` means deny all. Approval must exactly echo the proposed narrowed filters.
 

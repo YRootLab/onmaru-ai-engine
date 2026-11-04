@@ -20,7 +20,7 @@
         "QUIET",
         "FAMILY_SUITABILITY",
         "WALKABLE",
-        "CULTURE"
+        "HANOK"
       ]
     },
     "retrievalExpression": {
@@ -28,11 +28,11 @@
         "QUIET",
         "FAMILY_SUITABILITY",
         "WALKABLE",
-        "CULTURE"
+        "HANOK"
       ],
       "negativeConceptCodes": [
-        "CROWDED",
-        "STAIRS"
+        "LIVELY",
+        "TRADITIONAL_MARKET"
       ],
       "publicEntityIds": [
         "place-1",
@@ -75,7 +75,7 @@
       "maxPlaces": 5
     },
     "clarification": null,
-    "planHash": "sha256:b73754bfef7bb9065b3e1437b9e3f5f825e0afc78f48b7bc2d1fc1201a721fe6"
+    "planHash": "sha256:93089aecec09cd832800b1b73fa33dad90e97bde1d26053f9105d948aafd75da"
   },
   "expected": "ACCEPT",
   "schemaValid": true,

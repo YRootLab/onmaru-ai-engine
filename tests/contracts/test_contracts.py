@@ -183,3 +183,89 @@ def test_nested_contract_objects_reject_sensitive_extras() -> None:
                 api.CONTRACT_MODELS[case["model"]].model_validate(document)
             schema = api.CONTRACT_MODELS[case["model"]].model_json_schema(by_alias=True)
             assert not Draft202012Validator(schema).is_valid(document)
+
+
+@pytest.mark.parametrize(
+    "concept",
+    [
+        "HISTORY",
+        "HISTORICAL_SIGNIFICANCE",
+        "ARCHITECTURE",
+        "CULTURAL_PRACTICE",
+        "VISIT_POINT",
+        "FAMILY_SUITABILITY",
+        "QUIETNESS",
+        "ACCESSIBILITY",
+        "INDEPENDENCE_MOVEMENT",
+        "JOSEON_PERIOD",
+        "TRADITIONAL_MARKET",
+        "HANOK",
+        "K_CONTENT",
+        "SOLO",
+        "COUPLE",
+        "FAMILY",
+        "FRIENDS",
+        "QUIET",
+        "LIVELY",
+        "WALKABLE",
+    ],
+)
+def test_initial_dictionary_accepts_each_documented_search_concept(concept: str) -> None:
+    case = json.loads((ROOT / "fixtures" / "accepted-plan-hybrid.json").read_text())
+    payload = case["payload"]
+    payload["questionFrame"]["subjectConceptCodes"] = [concept]
+    payload["retrievalExpression"]["positiveConceptCodes"] = [concept]
+    schema = api.PlanProposal.model_json_schema(by_alias=True)
+    Draft202012Validator(schema).validate(payload)
+    plan = api.PlanProposal.model_validate(payload)
+    # This test isolates dictionary acceptance; fixed fixture literals separately test hashing.
+    plan = plan.model_copy(update={"plan_hash": api.compute_plan_hash(plan)})
+    api.validate_plan(api.SafeQueryRequest.model_validate(case["context"]["request"]), plan)
+
+
+@pytest.mark.parametrize(
+    "reason",
+    [
+        "CANONICAL_FACT_ONLY",
+        "EXACT_PUBLIC_TERM",
+        "SINGLE_SEMANTIC_TOPIC",
+        "COMPOSITE_QUERY",
+        "CANONICAL_FACT_WITH_RETRIEVAL",
+        "AMBIGUOUS_TARGET",
+        "CONFLICTING_CONDITIONS",
+        "UNSUPPORTED_SCOPE",
+        "SEMANTIC_LOSS",
+    ],
+)
+def test_fixed_plan_reason_codes_are_serializable(reason: str) -> None:
+    case = json.loads((ROOT / "fixtures" / "accepted-plan-hybrid.json").read_text())
+    case["payload"]["reasonCodes"] = [reason]
+    Draft202012Validator(api.PlanProposal.model_json_schema(by_alias=True)).validate(
+        case["payload"]
+    )
+    plan = api.PlanProposal.model_validate(case["payload"])
+    assert plan.model_dump(mode="json", by_alias=True)["reasonCodes"] == [reason]
+
+
+@pytest.mark.parametrize(
+    ("reason", "question_code"),
+    [
+        ("AMBIGUOUS_TARGET", "CHOOSE_TARGET"),
+        ("CONFLICTING_CONDITIONS", "RESOLVE_CONDITIONS"),
+        ("UNSUPPORTED_SCOPE", "SUPPORTED_TRAVEL_SCOPE"),
+        ("SEMANTIC_LOSS", "PRESERVE_MEANING"),
+    ],
+)
+def test_fixed_clarification_question_codes_are_serializable(
+    reason: str, question_code: str
+) -> None:
+    case = json.loads((ROOT / "fixtures" / "accepted-plan-clarify_or_scope.json").read_text())
+    case["payload"]["clarification"] = {"reason": reason, "questionCode": question_code}
+    Draft202012Validator(api.PlanProposal.model_json_schema(by_alias=True)).validate(
+        case["payload"]
+    )
+    plan = api.PlanProposal.model_validate(case["payload"])
+    assert (
+        plan.model_dump(mode="json", by_alias=True)["clarification"]["questionCode"]
+        == question_code
+    )

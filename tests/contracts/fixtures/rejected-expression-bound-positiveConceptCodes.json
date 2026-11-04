@@ -19,11 +19,11 @@
     },
     "retrievalExpression": {
       "positiveConceptCodes": [
-        "A",
-        "B",
-        "C",
-        "D",
-        "E"
+        "QUIET",
+        "FAMILY_SUITABILITY",
+        "WALKABLE",
+        "HANOK",
+        "HISTORY"
       ],
       "negativeConceptCodes": [],
       "publicEntityIds": []
@@ -64,7 +64,7 @@
       "maxPlaces": 5
     },
     "clarification": null,
-    "planHash": "sha256:5b378f462da239732826ee9d9f9e0a535fe95aa1d1ffb02cdc0a5a4fa935baba"
+    "planHash": "sha256:5222ec8bfb1e2d9589b7c42ee4df32b46d71529809e2238c0cdf7aa080f2b361"
   },
   "expected": "INVALID_PAYLOAD",
   "schemaValid": false

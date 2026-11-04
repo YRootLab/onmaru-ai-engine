@@ -14,7 +14,7 @@
       "operation": "RECOMMEND",
       "targetPlaceIds": [],
       "subjectConceptCodes": [
-        "CULTURE"
+        "HISTORY"
       ]
     },
     "retrievalExpression": {
@@ -60,7 +60,7 @@
       "maxPlaces": 5
     },
     "clarification": null,
-    "planHash": "sha256:c66b1763a61b218f6d021e0553c6d037244aeb27f5eaaa0d887cc8ced532afd6"
+    "planHash": "sha256:549e7b62874390b502e8864d95318e4172b513b2b1de86ac8d550c0e0a2c93b3"
   },
   "expected": "INVALID_PLAN",
   "schemaValid": true,

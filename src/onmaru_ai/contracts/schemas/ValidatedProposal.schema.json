@@ -49,6 +49,23 @@
       "title": "Claim",
       "type": "object"
     },
+    "FailureStage": {
+      "description": "Failure decision table in request-lifecycle.md; distinct from progress.",
+      "enum": [
+        "REQUEST",
+        "INTERPRETATION",
+        "PLANNING",
+        "ROUTING",
+        "QUOTA",
+        "RETRIEVAL",
+        "RETRIEVAL_EMPTY",
+        "GENERATION",
+        "VALIDATION",
+        "DELIVERY"
+      ],
+      "title": "FailureStage",
+      "type": "string"
+    },
     "PlaceClaims": {
       "additionalProperties": false,
       "properties": {
@@ -186,20 +203,12 @@
     "failureStage": {
       "anyOf": [
         {
-          "enum": [
-            "PREPARING_INPUT",
-            "RETRIEVING",
-            "SELECTING_EVIDENCE",
-            "GENERATING",
-            "CHECKING_OUTPUT"
-          ],
-          "type": "string"
+          "$ref": "#/$defs/FailureStage"
         },
         {
           "type": "null"
         }
-      ],
-      "title": "Failurestage"
+      ]
     }
   },
   "required": [

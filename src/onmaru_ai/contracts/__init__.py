@@ -20,6 +20,12 @@ from .validation import (
     validate_artifact,
     validate_plan,
 )
+from .vocabulary import (
+    ClarificationQuestionCode,
+    ConceptCode,
+    FailureStage,
+    PlanReasonCode,
+)
 
 CONTRACT_MODELS: dict[str, type[BaseModel]] = {
     model.__name__: model
@@ -35,6 +41,10 @@ CONTRACT_MODELS: dict[str, type[BaseModel]] = {
 }
 
 __all__ = [
+    "ClarificationQuestionCode",
+    "ConceptCode",
+    "FailureStage",
+    "PlanReasonCode",
     "CONTRACT_MODELS",
     "ApprovedQueryPlan",
     "CandidateSet",

@@ -50,7 +50,9 @@ fetch that registry or infer source eligibility from an arbitrary revision ID.
 
 For inclusion filters (`placeIds`, `regionCodes`, `categoryCodes`), `null` means
 unrestricted within public authority and `[]` means an empty permitted set.
-A proposal may narrow an inclusion set; it may not replace a bounded set with
+Any empty inclusion filter forbids nonempty candidate/evidence/proposal output,
+including when place IDs are otherwise unbounded. Empty result artifacts remain
+valid. A proposal may narrow an inclusion set; it may not replace a bounded set with
 `null`. All mandatory pins and exclusions in the authority must survive the
 proposal. Pins must remain included and cannot be excluded. `publicOnly` is
 always true. `filterHash` is Spring's authority-bound hash and must echo it.
@@ -67,6 +69,48 @@ producers supply dictionary-order arrays. Semantic queries are at most 240
 Unicode code points. An evidence set has at most twelve chunks and two per
 place, with at most five allowed places. Candidate lists enforce twenty for
 individual retrieval stages and thirty for fusion/reranking.
+
+## Closed code vocabularies
+
+[`vocabulary.py`](vocabulary.py) pins machine-readable enums; their literal values
+are also exported in the generated schemas. The currently registered dictionary
+`questions-1` contains the twenty searchable explanation-focus, topic, companion,
+and atmosphere codes from the [initial design table](../../../docs/ai-rag/question-understanding.md).
+Operation codes remain the separate `questionFrame.operation` enum; condition
+operations use structured filters, and canonical fact fields have their own enum.
+
+Concepts are closed in JSON Schema and Pydantic. `validate_plan` additionally
+looks up the specified dictionary version and checks every frame/positive/negative
+concept against that version's registered set. Echoing an unregistered dictionary
+version consistently still fails `VERSION_MISMATCH`. Adding concepts requires a
+new registered dictionary version and matching closed schema/fixture updates;
+provider strings cannot extend the dictionary.
+
+The design describes route/clarification cases without assigning wire literals
+for reason/question codes. W0 pins the following fixed IDs for those cases:
+
+| Design case | `reasonCodes` ID | Clarification `questionCode` |
+| --- | --- | --- |
+| Registered canonical facts only | `CANONICAL_FACT_ONLY` | — |
+| Exact public name/term | `EXACT_PUBLIC_TERM` | — |
+| Single semantic topic | `SINGLE_SEMANTIC_TOPIC` | — |
+| Composite retrieval query | `COMPOSITE_QUERY` | — |
+| Canonical fact plus retrieval | `CANONICAL_FACT_WITH_RETRIEVAL` | — |
+| Ambiguous target | `AMBIGUOUS_TARGET` | `CHOOSE_TARGET` |
+| Conflicting conditions | `CONFLICTING_CONDITIONS` | `RESOLVE_CONDITIONS` |
+| Unsupported scope | `UNSUPPORTED_SCOPE` | `SUPPORTED_TRAVEL_SCOPE` |
+| Lost input meaning | `SEMANTIC_LOSS` | `PRESERVE_MEANING` |
+
+Unknown uppercase strings are rejected. New fixed reason/question IDs require a
+versioned plan-contract update rather than a regex-only extension.
+
+`ValidatedProposal.failureStage` uses its own `FailureStage` enum from the
+[request lifecycle failure table](../../../docs/ai-rag/request-lifecycle.md):
+`REQUEST`, `INTERPRETATION`, `PLANNING`, `ROUTING`, `QUOTA`, `RETRIEVAL`,
+`RETRIEVAL_EMPTY`, `GENERATION`, `VALIDATION`, `DELIVERY`, or null. Progress stage
+values such as `RETRIEVING` and `GENERATING` are rejected in this field. Keeping
+these vocabularies distinct does not authorize FastAPI to perform Spring-owned
+request/quota/delivery actions.
 
 ## Canonical `planHash` algorithm
 
