@@ -1,0 +1,13 @@
+# Changelog
+
+Lightweight human-readable summary of meaningful repository changes. Newest dates go first.
+
+## 2026-11-04
+
+- Added AI-RAG progress event design and W0–W22 implementation graph through PR #27 into `develop`.
+- Recorded repository guidance and the active `main`/`develop` branch policy.
+
+## 2026-10-22
+
+- Initialized repository guidance and harness entry files.
+- Documented the existing `main` production branch and a staged Git Flow policy.
