@@ -1,5 +1,12 @@
 # Handoff
 
+## W16 current session
+
+- Issue: [#11](https://github.com/YRootLab/onmaru-ai-engine/issues/11); branch `feature/ai-rag-w16`, based on reviewed W0.
+- Request: implement versioned gold schema, review/provenance records and split leakage lint with small synthetic fixtures, using strict TDD. Actual 300-case labeling and evaluation runner belong to W22/W17.
+- Status: schema/linter/provenance docs implemented; synthetic fixtures only. TDD RED: 56 missing-artifact failures, then 6 route/query boundary failures. GREEN: 64 focused tests; full pytest 628 passed, 1 skipped; Ruff, strict mypy (including executable), diff check passed.
+- Next: parent review and Issue #11 PR into `develop`; actual labeling, snapshot verification and sealed ACLs remain dataset-owner/W22 work.
+
 Current work:
 - Summary: W0 implementation and review are complete; prepare its `develop` PR and start dependency-safe Wave 1 branches from the reviewed W0 head.
 - Issue/PR: [W0 Issue #4](https://github.com/YRootLab/onmaru-ai-engine/issues/4), under AI-RAG Root Issue #3.

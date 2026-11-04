@@ -1,0 +1,712 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": {
+      "const": "rag-gold-dataset.v1",
+      "type": "string"
+    },
+    "datasetVersion": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+    },
+    "cases": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/GoldCase"
+      },
+      "minItems": 1,
+      "maxItems": 10000
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "datasetVersion",
+    "cases"
+  ],
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:onmaru:rag-gold-dataset:v1",
+  "$defs": {
+    "ConceptCode": {
+      "description": "Searchable concepts from question-understanding.md's initial code table.",
+      "enum": [
+        "HISTORY",
+        "HISTORICAL_SIGNIFICANCE",
+        "ARCHITECTURE",
+        "CULTURAL_PRACTICE",
+        "VISIT_POINT",
+        "FAMILY_SUITABILITY",
+        "QUIETNESS",
+        "ACCESSIBILITY",
+        "INDEPENDENCE_MOVEMENT",
+        "JOSEON_PERIOD",
+        "TRADITIONAL_MARKET",
+        "HANOK",
+        "K_CONTENT",
+        "SOLO",
+        "COUPLE",
+        "FAMILY",
+        "FRIENDS",
+        "QUIET",
+        "LIVELY",
+        "WALKABLE"
+      ],
+      "title": "ConceptCode",
+      "type": "string"
+    },
+    "QuestionFrame": {
+      "additionalProperties": false,
+      "properties": {
+        "operation": {
+          "enum": [
+            "RECOMMEND",
+            "EXPLAIN",
+            "COMPARE",
+            "REFINE"
+          ],
+          "title": "Operation",
+          "type": "string"
+        },
+        "targetPlaceIds": {
+          "items": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+            "type": "string"
+          },
+          "maxItems": 2,
+          "title": "Targetplaceids",
+          "type": "array",
+          "uniqueItems": true
+        },
+        "subjectConceptCodes": {
+          "items": {
+            "$ref": "#/$defs/ConceptCode"
+          },
+          "maxItems": 4,
+          "title": "Subjectconceptcodes",
+          "type": "array",
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "operation",
+        "targetPlaceIds",
+        "subjectConceptCodes"
+      ],
+      "title": "QuestionFrame",
+      "type": "object"
+    },
+    "ConfirmedContext": {
+      "additionalProperties": false,
+      "properties": {
+        "regionCode": {
+          "anyOf": [
+            {
+              "maxLength": 128,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Regioncode"
+        },
+        "pinnedPlaceIds": {
+          "items": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+            "type": "string"
+          },
+          "maxItems": 5,
+          "title": "Pinnedplaceids",
+          "type": "array",
+          "uniqueItems": true
+        },
+        "excludedPlaceIds": {
+          "items": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+            "type": "string"
+          },
+          "maxItems": 1000,
+          "title": "Excludedplaceids",
+          "type": "array",
+          "uniqueItems": true
+        },
+        "lastConfirmedPlaceIds": {
+          "items": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+            "type": "string"
+          },
+          "maxItems": 5,
+          "title": "Lastconfirmedplaceids",
+          "type": "array",
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "regionCode",
+        "pinnedPlaceIds",
+        "excludedPlaceIds",
+        "lastConfirmedPlaceIds"
+      ],
+      "title": "ConfirmedContext",
+      "type": "object"
+    },
+    "Source": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "placeId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+        },
+        "sourceId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+        },
+        "sourceRevision": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+        },
+        "sourceHash": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "sourceLength": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "placeId",
+        "sourceId",
+        "sourceRevision",
+        "sourceHash",
+        "sourceLength"
+      ]
+    },
+    "PreservedSpan": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "startOffset": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "endOffset": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "text": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000,
+          "pattern": "\\S"
+        }
+      },
+      "required": [
+        "startOffset",
+        "endOffset",
+        "text"
+      ]
+    },
+    "SemanticQuery": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "expected": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 240,
+              "pattern": "\\S"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "forbidden": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000,
+            "pattern": "\\S"
+          },
+          "minItems": 0,
+          "maxItems": 100,
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "expected",
+        "forbidden"
+      ]
+    },
+    "PlaceGrade": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "placeId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+        },
+        "grade": {
+          "type": "integer",
+          "enum": [
+            0,
+            1,
+            2
+          ]
+        }
+      },
+      "required": [
+        "placeId",
+        "grade"
+      ]
+    },
+    "Evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "chunkId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+        },
+        "placeId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+        },
+        "sourceId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+        },
+        "sourceRevision": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+        },
+        "startOffset": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "endOffset": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "grade": {
+          "type": "integer",
+          "enum": [
+            0,
+            1,
+            2
+          ]
+        }
+      },
+      "required": [
+        "chunkId",
+        "placeId",
+        "sourceId",
+        "sourceRevision",
+        "startOffset",
+        "endOffset",
+        "grade"
+      ]
+    },
+    "Claim": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "claimId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+        },
+        "text": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000,
+          "pattern": "\\S"
+        },
+        "evidenceIndexes": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "minItems": 1,
+          "maxItems": 12,
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "claimId",
+        "text",
+        "evidenceIndexes"
+      ]
+    },
+    "Review": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "reviewerId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+        },
+        "decision": {
+          "type": "string",
+          "enum": [
+            "ACCEPT",
+            "REJECT"
+          ]
+        },
+        "goldHash": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "rationale": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000,
+          "pattern": "\\S"
+        }
+      },
+      "required": [
+        "reviewerId",
+        "decision",
+        "goldHash",
+        "rationale"
+      ]
+    },
+    "Adjudication": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": [
+            "AGREED",
+            "RESOLVED",
+            "PENDING"
+          ]
+        },
+        "adjudicatorId": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "decision": {
+          "type": "string",
+          "enum": [
+            "ACCEPT",
+            "REJECT"
+          ]
+        },
+        "goldHash": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "rationale": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000,
+          "pattern": "\\S"
+        }
+      },
+      "required": [
+        "status",
+        "adjudicatorId",
+        "decision",
+        "goldHash",
+        "rationale"
+      ]
+    },
+    "GoldCase": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "schemaVersion": {
+          "const": "rag-gold-case.v1",
+          "type": "string"
+        },
+        "datasetVersion": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+        },
+        "queryId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+        },
+        "split": {
+          "type": "string",
+          "enum": [
+            "development",
+            "sealed"
+          ]
+        },
+        "corpusRevision": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+        },
+        "corpusHash": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "questionDictionaryVersion": {
+          "const": "questions-1",
+          "type": "string"
+        },
+        "safeQuery": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 240,
+          "pattern": "\\S"
+        },
+        "threadContextFixture": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ConfirmedContext"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "sources": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Source"
+          },
+          "minItems": 0,
+          "maxItems": 1000,
+          "uniqueItems": true
+        },
+        "goldRoute": {
+          "type": "string",
+          "enum": [
+            "SQL_ONLY",
+            "LEXICAL_ONLY",
+            "DENSE_ONLY",
+            "HYBRID",
+            "SQL_PLUS_RETRIEVAL",
+            "CLARIFY_OR_SCOPE"
+          ]
+        },
+        "goldQuestionFrame": {
+          "$ref": "#/$defs/QuestionFrame"
+        },
+        "preserveSpans": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/PreservedSpan"
+          },
+          "minItems": 0,
+          "maxItems": 100,
+          "uniqueItems": true
+        },
+        "semanticQuery": {
+          "$ref": "#/$defs/SemanticQuery"
+        },
+        "allowedPlaceIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+          },
+          "minItems": 0,
+          "maxItems": 1000,
+          "uniqueItems": true
+        },
+        "forbiddenPlaceIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+          },
+          "minItems": 0,
+          "maxItems": 1000,
+          "uniqueItems": true
+        },
+        "placeGrades": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/PlaceGrade"
+          },
+          "minItems": 0,
+          "maxItems": 1000,
+          "uniqueItems": true
+        },
+        "goldEvidence": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Evidence"
+          },
+          "minItems": 0,
+          "maxItems": 1000,
+          "uniqueItems": true
+        },
+        "answerable": {
+          "type": "boolean"
+        },
+        "minimumClaims": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Claim"
+          },
+          "minItems": 0,
+          "maxItems": 100,
+          "uniqueItems": true
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "SYNTHETIC",
+              "NEGATION",
+              "MULTITURN",
+              "HOMONYM",
+              "REVOCATION",
+              "INJECTION",
+              "PRIVACY",
+              "INSUFFICIENT_EVIDENCE",
+              "OUT_OF_SCOPE",
+              "CLARIFICATION",
+              "COMPOSITE"
+            ]
+          },
+          "minItems": 1,
+          "maxItems": 11,
+          "uniqueItems": true
+        },
+        "goldHash": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "reviews": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Review"
+          },
+          "minItems": 2,
+          "maxItems": 2,
+          "uniqueItems": true
+        },
+        "adjudication": {
+          "$ref": "#/$defs/Adjudication"
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "datasetVersion",
+        "queryId",
+        "split",
+        "corpusRevision",
+        "corpusHash",
+        "questionDictionaryVersion",
+        "safeQuery",
+        "threadContextFixture",
+        "sources",
+        "goldRoute",
+        "goldQuestionFrame",
+        "preserveSpans",
+        "semanticQuery",
+        "allowedPlaceIds",
+        "forbiddenPlaceIds",
+        "placeGrades",
+        "goldEvidence",
+        "answerable",
+        "minimumClaims",
+        "tags",
+        "goldHash",
+        "reviews",
+        "adjudication"
+      ],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "goldRoute": {
+                "enum": [
+                  "SQL_ONLY",
+                  "CLARIFY_OR_SCOPE"
+                ]
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "semanticQuery": {
+                "properties": {
+                  "expected": {
+                    "type": "null"
+                  }
+                }
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "semanticQuery": {
+                "properties": {
+                  "expected": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  "title": "OnMaru reviewed RAG gold dataset v1"
+}
