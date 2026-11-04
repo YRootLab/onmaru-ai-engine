@@ -1,0 +1,753 @@
+{
+  "repo": "YRootLab/onmaru-ai-engine",
+  "root": {
+    "title": "AI-RAG 엔진: 공개 Corpus, 근거 기반 응답, 품질 감독 구현",
+    "goal": "FastAPI AI 엔진이 공개 자료를 버전형 Corpus로 준비하고 승인된 계획만 실행해 근거 있는 여정 답변 제안을 생성하며, 재현 가능한 평가와 운영 신호로 품질을 개선할 수 있게 한다.",
+    "background": "현재 FastAPI baseline은 16차원 결정적 임베딩·메모리 검색이며, 설계의 384차원 pgvector/BM25, 다섯 route, claim 근거 검증, 감독 하네스는 구현·검증되지 않았다. docs/ai-rag 설계를 AI 저장소 소유 범위의 독립 PR로 나눌 필요가 있다.",
+    "scope": "AI 소유 내부 계약/fixture, 공개 Corpus 수신·정규화·색인·철회, 승인 계획 기반 검색·생성·진행 이벤트, 단계별 관측·고정 평가·품질 하네스, AI 이미지와 staging 검증 증거.",
+    "out_of_scope": "Spring의 회원·대화·정형 SQL·최종 게시·SSE, FE UI, 운영 PostgreSQL/Compose·Lightsail 변경, 승인 없는 외부 웹 검색, 자동 설정 승격. 해당 작업은 OnMaru-backend/FE의 별도 Issue와 계약으로 연결한다.",
+    "success_criteria": [
+      "모든 다섯 route와 확인 질문이 versioned plan/execute 계약으로 재현되며, 미승인 계획·필터 확대·철회 근거를 사용하지 않는다.",
+      "공개 revision에서 384차원 vector와 한국어 BM25를 생성하고 active pointer·철회·복원 계약을 통과한다.",
+      "근거 있는 claim만 제안하고 근거 부족·provider/검색 장애를 같은 run의 허용된 fallback 또는 명시 실패로 마친다.",
+      "최소 개발 200/봉인 100문항의 독립 라벨 평가에서 문서의 route·retrieval·grounding·안전 게이트와 환경 예산을 보고한다.",
+      "AI 진행 이벤트와 OTel 단계 신호가 실제 실행만 반영하며 민감 본문을 노출하지 않는다."
+    ],
+    "architecture_summary": "Spring은 plan authority와 최종 snapshot을 소유한다. FastAPI는 Spring이 승인한 불변 plan으로 공개 Corpus의 lexical/dense/hybrid 경로를 실행하고 evidence 제한 proposal만 반환한다. 오프라인 Corpus, 온라인 run, 비동기 quality harness를 버전형 artifact로 연결한다. REST 기준선 이후 gRPC는 측정으로 판단한다.",
+    "risks": [
+      "BE의 최신 내부 계약·공개 projection·lookup grant와 AI DTO가 어긋날 수 있으므로 W0 fixture와 외부 BE Issue 연결을 선행한다.",
+      "2GB 목표 호스트에서 로컬 embedding/reranker/BM25 공존이 실패할 수 있으므로 W20 실측 전 운영 출시를 주장하지 않는다.",
+      "300문항 gold와 사람 이중 검수는 독립 데이터 작업이며 봉인셋 누설을 막아야 한다.",
+      "품질 감독 자동화가 운영 설정을 임의 변경하지 않도록 W19에 명시 승인 경계를 둔다."
+    ],
+    "definition_of_done": [
+      "모든 child Issue의 acceptance criteria와 해당 PR 검증이 끝난다.",
+      "BE 소유 API/DB/배포 의존 사항은 링크된 계약·staging 증거로 확인한다.",
+      "봉인 평가·철회·장애·권한·2GB 혼합 부하의 출시 차단 항목을 통과하거나 미통과를 명시하고 출시를 보류한다."
+    ]
+  },
+  "issues": [
+    {
+      "id": "W0",
+      "title": "AI↔Spring 버전형 plan/execute·progress 계약과 공유 fixture 고정",
+      "objective": "AI 소유 DTO/JSON Schema와 Spring 교차 계약 fixture를 고정한다.",
+      "context": "현재 baseline internal API와 docs/ai-rag/request-lifecycle.md·progress-event-contract.md 사이에 목표 계약 간극이 있다.",
+      "scope": "SafeQueryRequest, PlanProposal, ApprovedQueryPlan, CandidateSet, EvidenceSet, ValidatedProposal, progress event의 version/hash/필수 필드와 정상·거부 fixture.",
+      "out_of_scope": "Spring 공개 OpenAPI·SSE serializer 구현.",
+      "implementation_notes": "BE docs/776-ai-rag-prd의 정본과 대조하고 planHash/ID/필터 상한·민감정보 금지 규칙을 명시한다.",
+      "related_code": "docs/ai-rag/request-lifecycle.md; src/onmaru_ai/security/internal_auth.py; tests/contracts/",
+      "dependencies": [],
+      "expected_touch_points": [
+        "src/onmaru_ai/contracts/",
+        "tests/contracts/",
+        "docs/ai-rag/progress-event-contract.md"
+      ],
+      "parallel_notes": "같은 Wave 작업과 예상 수정 경로가 분리된다. 공통 계약 변경은 W0의 버전형 fixture를 통해 조율한다.",
+      "acceptance_criteria": [
+        "다섯 route·확인 질문·철회·version 불일치가 닫힌 schema와 fixture로 표현된다.",
+        "planHash와 승인 필터의 동일성·부분집합 검증 fixture가 양쪽 저장소에서 동일하다.",
+        "raw member data/원문/모델 토큰이 내부 계약에 없다."
+      ],
+      "verification_method": "schema validation 및 BE와 공유한 fixture 검증",
+      "labels": [
+        "enhancement",
+        "track:online",
+        "area:contract"
+      ],
+      "size": "L"
+    },
+    {
+      "id": "W1",
+      "title": "공개 projection manifest 수신과 원천 권리 검증",
+      "objective": "Spring 공개 manifest를 멱등 수신하고 허용 원천만 Corpus 준비에 넘긴다.",
+      "context": "현재 corpus REST·sync baseline은 있으나 TourAPI/K-Contents 권리·revision/tombstone 목표와 차이가 있다.",
+      "scope": "manifest hash, source revision, license/eligibility, tombstone, 누락·중복·역전 검증.",
+      "out_of_scope": "Spring projection 생성과 업무 DB 조회.",
+      "implementation_notes": "기존 corpus sync/REST 경로를 확장하고 실패 상태를 온라인 요청과 분리한다.",
+      "related_code": "src/onmaru_ai/corpus/rest.py; src/onmaru_ai/corpus/sync.py",
+      "dependencies": [
+        "W0"
+      ],
+      "expected_touch_points": [
+        "src/onmaru_ai/corpus/source_sync.py",
+        "src/onmaru_ai/corpus/source_policy.py",
+        "tests/corpus/source_sync/"
+      ],
+      "parallel_notes": "같은 Wave 작업과 예상 수정 경로가 분리된다. 공통 계약 변경은 W0의 버전형 fixture를 통해 조율한다.",
+      "acceptance_criteria": [
+        "같은 manifest 재수신은 중복 문서를 만들지 않는다.",
+        "권리 미확정·비공개·철회 원천은 다음 단계에 전달되지 않는다.",
+        "누락된 tombstone sequence에서는 watermark를 올리지 않는다."
+      ],
+      "verification_method": "고정 manifest·권리·중복·역전 fixture 테스트",
+      "labels": [
+        "enhancement",
+        "track:corpus",
+        "area:ingestion"
+      ],
+      "size": "L"
+    },
+    {
+      "id": "W2",
+      "title": "공개 본문 정규화·청킹·출처 metadata 생성",
+      "objective": "허용 원천을 추적 가능한 청크와 원문 offset으로 변환한다.",
+      "context": "현재 FixedWordChunker baseline은 설계의 400 목표/600 최대/60 겹침 및 출처 경계와 다르다.",
+      "scope": "HTML/명령 격리, 정규화, source revision별 chunk, offset, hash, metadata.",
+      "out_of_scope": "embedding과 DB 저장.",
+      "implementation_notes": "다른 장소·출처·revision의 본문을 한 청크에 섞지 않는다.",
+      "related_code": "src/onmaru_ai/corpus/index.py",
+      "dependencies": [
+        "W1"
+      ],
+      "expected_touch_points": [
+        "src/onmaru_ai/corpus/normalizer.py",
+        "src/onmaru_ai/corpus/chunker.py",
+        "tests/corpus/chunking/"
+      ],
+      "parallel_notes": "같은 Wave 작업과 예상 수정 경로가 분리된다. 공통 계약 변경은 W0의 버전형 fixture를 통해 조율한다.",
+      "acceptance_criteria": [
+        "청크가 원문 offset·source revision·place ID·content hash로 역추적된다.",
+        "설계의 길이 상한과 overlap fixture를 통과한다.",
+        "HTML/역할 위장 문장이 실행 지시로 provider에 전달되지 않는다."
+      ],
+      "verification_method": "한국어 단락·경계·주입 fixture 테스트",
+      "labels": [
+        "enhancement",
+        "track:corpus",
+        "area:ingestion"
+      ],
+      "size": "M"
+    },
+    {
+      "id": "W3",
+      "title": "AI 소유 PostgreSQL Corpus 스키마와 원자적 revision 전환",
+      "objective": "문서·청크·vector 메타데이터와 active revision 저장 경계를 만든다.",
+      "context": "현재 인메모리 Corpus/activation baseline이며 AI schema의 versioned active pointer가 없다.",
+      "scope": "AI schema migration, document/chunk FK, staging/active/rollback revision, transaction 전환, 읽기 snapshot.",
+      "out_of_scope": "Spring 업무 schema 변경과 운영 DB 이미지 교체.",
+      "implementation_notes": "AI 전용 role을 전제로 하고 중복 manifest 및 부분 실패가 active pointer를 바꾸지 않게 한다.",
+      "related_code": "src/onmaru_ai/corpus/; src/onmaru_ai/rag/activation.py",
+      "dependencies": [
+        "W0"
+      ],
+      "expected_touch_points": [
+        "src/onmaru_ai/storage/",
+        "migrations/ai/",
+        "tests/storage/"
+      ],
+      "parallel_notes": "같은 Wave 작업과 예상 수정 경로가 분리된다. 공통 계약 변경은 W0의 버전형 fixture를 통해 조율한다.",
+      "acceptance_criteria": [
+        "부분 적재·hash 불일치·철회 불일치 시 active revision이 유지된다.",
+        "동시 읽기는 하나의 corpus/config/revocation snapshot을 본다.",
+        "문서·청크 FK와 rollback revision 상한이 검증된다."
+      ],
+      "verification_method": "로컬 PostgreSQL 통합 및 migration/rollback 테스트",
+      "labels": [
+        "enhancement",
+        "track:corpus",
+        "area:corpus"
+      ],
+      "size": "L"
+    },
+    {
+      "id": "W4",
+      "title": "384차원 passage/query embedding과 vector 검색 adapter",
+      "objective": "고정 모델 profile로 청크·질문 embedding을 만들고 승인된 vector 검색을 수행한다.",
+      "context": "현재 16차원 결정적 embedding baseline이며 pgvector 목표와 구분해야 한다.",
+      "scope": "모델 commit/profile, passage/query prefix, dimension 검증, 배치 색인, vector top-20, 메모리 예산 계측.",
+      "out_of_scope": "BM25와 RRF.",
+      "implementation_notes": "잘못된 차원/profile은 색인·검색을 fail closed하고 문서 batch는 온라인 peak와 직렬화한다.",
+      "related_code": "src/onmaru_ai/corpus/index.py; src/onmaru_ai/retrieval/",
+      "dependencies": [
+        "W2",
+        "W3"
+      ],
+      "expected_touch_points": [
+        "src/onmaru_ai/embedding/",
+        "src/onmaru_ai/retrieval/vector.py",
+        "tests/embedding/"
+      ],
+      "parallel_notes": "같은 Wave 작업과 예상 수정 경로가 분리된다. 공통 계약 변경은 W0의 버전형 fixture를 통해 조율한다.",
+      "acceptance_criteria": [
+        "저장·질의 벡터가 동일한 384차원 profile을 사용한다.",
+        "hard filter 적용 후 최대 20청크를 deterministic rank로 반환한다.",
+        "모델 cold/warm RSS·지연과 profile mismatch 실패가 기록된다."
+      ],
+      "verification_method": "고정 corpus pgvector 검색·차원·자원 테스트",
+      "labels": [
+        "enhancement",
+        "track:corpus",
+        "area:retrieval"
+      ],
+      "size": "L"
+    },
+    {
+      "id": "W5",
+      "title": "한국어 BM25 색인과 lexical/exact 검색 adapter",
+      "objective": "공개 청크를 한국어 lexical 검색 가능하게 하고 장소명·별칭을 정확히 식별한다.",
+      "context": "현재 baseline scorer는 설계의 BM25/tokenizer·revision 연동을 대체하지 못한다.",
+      "scope": "tokenizer/extension 선택 증거, revision별 색인, exact/prefix alias, BM25 top-20, hard filter.",
+      "out_of_scope": "vector·RRF·reranker.",
+      "implementation_notes": "BE 소유 운영 image 선택은 외부 의존으로 기록하고 AI 측 SQL/adapter·fixture를 구현한다.",
+      "related_code": "src/onmaru_ai/retrieval/baseline/",
+      "dependencies": [
+        "W2",
+        "W3"
+      ],
+      "expected_touch_points": [
+        "src/onmaru_ai/retrieval/lexical.py",
+        "src/onmaru_ai/corpus/bm25.py",
+        "tests/retrieval/lexical/"
+      ],
+      "parallel_notes": "같은 Wave 작업과 예상 수정 경로가 분리된다. 공통 계약 변경은 W0의 버전형 fixture를 통해 조율한다.",
+      "acceptance_criteria": [
+        "한국어 조사·별칭·동명이인 fixture에서 대상 ID를 보존한다.",
+        "hard filter 후 최대 20청크가 안정적으로 반환된다.",
+        "색인 version 불일치와 extension 부재가 명확한 실패로 판정된다."
+      ],
+      "verification_method": "로컬 PG BM25 fixture 및 tokenizer/라이선스 검토 증거",
+      "labels": [
+        "enhancement",
+        "track:corpus",
+        "area:retrieval"
+      ],
+      "size": "L"
+    },
+    {
+      "id": "W6",
+      "title": "철회 우선 차단·Corpus rollback/GC·복원 재적용",
+      "objective": "철회가 새 색인 완료·rollback·복원보다 먼저 온라인에 반영되도록 한다.",
+      "context": "권리 철회와 GC는 온라인 허용 근거의 불변식이다.",
+      "scope": "sequence 원장, active/rollback/staging 차단, heartbeat lag fail-closed, 보존·hold·batch GC, 복원 재적용.",
+      "out_of_scope": "Spring의 철회 발행·삭제/탈퇴 정책.",
+      "implementation_notes": "60초 lag·누락·역전 상태에서 RAG를 닫고 rollback이 철회를 되돌리지 않게 한다.",
+      "related_code": "src/onmaru_ai/corpus/; src/onmaru_ai/rag/activation.py",
+      "dependencies": [
+        "W1",
+        "W3"
+      ],
+      "expected_touch_points": [
+        "src/onmaru_ai/corpus/revocation.py",
+        "src/onmaru_ai/corpus/gc.py",
+        "tests/corpus/lifecycle/"
+      ],
+      "parallel_notes": "같은 Wave 작업과 예상 수정 경로가 분리된다. 공통 계약 변경은 W0의 버전형 fixture를 통해 조율한다.",
+      "acceptance_criteria": [
+        "철회 대상은 모든 revision의 검색 후보에서 즉시 제외된다.",
+        "sequence gap/lag/restore 시 온라인 검색이 fail closed한다.",
+        "GC가 active·hold·최대 2 rollback본을 보존하고 고아 행을 남기지 않는다."
+      ],
+      "verification_method": "철회 경합·복원·GC 통합 fixture",
+      "labels": [
+        "enhancement",
+        "track:corpus",
+        "area:corpus"
+      ],
+      "size": "L"
+    },
+    {
+      "id": "W7",
+      "title": "질문 정규화·QueryFrame·다섯 경로 결정적 라우터",
+      "objective": "비식별 safeQuery와 확정 맥락을 plan proposal로 변환한다.",
+      "context": "질문 사전, 부정, 다턴 대상, SQL/본문 분기 규칙이 설계돼 있으나 목표 router는 없다.",
+      "scope": "표기·별칭 normalization, 구조화 intent, CLARIFY/SQL_ONLY/LEXICAL_ONLY/DENSE_ONLY/HYBRID/SQL_PLUS_RETRIEVAL route 결정.",
+      "out_of_scope": "승인 plan 실행과 Spring 회원 상태 관리.",
+      "implementation_notes": "부정·명시 조건을 보존하고 검색 점수로 route를 사후 변경하지 않는다.",
+      "related_code": "src/onmaru_ai/intake/; src/onmaru_ai/retrieval/",
+      "dependencies": [
+        "W0"
+      ],
+      "expected_touch_points": [
+        "src/onmaru_ai/query/",
+        "tests/query/"
+      ],
+      "parallel_notes": "같은 Wave 작업과 예상 수정 경로가 분리된다. 공통 계약 변경은 W0의 버전형 fixture를 통해 조율한다.",
+      "acceptance_criteria": [
+        "다섯 route와 확인 질문이 고정 규칙·사전 version으로 결정된다.",
+        "모호·범위 밖 질문은 검색/LLM 없이 clarification을 반환한다.",
+        "SQL_ONLY는 embedding·retrieval 호출 0회이며 부정/다턴 fixture가 통과한다."
+      ],
+      "verification_method": "route별 gold fixture 및 provider 호출 계수 테스트",
+      "labels": [
+        "enhancement",
+        "track:online",
+        "area:routing"
+      ],
+      "size": "L"
+    },
+    {
+      "id": "W8",
+      "title": "승인 plan 검증과 private plan/execute API",
+      "objective": "Spring 승인 전 실행을 차단하는 내부 API 경계를 제공한다.",
+      "context": "현행 internal auth baseline을 versioned two-step envelope로 확장해야 한다.",
+      "scope": "plan request/response, execute 승인 hash·scope·revision·config·grant 검증, 인증·deadline·typed 오류.",
+      "out_of_scope": "Spring authority gate와 공개 API.",
+      "implementation_notes": "같은 run의 승인 계획과 다른 route/filter/semanticQuery는 실행하지 않는다.",
+      "related_code": "src/onmaru_ai/security/internal_auth.py; src/onmaru_ai/main.py",
+      "dependencies": [
+        "W0"
+      ],
+      "expected_touch_points": [
+        "src/onmaru_ai/api/plan_execute.py",
+        "src/onmaru_ai/security/plan_validator.py",
+        "tests/api/plan_execute/"
+      ],
+      "parallel_notes": "같은 Wave 작업과 예상 수정 경로가 분리된다. 공통 계약 변경은 W0의 버전형 fixture를 통해 조율한다.",
+      "acceptance_criteria": [
+        "미승인 또는 hash/version/범위 불일치 execute는 side effect 없이 거부된다.",
+        "Spring service scope와 trace/run correlation이 검증된다.",
+        "plan/execute fixture가 BE 정본과 일치한다."
+      ],
+      "verification_method": "private API 계약·인증·거부 fixture",
+      "labels": [
+        "enhancement",
+        "track:online",
+        "area:api"
+      ],
+      "size": "L"
+    },
+    {
+      "id": "W9",
+      "title": "Spring PlaceQueryPort 제한 lookup adapter",
+      "objective": "정형 route에서 승인 grant로 Spring의 typed lookup을 최대 1회 호출한다.",
+      "context": "SQL은 Spring이 소유하고 AI는 자유 SQL을 만들지 않는다.",
+      "scope": "opaque grant client, timeout/오류 분류, 허용 projection 매핑, SQL_ONLY deterministic renderer 입력.",
+      "out_of_scope": "Spring SQL/query port 구현과 MCP 도입.",
+      "implementation_notes": "고정 private REST adapter로 시작하고 모델이 tool 호출 여부를 결정하지 않게 한다.",
+      "related_code": "src/onmaru_ai/retrieval/",
+      "dependencies": [
+        "W0",
+        "W8"
+      ],
+      "expected_touch_points": [
+        "src/onmaru_ai/adapters/spring_place.py",
+        "tests/adapters/spring_place/"
+      ],
+      "parallel_notes": "같은 Wave 작업과 예상 수정 경로가 분리된다. 공통 계약 변경은 W0의 버전형 fixture를 통해 조율한다.",
+      "acceptance_criteria": [
+        "SQL_ONLY와 SQL_PLUS_RETRIEVAL에서만 grant 조회가 최대 1회 발생한다.",
+        "임의 SQL/필터/회원 ID를 송신하지 않는다.",
+        "Spring 오류는 정형 claim 제외 또는 명시 fallback으로 분류된다."
+      ],
+      "verification_method": "mock Spring adapter 및 허용/거부 grant 계약 테스트",
+      "labels": [
+        "enhancement",
+        "track:online",
+        "area:integration"
+      ],
+      "size": "M"
+    },
+    {
+      "id": "W10",
+      "title": "Lexical·dense 검색과 hybrid RRF 결합",
+      "objective": "승인된 retrieval mode에 따라 단일/병렬 검색과 RRF를 실행한다.",
+      "context": "각 검색 경로 top-20, hybrid RRF 최대 30, hard filter·철회 우선이 설계 기준이다.",
+      "scope": "LEXICAL_ONLY/DENSE_ONLY/HYBRID 실행, RRF, 중복·장소 다양성, 경로별 degraded 상태.",
+      "out_of_scope": "reranker·generation.",
+      "implementation_notes": "한 경로 실패 시 남은 후보만 허용하고 단일 경로에는 RRF를 적용하지 않는다.",
+      "related_code": "src/onmaru_ai/retrieval/baseline/",
+      "dependencies": [
+        "W4",
+        "W5",
+        "W8",
+        "W6"
+      ],
+      "expected_touch_points": [
+        "src/onmaru_ai/retrieval/executor.py",
+        "src/onmaru_ai/retrieval/fusion.py",
+        "tests/retrieval/hybrid/"
+      ],
+      "parallel_notes": "같은 Wave 작업과 예상 수정 경로가 분리된다. 공통 계약 변경은 W0의 버전형 fixture를 통해 조율한다.",
+      "acceptance_criteria": [
+        "경로별 최대 20개와 hybrid RRF 최대 30개를 지킨다.",
+        "공개·철회·지역 hard filter 위반 후보가 0이다.",
+        "한쪽 실패는 DEGRADED, 두 경로 실패는 실패로 기록하며 단일 route는 RRF 0회다."
+      ],
+      "verification_method": "고정 후보·hard filter·장애 fixture",
+      "labels": [
+        "enhancement",
+        "track:online",
+        "area:retrieval"
+      ],
+      "size": "L"
+    },
+    {
+      "id": "W11",
+      "title": "경량 reranker와 출처 다양성 EvidenceSet 선택",
+      "objective": "후보를 재정렬하고 추적 가능한 근거 최대 12개를 선택한다.",
+      "context": "장소별 최대 2청크와 전체 근거 12개, timeout 복귀가 목표다.",
+      "scope": "모델/timeout/NaN fallback, 장소·source 다양성, evidence 원문 offset·revision 연결.",
+      "out_of_scope": "LLM 생성과 최종 Spring 검증.",
+      "implementation_notes": "reranker 실패 시 동일 후보의 RRF/단일 경로 순서로 돌아가며 없는 근거를 만들지 않는다.",
+      "related_code": "src/onmaru_ai/retrieval/baseline/ranker.py",
+      "dependencies": [
+        "W10"
+      ],
+      "expected_touch_points": [
+        "src/onmaru_ai/retrieval/rerank.py",
+        "src/onmaru_ai/retrieval/evidence.py",
+        "tests/retrieval/evidence/"
+      ],
+      "parallel_notes": "같은 Wave 작업과 예상 수정 경로가 분리된다. 공통 계약 변경은 W0의 버전형 fixture를 통해 조율한다.",
+      "acceptance_criteria": [
+        "reranker 결과는 장소당 2·전체 12 근거 상한을 지킨다.",
+        "timeout/NaN/profile mismatch는 결정적 후보 순서로 복귀한다.",
+        "모든 evidence는 활성 source revision·offset으로 추적된다."
+      ],
+      "verification_method": "gold 후보 및 timeout/NaN/fallback fixture",
+      "labels": [
+        "enhancement",
+        "track:online",
+        "area:retrieval"
+      ],
+      "size": "L"
+    },
+    {
+      "id": "W12",
+      "title": "근거 제한 생성과 claim 단위 proposal 검증",
+      "objective": "EvidenceSet 밖의 주장·ID를 배제한 제안만 Spring에 반환한다.",
+      "context": "W0에서 고정한 EvidenceSet·ValidatedProposal fixture에 맞춰 기존 Gemini adapter/proposal validator baseline을 확장한다. 실제 retrieval 연결은 W13에서 수행한다.",
+      "scope": "구조화 prompt, provider 1회, 출력 schema, claim-evidence allowlist, HTML/URL·부정·관계/시점 판정, 근거 0 처리.",
+      "out_of_scope": "Spring 최종 게시·citation 렌더링.",
+      "implementation_notes": "불확실한 claim은 축소/보류하며 미검증 모델 텍스트를 progress에 싣지 않는다.",
+      "related_code": "src/onmaru_ai/providers/gemini/; src/onmaru_ai/proposal/",
+      "dependencies": [
+        "W0"
+      ],
+      "expected_touch_points": [
+        "src/onmaru_ai/generation/",
+        "tests/generation/"
+      ],
+      "parallel_notes": "같은 Wave 작업과 예상 수정 경로가 분리된다. 공통 계약 변경은 W0의 버전형 fixture를 통해 조율한다.",
+      "acceptance_criteria": [
+        "근거 0이면 provider dispatch 0회다.",
+        "출처 밖 ID/URL/HTML·지지되지 않은 claim은 제안에서 제외된다.",
+        "provider timeout/429/형식 오류가 재호출 없이 typed fallback으로 반환된다."
+      ],
+      "verification_method": "claim 지지·출력 주입·provider 오류 fixture와 사람 검수 샘플",
+      "labels": [
+        "enhancement",
+        "track:online",
+        "area:generation"
+      ],
+      "size": "L"
+    },
+    {
+      "id": "W13",
+      "title": "승인 run의 다섯 route orchestration과 같은 run fallback",
+      "objective": "독립 모듈을 하나의 승인 계획 실행 경로로 결합한다.",
+      "context": "Spring 승인 plan 뒤 route 변경은 금지되며 실패는 같은 run 축소 또는 기본 탐색이어야 한다.",
+      "scope": "SQL_ONLY/LEXICAL_ONLY/DENSE_ONLY/HYBRID/SQL_PLUS_RETRIEVAL + clarification, route별 선택 모듈, fallback/degraded 결과.",
+      "out_of_scope": "Spring 최종 snapshot/SSE 구현.",
+      "implementation_notes": "해당 route에서 불필요한 embedding/LLM/RRF 호출을 금지하고 config/corpus/revocation을 run 범위로 고정한다.",
+      "related_code": "src/onmaru_ai/security/internal_auth.py; src/onmaru_ai/retrieval/",
+      "dependencies": [
+        "W7",
+        "W8",
+        "W9",
+        "W10",
+        "W11",
+        "W12",
+        "W14",
+        "W15"
+      ],
+      "expected_touch_points": [
+        "src/onmaru_ai/orchestration/",
+        "tests/orchestration/"
+      ],
+      "parallel_notes": "같은 Wave 작업과 예상 수정 경로가 분리된다. 공통 계약 변경은 W0의 버전형 fixture를 통해 조율한다.",
+      "acceptance_criteria": [
+        "다섯 route·확인 질문의 plan→execute 결과가 BE 계약 fixture와 일치한다.",
+        "장애·근거 부족·철회 불확실성은 허용된 축소/기본 탐색 또는 명시 실패로 끝난다.",
+        "미사용 모듈 호출 0회와 같은 run 재호출 금지가 검증된다."
+      ],
+      "verification_method": "route matrix 통합 테스트 및 Spring mock 계약 검증",
+      "labels": [
+        "enhancement",
+        "track:online",
+        "area:orchestration"
+      ],
+      "size": "L"
+    },
+    {
+      "id": "W14",
+      "title": "AI 실행 단계 ProgressSink와 Spring callback adapter",
+      "objective": "실제 실행한 큰 단계만 Spring으로 전달할 수 있게 한다.",
+      "context": "docs/ai-rag/progress-event-contract.md의 AI 소유 범위다.",
+      "scope": "PREPARING_INPUT/RETRIEVING/SELECTING_EVIDENCE/GENERATING/CHECKING_OUTPUT, ordinal, planHash/run 검증, bounded callback/retry.",
+      "out_of_scope": "Spring SSE와 FE UI 구현.",
+      "implementation_notes": "민감 본문·문서명·모델 초안 없이 진행 상태만 내며 전송 실패가 결과를 바꾸지 않는다.",
+      "related_code": "docs/ai-rag/progress-event-contract.md",
+      "dependencies": [
+        "W0",
+        "W8"
+      ],
+      "expected_touch_points": [
+        "src/onmaru_ai/progress/",
+        "tests/progress/"
+      ],
+      "parallel_notes": "같은 Wave 작업과 예상 수정 경로가 분리된다. 공통 계약 변경은 W0의 버전형 fixture를 통해 조율한다.",
+      "acceptance_criteria": [
+        "route가 실제 진입하지 않은 단계는 발행되지 않는다.",
+        "중복 retry는 같은 ordinal이며 늦은 callback은 결과를 변경하지 않는다.",
+        "callback 장애에도 execute 결과가 유지되고 비밀·원문이 payload에 없다."
+      ],
+      "verification_method": "ProgressSink fake와 callback 계약·오류 fixture",
+      "labels": [
+        "enhancement",
+        "track:online",
+        "area:progress"
+      ],
+      "size": "M"
+    },
+    {
+      "id": "W15",
+      "title": "온라인 RAG 단계별 OTel trace·낮은 카디널리티 metric",
+      "objective": "StageOutcome 관측 adapter를 먼저 만들고 W13에서 실제 실행 경로에 연결할 수 있게 한다.",
+      "context": "현행 observability baseline은 설계의 StageOutcome·drop율·비식별 속성이 부족하다.",
+      "scope": "traceparent 전달, stage span/metric allowlist, duration/candidate count, degraded 원인, exporter drop 계측.",
+      "out_of_scope": "Spring 최종 RunObservation writer·Grafana 운영 배포.",
+      "implementation_notes": "고정 StageOutcome fixture로 독립 검증하고 W13에서 호출 지점을 연결한다. SQL_ONLY에 미실행 retrieval span을 만들지 않고 raw query/prompt/source를 기록하지 않는다.",
+      "related_code": "src/onmaru_ai/observability/",
+      "dependencies": [
+        "W0"
+      ],
+      "expected_touch_points": [
+        "src/onmaru_ai/observability/rag.py",
+        "tests/observability/rag/"
+      ],
+      "parallel_notes": "같은 Wave 작업과 예상 수정 경로가 분리된다. 공통 계약 변경은 W0의 버전형 fixture를 통해 조율한다.",
+      "acceptance_criteria": [
+        "실행한 단계만 span이 존재하고 병렬 검색 duration을 합산하지 않는다.",
+        "metric label에 runId·member ID·원문이 없다.",
+        "trace export 실패와 실행 실패를 구분하며 drop율이 관측된다."
+      ],
+      "verification_method": "synthetic trace exporter 및 PII scan fixture",
+      "labels": [
+        "enhancement",
+        "track:quality",
+        "area:monitoring"
+      ],
+      "size": "M"
+    },
+    {
+      "id": "W16",
+      "title": "RAG gold 평가셋 schema·split 누설 검사·검수 도구",
+      "objective": "개발/봉인 평가셋의 버전형 schema와 누설 검사를 독립적으로 제공한다.",
+      "context": "현재 held-out baseline만으로 다섯 route 품질 게이트를 판단할 수 없다.",
+      "scope": "gold case schema, source/corpus hash, offset·route·tag 필드, split leakage lint, 이중 검수·불일치 조정 기록 형식과 소규모 예시 fixture.",
+      "out_of_scope": "300문항 실제 라벨링(W22), 평가 runner(W17), 운영 대화 자동 수집.",
+      "implementation_notes": "같은 장소/source revision의 변형 질문이 개발·봉인 양쪽에 나타나면 lint가 실패하게 한다.",
+      "related_code": "evals/",
+      "dependencies": [
+        "W0"
+      ],
+      "expected_touch_points": [
+        "evals/rag-schema/",
+        "scripts/lint-rag-gold",
+        "docs/ai-rag/evaluation-dataset-provenance.md"
+      ],
+      "parallel_notes": "같은 Wave 작업과 예상 수정 경로가 분리된다. 공통 계약 변경은 W0의 버전형 fixture를 통해 조율한다.",
+      "acceptance_criteria": [
+        "예시 case의 source/corpus hash·gold 근거 offset·route·질문 사전 version·검수자 조정 결과가 schema로 검증된다.",
+        "동일 장소/source revision의 변형이 개발·봉인에 교차하면 lint가 실패한다.",
+        "평가셋 version·provenance와 봉인셋 접근 규칙이 문서화된다."
+      ],
+      "verification_method": "유효/무효 gold fixture의 schema·split leakage lint",
+      "labels": [
+        "enhancement",
+        "track:quality",
+        "area:evaluation"
+      ],
+      "size": "L"
+    },
+    {
+      "id": "W17",
+      "title": "단계별 offline replay 평가와 출시 품질 게이트",
+      "objective": "고정 corpus/config의 route·검색·근거·안전 품질을 계산한다.",
+      "context": "W0의 단계 artifact와 W16의 gold fixture를 사용해 현재 eval runner baseline을 BM25/vector/RRF/rerank/claim 단계로 확장한다. 실제 엔진 결과 연결은 W21에서 검증한다.",
+      "scope": "Recall@K/MRR/nDCG, 첫 gold 유실 단계, route confusion, claim 지지/보류, hard filter·권리 위반 차단, report hash.",
+      "out_of_scope": "운영 실시간 정답률 추정·자동 승격.",
+      "implementation_notes": "개발셋은 튜닝, 봉인셋은 최종 판정에만 사용한다.",
+      "related_code": "src/onmaru_ai/evals/; scripts/run-ai-evals",
+      "dependencies": [
+        "W16"
+      ],
+      "expected_touch_points": [
+        "src/onmaru_ai/evals/rag.py",
+        "scripts/run-rag-evals",
+        "tests/evals/rag/"
+      ],
+      "parallel_notes": "같은 Wave 작업과 예상 수정 경로가 분리된다. 공통 계약 변경은 W0의 버전형 fixture를 통해 조율한다.",
+      "acceptance_criteria": [
+        "각 route·단계의 분자/분모·후보 손실 원인과 설계 gate pass/fail을 출력한다.",
+        "hard filter·철회·출처 위반 1건이면 승격 불가로 판정한다.",
+        "같은 corpus/config/dataset hash 재실행 결과가 결정적이다."
+      ],
+      "verification_method": "고정 gold replay와 schema/report fixture",
+      "labels": [
+        "enhancement",
+        "track:quality",
+        "area:evaluation"
+      ],
+      "size": "L"
+    },
+    {
+      "id": "W18",
+      "title": "비동기 FailureCase 분류·검토 큐와 보존",
+      "objective": "운영 신호와 gold replay를 구분해 검토 가능한 품질 항목을 만든다.",
+      "context": "실시간 trace에는 gold가 없으므로 운영 오류는 SUSPECTED 신호로만 다뤄야 한다.",
+      "scope": "StageOutcome/RunObservation 입력, 실패 taxonomy, 중복 묶기, 접근 제한 artifact, 3개월 만료/GC, 운영자 상태 전이.",
+      "out_of_scope": "자동 수정·설정 승격.",
+      "implementation_notes": "Spring read tool은 별도 scope이며 일반 품질 조사 실패가 사용자 run을 막지 않는다.",
+      "related_code": "docs/ai-rag/telemetry-and-harness-schema.md; docs/ai-rag/quality-engineering-agent.md",
+      "dependencies": [
+        "W15",
+        "W17"
+      ],
+      "expected_touch_points": [
+        "src/onmaru_ai/quality_harness/review/",
+        "tests/quality_harness/review/"
+      ],
+      "parallel_notes": "같은 Wave 작업과 예상 수정 경로가 분리된다. 공통 계약 변경은 W0의 버전형 fixture를 통해 조율한다.",
+      "acceptance_criteria": [
+        "gold 없는 운영 신호는 정답 실패로 확정하지 않는다.",
+        "중복 신호가 한 검토 항목으로 묶이고 최대 3개월 보존·GC가 동작한다.",
+        "품질 job 장애가 온라인 run 상태를 변경하지 않는다."
+      ],
+      "verification_method": "재현 artifact·중복·권한·만료 fixture",
+      "labels": [
+        "enhancement",
+        "track:quality",
+        "area:monitoring"
+      ],
+      "size": "L"
+    },
+    {
+      "id": "W19",
+      "title": "품질 집계·주간 요약의 승인된 알림 경계",
+      "objective": "검토 큐의 집계와 실패 유형을 운영자에게 재현 가능하게 제공한다.",
+      "context": "품질 하네스의 Grafana 집계·Discord/이메일 요약은 온라인 경로와 분리된다.",
+      "scope": "낮은 카디널리티 집계 export, 주간 요약 artifact, 채널별 중복 방지·재시도, 민감정보 제거.",
+      "out_of_scope": "실제 외부 채널 전송 권한 부여·운영 credential 설정.",
+      "implementation_notes": "알림 채널 장애가 run/검토 큐를 막지 않게 한다.",
+      "related_code": "src/onmaru_ai/quality_harness/",
+      "dependencies": [
+        "W18"
+      ],
+      "expected_touch_points": [
+        "src/onmaru_ai/quality_harness/reporting/",
+        "tests/quality_harness/reporting/"
+      ],
+      "parallel_notes": "같은 Wave 작업과 예상 수정 경로가 분리된다. 공통 계약 변경은 W0의 버전형 fixture를 통해 조율한다.",
+      "acceptance_criteria": [
+        "주간 동일 기간 재실행이 동일 요약과 idempotency key를 만든다.",
+        "Discord/이메일 한 채널 실패가 다른 채널 상태를 왜곡하지 않는다.",
+        "요약·metric에 raw query/근거 본문/회원 식별자가 없다."
+      ],
+      "verification_method": "고정 검토 큐 요약·채널 장애 fixture",
+      "labels": [
+        "enhancement",
+        "track:quality",
+        "area:monitoring"
+      ],
+      "size": "M"
+    },
+    {
+      "id": "W20",
+      "title": "운영자 선택형 원인 조사·격리 실험·승인 artifact",
+      "objective": "사람이 선택한 사례만 제한된 환경에서 재현·비교하도록 한다.",
+      "context": "설계는 일반 품질 신호가 자동 실험·설정 승격을 실행하지 못하게 한다.",
+      "scope": "규칙 우선 조사, 단일 변수 ExperimentSpec, 운영 외 snapshot runner, 비용·시간·egress cap, 승인/거절·rollback artifact.",
+      "out_of_scope": "자동 CLI 실행·운영 자동 승격.",
+      "implementation_notes": "복합 LLM 조사는 선택적 수동 단계로 두고 봉인셋·config hash 승격 gate를 기록한다.",
+      "related_code": "docs/ai-rag/quality-engineering-agent.md",
+      "dependencies": [
+        "W18",
+        "W17"
+      ],
+      "expected_touch_points": [
+        "src/onmaru_ai/quality_harness/experiments/",
+        "tests/quality_harness/experiments/"
+      ],
+      "parallel_notes": "같은 Wave 작업과 예상 수정 경로가 분리된다. 공통 계약 변경은 W0의 버전형 fixture를 통해 조율한다.",
+      "acceptance_criteria": [
+        "운영자 명시 시작 전에는 실험 프로세스가 실행되지 않는다.",
+        "한 번에 한 변수만 바꾸며 CPU/RAM/시간/비용·egress 한도를 초과하면 중단한다.",
+        "승인 artifact hash와 배포 config hash가 일치하지 않으면 승격을 거부한다."
+      ],
+      "verification_method": "격리 runner·예산·승인/rollback fixture",
+      "labels": [
+        "enhancement",
+        "track:quality",
+        "area:improvement"
+      ],
+      "size": "L"
+    },
+    {
+      "id": "W21",
+      "title": "AI 이미지·staging 혼합 부하·출시 증거 패키지",
+      "objective": "AI 소유 이미지와 2GB 공존 검증에 필요한 실행 증거를 만든다.",
+      "context": "BE가 Lightsail·DB image·배포를 소유하지만 AI 프로세스의 RSS/cold load/trace/계약 증거가 필요하다.",
+      "scope": "immutable image digest, startup/readiness, local extension coexistence, staging 1/2/5 run·10/50/100 SSE 참고 부하, RSS/latency report, BE handoff.",
+      "out_of_scope": "BE의 운영 배포·PostgreSQL image 교체·FE 성능 구현.",
+      "implementation_notes": "기준선 미달 또는 BE 환경 미준비면 출시 보류를 명시한다.",
+      "related_code": "Dockerfile; .github/workflows/ci.yml; docs/ai-rag/deployment-and-release-model.md",
+      "dependencies": [
+        "W13",
+        "W15",
+        "W17",
+        "W22"
+      ],
+      "expected_touch_points": [
+        "Dockerfile",
+        ".github/workflows/ci.yml",
+        "scripts/perf/",
+        "docs/ai-rag/release-evidence/"
+      ],
+      "parallel_notes": "같은 Wave 작업과 예상 수정 경로가 분리된다. 공통 계약 변경은 W0의 버전형 fixture를 통해 조율한다.",
+      "acceptance_criteria": [
+        "AI 이미지가 immutable digest로 발행되고 독립 CI가 계약·품질 검증을 통과한다.",
+        "같은 호스트 부하 결과에 RSS·p50/p95/p99·OOM/DB 연결·기존 API 퇴행 및 이미지/model version이 기록된다.",
+        "BE의 외부 인프라 gate 미통과 시 AI 출시 완료로 표시하지 않는다."
+      ],
+      "verification_method": "CI artifact·staging smoke·부하 report 및 BE 공동 검토",
+      "labels": [
+        "enhancement",
+        "track:release",
+        "area:release"
+      ],
+      "size": "L"
+    },
+    {
+      "id": "W22",
+      "title": "다섯 route 개발 200·봉인 100문항 gold 데이터와 이중 검수",
+      "objective": "실제 공개 원천을 기준으로 출시 판정용 300문항 gold를 고정한다.",
+      "context": "W16이 제공한 schema·누설 lint를 사용한다. W17 평가 runner와는 병렬로 진행하고 W21에서 둘을 결합한다.",
+      "scope": "SQL_ONLY 35/15, LEXICAL_ONLY 35/15, DENSE_ONLY 35/15, HYBRID 60/30, SQL_PLUS_RETRIEVAL 35/25; 부정·동명이인·다턴·철회·주입 tag; 사람 두 명의 독립 라벨과 불일치 조정.",
+      "out_of_scope": "평가 runner 구현과 회원 대화 자동 복제.",
+      "implementation_notes": "공개 자격 확인된 source revision의 근거를 먼저 고르고 질문을 작성한다. 장소/source revision 변형은 한 split에만 둔다.",
+      "related_code": "docs/ai-rag/evaluation-and-environment-tests.md; evals/rag-gold/",
+      "dependencies": [
+        "W16"
+      ],
+      "expected_touch_points": [
+        "evals/rag-gold/",
+        "docs/ai-rag/evaluation-gold-review.md"
+      ],
+      "parallel_notes": "W17과 서로 다른 경로를 수정한다. W16 schema를 공통 계약으로 삼고, W21에서 실제 runner·gold 결합을 확인한다.",
+      "acceptance_criteria": [
+        "개발 200·봉인 100문항과 route별 하한 분포가 충족된다.",
+        "모든 case에 공개 source revision·근거 offset·gold route/장소/청크·검수 결과가 기록된다.",
+        "두 검수자의 독립 라벨과 불일치 조정 기록이 있고 split 누설 lint가 통과한다."
+      ],
+      "verification_method": "W16 lint·분포 집계·사람 이중 검수 기록 감사",
+      "labels": [
+        "enhancement",
+        "track:quality",
+        "area:evaluation"
+      ],
+      "size": "L"
+    }
+  ]
+}
