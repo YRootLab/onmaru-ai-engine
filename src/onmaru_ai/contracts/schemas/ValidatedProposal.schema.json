@@ -17,14 +17,7 @@
           "type": "string"
         },
         "kind": {
-          "enum": [
-            "CULTURAL",
-            "HISTORICAL",
-            "SUITABILITY",
-            "CANONICAL_FACT"
-          ],
-          "title": "Kind",
-          "type": "string"
+          "$ref": "#/$defs/ClaimKind"
         },
         "evidenceIds": {
           "items": {
@@ -33,7 +26,7 @@
             "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
             "type": "string"
           },
-          "maxItems": 12,
+          "maxItems": 3,
           "minItems": 1,
           "title": "Evidenceids",
           "type": "array",
@@ -48,6 +41,17 @@
       ],
       "title": "Claim",
       "type": "object"
+    },
+    "ClaimKind": {
+      "description": "The four claim kinds from grounding-and-review.md's output contract.",
+      "enum": [
+        "FACT",
+        "INTERPRETATION",
+        "PREFERENCE",
+        "CONNECTOR"
+      ],
+      "title": "ClaimKind",
+      "type": "string"
     },
     "FailureStage": {
       "description": "Failure decision table in request-lifecycle.md; distinct from progress.",

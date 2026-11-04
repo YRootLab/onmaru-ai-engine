@@ -21,6 +21,7 @@ from .validation import (
     validate_plan,
 )
 from .vocabulary import (
+    ClaimKind,
     ClarificationQuestionCode,
     ConceptCode,
     FailureStage,
@@ -41,6 +42,7 @@ CONTRACT_MODELS: dict[str, type[BaseModel]] = {
 }
 
 __all__ = [
+    "ClaimKind",
     "ClarificationQuestionCode",
     "ConceptCode",
     "FailureStage",

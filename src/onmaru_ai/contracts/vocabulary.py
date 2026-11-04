@@ -59,6 +59,25 @@ class ClarificationQuestionCode(StrEnum):
     PRESERVE_MEANING = "PRESERVE_MEANING"
 
 
+CLARIFICATION_QUESTIONS: Mapping[str, ClarificationQuestionCode] = MappingProxyType(
+    {
+        "AMBIGUOUS_TARGET": ClarificationQuestionCode.CHOOSE_TARGET,
+        "CONFLICTING_CONDITIONS": ClarificationQuestionCode.RESOLVE_CONDITIONS,
+        "UNSUPPORTED_SCOPE": ClarificationQuestionCode.SUPPORTED_TRAVEL_SCOPE,
+        "SEMANTIC_LOSS": ClarificationQuestionCode.PRESERVE_MEANING,
+    }
+)
+
+
+class ClaimKind(StrEnum):
+    """The four claim kinds from grounding-and-review.md's output contract."""
+
+    FACT = "FACT"
+    INTERPRETATION = "INTERPRETATION"
+    PREFERENCE = "PREFERENCE"
+    CONNECTOR = "CONNECTOR"
+
+
 class FailureStage(StrEnum):
     """Failure decision table in request-lifecycle.md; distinct from progress."""
 

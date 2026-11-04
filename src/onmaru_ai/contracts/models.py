@@ -9,7 +9,14 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from pydantic.alias_generators import to_camel
 from pydantic.config import JsonDict
 
-from .vocabulary import ClarificationQuestionCode, ConceptCode, FailureStage, PlanReasonCode
+from .vocabulary import (
+    CLARIFICATION_QUESTIONS,
+    ClaimKind,
+    ClarificationQuestionCode,
+    ConceptCode,
+    FailureStage,
+    PlanReasonCode,
+)
 
 Identifier = Annotated[
     str, Field(min_length=1, max_length=128, pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]*$")
@@ -94,6 +101,13 @@ class HardFilters(ClosedModel):
     pinned_place_ids: PlaceIds
     excluded_place_ids: Ids
 
+    @field_validator("public_only", mode="before")
+    @classmethod
+    def actual_public_boolean(cls, value: object) -> object:
+        if value is not True:
+            raise ValueError("publicOnly must be the boolean true")
+        return value
+
     @model_validator(mode="after")
     def consistent_places(self) -> Self:
         if set(self.pinned_place_ids) & set(self.excluded_place_ids):
@@ -144,10 +158,27 @@ class RetrievalExpression(ClosedModel):
 
 
 class Clarification(ClosedModel):
+    model_config = ConfigDict(
+        json_schema_extra={
+            "allOf": [
+                {
+                    "if": {"properties": {"reason": {"const": reason}}},
+                    "then": {"properties": {"questionCode": {"const": question.value}}},
+                }
+                for reason, question in CLARIFICATION_QUESTIONS.items()
+            ]
+        }
+    )
     reason: Literal[
         "AMBIGUOUS_TARGET", "CONFLICTING_CONDITIONS", "UNSUPPORTED_SCOPE", "SEMANTIC_LOSS"
     ]
     question_code: ClarificationQuestionCode
+
+    @model_validator(mode="after")
+    def matching_question_code(self) -> Self:
+        if self.question_code != CLARIFICATION_QUESTIONS[self.reason]:
+            raise ValueError("clarification reason and questionCode must match")
+        return self
 
 
 def route_schema() -> JsonDict:
@@ -355,10 +386,10 @@ class EvidenceSet(RunArtifact):
 class Claim(ClosedModel):
     claim_id: Identifier
     text: Annotated[str, Field(min_length=1, max_length=1000)]
-    kind: Literal["CULTURAL", "HISTORICAL", "SUITABILITY", "CANONICAL_FACT"]
+    kind: ClaimKind
     evidence_ids: Annotated[
         tuple[Identifier, ...],
-        Field(min_length=1, max_length=12, json_schema_extra={"uniqueItems": True}),
+        Field(min_length=1, max_length=3, json_schema_extra={"uniqueItems": True}),
     ]
 
 

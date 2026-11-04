@@ -21,7 +21,11 @@ raw questions/conversations, model tokens, prompts, source bodies, and reasoning
 have no fields. `safeQuery` and `semanticQuery` are sanitized, transient inputs;
 the DTOs do not perform Spring's redaction, or permit logging these values.
 Evidence carries source revision and offsets, never source body. Claim text is a
-proposal requiring later grounding and Spring final validation.
+proposal requiring later grounding and Spring final validation. The authoritative
+[grounding contract](../../../docs/ai-rag/grounding-and-review.md) fixes `Claim.kind`
+to `FACT`, `INTERPRETATION`, `PREFERENCE`, or `CONNECTOR`. Every reason/summary
+claim references one to three unique evidence IDs; the whole `EvidenceSet`
+retains its separate twelve-record cap.
 
 `SQL_ONLY` uses mode `NONE`; the three retrieval-only routes use their matching
 mode; `SQL_PLUS_RETRIEVAL` uses `LEXICAL_ONLY`, `DENSE_ONLY`, or `HYBRID`.
@@ -55,7 +59,9 @@ including when place IDs are otherwise unbounded. Empty result artifacts remain
 valid. A proposal may narrow an inclusion set; it may not replace a bounded set with
 `null`. All mandatory pins and exclusions in the authority must survive the
 proposal. Pins must remain included and cannot be excluded. `publicOnly` is
-always true. `filterHash` is Spring's authority-bound hash and must echo it.
+always the actual JSON boolean `true`; numeric `1`/`1.0` and other coerced
+values are rejected by Pydantic as well as JSON Schema. `filterHash` is Spring's
+authority-bound hash and must echo it.
 Canonical field IDs are `PUBLIC_ADDRESS`, `REGION_CODE`, `CATEGORY_CODE`, and
 `PUBLIC_STATUS`; Spring additionally supplies the allowed subset per request.
 The approved filters must equal the proposed filters exactly, including array
@@ -101,6 +107,8 @@ for reason/question codes. W0 pins the following fixed IDs for those cases:
 | Unsupported scope | `UNSUPPORTED_SCOPE` | `SUPPORTED_TRAVEL_SCOPE` |
 | Lost input meaning | `SEMANTIC_LOSS` | `PRESERVE_MEANING` |
 
+Each clarification reason must use the corresponding question code in this
+table; mismatched pairs are rejected by both JSON Schema and Pydantic.
 Unknown uppercase strings are rejected. New fixed reason/question IDs require a
 versioned plan-contract update rather than a regex-only extension.
 

@@ -21,7 +21,7 @@
           {
             "claimId": "claim-1",
             "text": "차분하게 둘러볼 수 있는 한옥입니다.",
-            "kind": "CULTURAL",
+            "kind": "FACT",
             "evidenceIds": [
               "evidence-1"
             ]

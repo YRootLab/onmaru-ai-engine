@@ -2,6 +2,72 @@
   "$defs": {
     "Clarification": {
       "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "reason": {
+                "const": "AMBIGUOUS_TARGET"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "questionCode": {
+                "const": "CHOOSE_TARGET"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "reason": {
+                "const": "CONFLICTING_CONDITIONS"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "questionCode": {
+                "const": "RESOLVE_CONDITIONS"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "reason": {
+                "const": "UNSUPPORTED_SCOPE"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "questionCode": {
+                "const": "SUPPORTED_TRAVEL_SCOPE"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "reason": {
+                "const": "SEMANTIC_LOSS"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "questionCode": {
+                "const": "PRESERVE_MEANING"
+              }
+            }
+          }
+        }
+      ],
       "properties": {
         "reason": {
           "enum": [
