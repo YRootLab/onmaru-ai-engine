@@ -2,7 +2,7 @@
 
 Current work:
 - Summary: Commit repository operating guidance after the AI-RAG design and issue plan merged into `develop`.
-- Issue/PR: AI-RAG Root Issue #3; design PR #27 merged into `develop`.
+- Issue/PR: AI-RAG Root Issue #3; design PR #27 merged into `develop`; repository guidance PR #28 open.
 - Branch: `docs/ai-rag-planning-harness`
 
 Touched files:
