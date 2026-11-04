@@ -26,3 +26,10 @@ Open risk or decision:
 Ad hoc requests captured this session:
 - Implement W0/#4 as the foundation for later AI-RAG issues, with focused TDD, full checks, and a reviewable commit.
 - Continue the GitHub AI-RAG issue graph and parallelize dependency-safe work.
+
+## W7 active session
+
+- Request: implement deterministic normalization, interpretation, and route proposals for [Issue #7](https://github.com/YRootLab/onmaru-ai-engine/issues/7).
+- Branch/worktree: `feature/ai-rag-w7`, `.worktrees/feature-ai-rag-w7`, based on reviewed W0 contracts.
+- Scope: `src/onmaru_ai/query/`, route gold fixtures, provider call counters; no approved execution or Spring state.
+- Verification planned: strict TDD, focused/full pytest, Ruff, mypy, diff check.
