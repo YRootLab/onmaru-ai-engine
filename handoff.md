@@ -1,8 +1,8 @@
 # Handoff
 
 Current work:
-- Summary: W0 fixes seven private AI↔Spring versioned DTOs, schemas, authority/hash checks, and portable accepted/rejected fixtures.
-- Issue/PR: [W0 Issue #4](https://github.com/YRootLab/onmaru-ai-engine/issues/4), under AI-RAG Root Issue #3. No W0 PR opened in this implementation task.
+- Summary: W0 implementation and review are complete; prepare its `develop` PR and start dependency-safe Wave 1 branches from the reviewed W0 head.
+- Issue/PR: [W0 Issue #4](https://github.com/YRootLab/onmaru-ai-engine/issues/4), under AI-RAG Root Issue #3.
 - Branch: `feature/ai-rag-w0`, isolated worktree `.worktrees/feature-ai-rag-w0`.
 
 Touched files:
@@ -15,7 +15,7 @@ Verification:
 - GREEN: `uv run pytest tests/contracts -q` → 259 passed; `uv run pytest -q` → 564 passed, 1 skipped (opt-in live provider test); `uv run ruff check src tests scripts` → passed; `uv run mypy` → no issues in 69 source files.
 
 Next step:
-- Review W0 against Issue #4 and open its PR into `develop` after reconciling logs and verification.
+- Open the W0 PR into `develop`; then begin W1, W3, W7, W8, W12, W15, and W16 only from this reviewed contract head.
 - Share the pinned schema/fixture files with Spring CI. No cross-repository import has been performed or claimed.
 
 Open risk or decision:
@@ -25,3 +25,4 @@ Open risk or decision:
 
 Ad hoc requests captured this session:
 - Implement W0/#4 as the foundation for later AI-RAG issues, with focused TDD, full checks, and a reviewable commit.
+- Continue the GitHub AI-RAG issue graph and parallelize dependency-safe work.
