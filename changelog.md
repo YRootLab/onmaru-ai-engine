@@ -4,6 +4,9 @@ Lightweight human-readable summary of meaningful repository changes. Newest date
 
 ## 2026-11-05
 
+- Added W5 Korean lexical retrieval with deterministic BM25 scoring, exact/prefix place-name
+  matching, active corpus/revocation hard filters, a 20-candidate closed output, and explicit
+  PostgreSQL BM25 extension readiness failures.
 - Implemented W2 public body normalization and paragraph-first 400/600/60 chunk enrichment with source offsets, deterministic hashes, provenance metadata, and untrusted-content isolation.
 - Implemented the W0 private AI↔Spring contract foundation with seven closed DTOs, schemas, canonical plan hashing, authority/revocation validation, and portable accepted/rejected fixtures.
 
