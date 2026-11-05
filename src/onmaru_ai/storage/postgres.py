@@ -219,7 +219,8 @@ class PostgresCorpusStore:
             connection.execute("DELETE FROM ai.rollback_corpus")
             if expected_active is not None:
                 connection.execute(
-                    "UPDATE ai.corpus_revisions SET state='RETIRED', retired_at=now() "
+                    "UPDATE ai.corpus_revisions SET state='RETIRED', retired_at=now(), "
+                    "expires_at=now()+interval '30 days' "
                     "WHERE revision_id=%s",
                     (expected_active,),
                 )
@@ -230,9 +231,13 @@ class PostgresCorpusStore:
                 )
                 if retained is not None:
                     _insert(connection, "rollback_corpus", {"slot": 2, **retained})
+                    connection.execute(
+                        "UPDATE ai.corpus_revisions SET expires_at=%s WHERE revision_id=%s",
+                        (retained["expires_at"], retained["revision_id"]),
+                    )
             connection.execute(
                 "UPDATE ai.corpus_revisions "
-                "SET state='ACTIVE', activated_at=now(), retired_at=NULL "
+                "SET state='ACTIVE', activated_at=now(), retired_at=NULL, expires_at=NULL "
                 "WHERE revision_id=%s",
                 (revision_id,),
             )
@@ -252,9 +257,23 @@ class PostgresCorpusStore:
                    FROM ai.active_corpus a JOIN ai.corpus_revisions r USING (revision_id)
                    JOIN ai.revocation_state s ON s.id=a.id
                    WHERE a.id=1 AND a.revocation_sequence=s.sequence
+                     AND s.heartbeat_at IS NOT NULL
+                     AND s.heartbeat_at >= clock_timestamp() - interval '60 seconds'
                      AND r.state='ACTIVE' AND r.gc_state='LIVE' """,
             ).fetchone()
             if row is None:
+                control = connection.execute(
+                    "SELECT a.revision_id, a.revocation_sequence AS active_sequence, "
+                    "s.sequence, s.heartbeat_at, "
+                    "s.heartbeat_at >= clock_timestamp()-interval '60 seconds' AS healthy "
+                    "FROM ai.active_corpus a JOIN ai.revocation_state s ON s.id=a.id WHERE a.id=1"
+                ).fetchone()
+                if control is not None and (
+                    control["heartbeat_at"] is None or not control["healthy"]
+                ):
+                    raise CorpusStorageError("REVOCATION_UNHEALTHY")
+                if control is not None and control["active_sequence"] != control["sequence"]:
+                    raise CorpusStorageError("REVOCATION_MISMATCH")
                 raise CorpusStorageError("NO_ACTIVE_CORPUS_OR_REVOCATION_MISMATCH")
             places = frozenset(
                 item["place_id"]
