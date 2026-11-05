@@ -1,23 +1,17 @@
 # Handoff
 
-Current work:
-- Implement W3 AI-owned PostgreSQL corpus storage and atomic revision activation.
-- Issue: https://github.com/YRootLab/onmaru-ai-engine/issues/6 (depends on reviewed W0/#4).
-- Branch: `feature/ai-rag-w3`; isolated worktree `.worktrees/feature-ai-rag-w3`.
+Local integration base for W4/W5/W6 only:
+- Combines reviewed W2 normalization/chunking and W3 PostgreSQL corpus persistence.
+- Parent PRs are #37 and #33; this branch must not be pushed or merged directly.
+- Child work remains stacked until both dependency chains reach `develop`.
 
-Ad hoc request:
-- Use strict TDD, local PostgreSQL integration where available, full pytest/Ruff/mypy and self-review; commit with #6.
-
-Scope:
-- AI schema migrations, immutable revision/document/chunk/vector metadata, CAS activation, two rollback candidates, consistent corpus/config/revocation read snapshot.
-- Spring schema and production DB image are outside this change. Existing memory baseline remains separate.
-
-Verification:
-- TDD RED reproduced 16 storage, activation, rollback, constraint, and snapshot failures before implementation.
-- Disposable PostgreSQL 17 + pgvector integration: 32 passed.
-- Full suite with the integration database: 596 passed, 1 skipped.
-- Ruff, strict mypy, and `git diff --check` pass.
-
-Next step:
-- Parent reviews the W3 commit and prepares its stacked PR after W0 integration.
-- Production must provision separate migration, sync, and runtime roles before wiring this store.
+W4 / Issue #18 implementation:
+- Added the commit-pinned 384-dimensional multilingual E5 adapter with distinct passage/query
+  prefixes, strict profile/dimension/finiteness/norm checks, bounded batches, timeout handling,
+  process-local online/batch admission, and cold/warm latency plus RSS samples.
+- Added exact cosine pgvector search through the W3 repeatable-read `CorpusSnapshot`, with active
+  revision/profile/public/revocation/hard filters, deterministic chunk tie-breaking, top-20 cap,
+  and fail-closed result validation.
+- The actual model runtime remains an injected backend. Deployment must package the pinned artifact
+  and use shared admission if it runs multiple AI worker processes.
+- Verification: 18 focused tests; full suite, Ruff, strict mypy, and diff check recorded at commit.
