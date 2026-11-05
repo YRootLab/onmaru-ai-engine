@@ -1,0 +1,441 @@
+[
+  {
+    "name": "sql",
+    "query": "경복궁 주소",
+    "route": "SQL_ONLY",
+    "operation": "EXPLAIN",
+    "targets": [
+      "p1"
+    ],
+    "fields": [
+      "PUBLIC_ADDRESS"
+    ],
+    "mode": "NONE"
+  },
+  {
+    "name": "lexical-name",
+    "query": "경복궁 알려줘",
+    "route": "LEXICAL_ONLY",
+    "operation": "EXPLAIN",
+    "targets": [
+      "p1"
+    ]
+  },
+  {
+    "name": "lexical-term",
+    "query": "독립운동 이야기",
+    "route": "LEXICAL_ONLY",
+    "operation": "EXPLAIN",
+    "positive": [
+      "INDEPENDENCE_MOVEMENT"
+    ]
+  },
+  {
+    "name": "dense",
+    "query": "조용한 곳 추천",
+    "route": "DENSE_ONLY",
+    "operation": "RECOMMEND",
+    "positive": [
+      "QUIET"
+    ]
+  },
+  {
+    "name": "hybrid",
+    "query": "전주에서 조용한 한옥 3곳",
+    "route": "HYBRID",
+    "operation": "RECOMMEND",
+    "positive": [
+      "QUIET",
+      "HANOK"
+    ],
+    "regions": [
+      "JEONJU"
+    ]
+  },
+  {
+    "name": "composite",
+    "query": "경복궁 주소와 독립운동 이야기",
+    "route": "SQL_PLUS_RETRIEVAL",
+    "operation": "EXPLAIN",
+    "targets": [
+      "p1"
+    ],
+    "positive": [
+      "INDEPENDENCE_MOVEMENT"
+    ],
+    "fields": [
+      "PUBLIC_ADDRESS"
+    ],
+    "mode": "HYBRID"
+  },
+  {
+    "name": "sql-lexical",
+    "query": "경복궁 주소와 이야기",
+    "route": "SQL_PLUS_RETRIEVAL",
+    "operation": "EXPLAIN",
+    "targets": [
+      "p1"
+    ],
+    "fields": [
+      "PUBLIC_ADDRESS"
+    ],
+    "mode": "LEXICAL_ONLY"
+  },
+  {
+    "name": "negation",
+    "query": "시장 말고 한옥",
+    "route": "HYBRID",
+    "operation": "REFINE",
+    "positive": [
+      "HANOK"
+    ],
+    "negative": [
+      "TRADITIONAL_MARKET"
+    ]
+  },
+  {
+    "name": "negation-particle",
+    "query": "시장은 빼고 한옥",
+    "route": "HYBRID",
+    "operation": "REFINE",
+    "positive": [
+      "HANOK"
+    ],
+    "negative": [
+      "TRADITIONAL_MARKET"
+    ]
+  },
+  {
+    "name": "two-concepts",
+    "query": "한적한 아이와 갈 곳",
+    "route": "HYBRID",
+    "operation": "RECOMMEND",
+    "positive": [
+      "QUIET",
+      "FAMILY_SUITABILITY"
+    ]
+  },
+  {
+    "name": "resolved-card",
+    "query": "두 번째 장소가 독립운동과 관련 있나요?",
+    "route": "HYBRID",
+    "operation": "EXPLAIN",
+    "targets": [
+      "p2"
+    ],
+    "positive": [
+      "INDEPENDENCE_MOVEMENT"
+    ],
+    "context": {
+      "lastConfirmedPlaceIds": [
+        "p1",
+        "p2"
+      ]
+    }
+  },
+  {
+    "name": "single-card",
+    "query": "여기 주소",
+    "route": "SQL_ONLY",
+    "operation": "EXPLAIN",
+    "targets": [
+      "p1"
+    ],
+    "fields": [
+      "PUBLIC_ADDRESS"
+    ],
+    "mode": "NONE",
+    "context": {
+      "lastConfirmedPlaceIds": [
+        "p1"
+      ]
+    }
+  },
+  {
+    "name": "exclude-card",
+    "query": "그건 빼고 시장은 넣어줘",
+    "route": "HYBRID",
+    "operation": "REFINE",
+    "positive": [
+      "TRADITIONAL_MARKET"
+    ],
+    "excludes": [
+      "p1"
+    ],
+    "context": {
+      "lastConfirmedPlaceIds": [
+        "p1"
+      ]
+    }
+  },
+  {
+    "name": "inherit-region",
+    "query": "한적한 한옥 추천",
+    "route": "HYBRID",
+    "operation": "RECOMMEND",
+    "positive": [
+      "QUIET",
+      "HANOK"
+    ],
+    "regions": [
+      "JEONJU"
+    ],
+    "context": {
+      "regionCode": "JEONJU",
+      "pinnedPlaceIds": [
+        "p3"
+      ],
+      "excludedPlaceIds": [
+        "p2"
+      ]
+    },
+    "pins": [
+      "p3"
+    ],
+    "excludes": [
+      "p2"
+    ]
+  },
+  {
+    "name": "replace-region",
+    "query": "부산 말고 서울 한옥 추천",
+    "route": "HYBRID",
+    "operation": "REFINE",
+    "positive": [
+      "HANOK"
+    ],
+    "regions": [
+      "SEOUL"
+    ],
+    "context": {
+      "regionCode": "BUSAN"
+    }
+  },
+  {
+    "name": "region-or",
+    "query": "서울 또는 경기 한옥 추천",
+    "route": "LEXICAL_ONLY",
+    "operation": "RECOMMEND",
+    "positive": [
+      "HANOK"
+    ],
+    "regions": [
+      "SEOUL",
+      "GYEONGGI"
+    ]
+  },
+  {
+    "name": "longest-alias",
+    "query": "전주 한옥마을 주소",
+    "route": "SQL_ONLY",
+    "operation": "EXPLAIN",
+    "targets": [
+      "p3"
+    ],
+    "fields": [
+      "PUBLIC_ADDRESS"
+    ],
+    "mode": "NONE"
+  },
+  {
+    "name": "homonym-region",
+    "query": "서울 중앙시장 주소",
+    "route": "SQL_ONLY",
+    "operation": "EXPLAIN",
+    "targets": [
+      "p4"
+    ],
+    "fields": [
+      "PUBLIC_ADDRESS"
+    ],
+    "mode": "NONE",
+    "regions": [
+      "SEOUL"
+    ]
+  },
+  {
+    "name": "homonym-context",
+    "query": "중앙시장 주소",
+    "route": "SQL_ONLY",
+    "operation": "EXPLAIN",
+    "targets": [
+      "p5"
+    ],
+    "fields": [
+      "PUBLIC_ADDRESS"
+    ],
+    "mode": "NONE",
+    "context": {
+      "lastConfirmedPlaceIds": [
+        "p5"
+      ]
+    }
+  },
+  {
+    "name": "compare",
+    "query": "경복궁과 덕수궁 비교",
+    "route": "HYBRID",
+    "operation": "COMPARE",
+    "targets": [
+      "p1",
+      "p2"
+    ]
+  },
+  {
+    "name": "ambiguous-card",
+    "query": "여기 주소",
+    "route": "CLARIFY_OR_SCOPE",
+    "mode": "NONE",
+    "reason": "AMBIGUOUS_TARGET",
+    "context": {
+      "lastConfirmedPlaceIds": [
+        "p1",
+        "p2"
+      ]
+    }
+  },
+  {
+    "name": "missing-card",
+    "query": "두 번째 장소 역사",
+    "route": "CLARIFY_OR_SCOPE",
+    "mode": "NONE",
+    "reason": "AMBIGUOUS_TARGET",
+    "context": {}
+  },
+  {
+    "name": "homonym",
+    "query": "중앙시장 주소",
+    "route": "CLARIFY_OR_SCOPE",
+    "mode": "NONE",
+    "reason": "AMBIGUOUS_TARGET",
+    "context": {}
+  },
+  {
+    "name": "missing-sql-target",
+    "query": "주소 알려줘",
+    "route": "CLARIFY_OR_SCOPE",
+    "mode": "NONE",
+    "reason": "AMBIGUOUS_TARGET",
+    "context": {}
+  },
+  {
+    "name": "adjective-negation",
+    "query": "한옥 말고 조용하지 않은 곳",
+    "route": "CLARIFY_OR_SCOPE",
+    "mode": "NONE",
+    "reason": "SEMANTIC_LOSS",
+    "context": {}
+  },
+  {
+    "name": "unknown-history",
+    "query": "삼국시대 역사 알려줘",
+    "route": "CLARIFY_OR_SCOPE",
+    "mode": "NONE",
+    "reason": "SEMANTIC_LOSS",
+    "context": {}
+  },
+  {
+    "name": "unknown-condition",
+    "query": "한옥 중 반려동물 가능한 곳",
+    "route": "CLARIFY_OR_SCOPE",
+    "mode": "NONE",
+    "reason": "SEMANTIC_LOSS",
+    "context": {}
+  },
+  {
+    "name": "embedded-word",
+    "query": "한옥마을맛집 추천",
+    "route": "CLARIFY_OR_SCOPE",
+    "mode": "NONE",
+    "reason": "SEMANTIC_LOSS",
+    "context": {}
+  },
+  {
+    "name": "realtime",
+    "query": "오늘 영업 중인 곳",
+    "route": "CLARIFY_OR_SCOPE",
+    "mode": "NONE",
+    "reason": "UNSUPPORTED_SCOPE",
+    "context": {}
+  },
+  {
+    "name": "external",
+    "query": "서울 날씨 알려줘",
+    "route": "CLARIFY_OR_SCOPE",
+    "mode": "NONE",
+    "reason": "UNSUPPORTED_SCOPE",
+    "context": {}
+  },
+  {
+    "name": "two-operations",
+    "query": "경복궁과 덕수궁 비교와 주변 명소 추천",
+    "route": "CLARIFY_OR_SCOPE",
+    "mode": "NONE",
+    "reason": "CONFLICTING_CONDITIONS",
+    "context": {}
+  },
+  {
+    "name": "different-targets",
+    "query": "경복궁 주소와 덕수궁 역사 알려줘",
+    "route": "CLARIFY_OR_SCOPE",
+    "mode": "NONE",
+    "reason": "CONFLICTING_CONDITIONS",
+    "context": {}
+  },
+  {
+    "name": "three-targets",
+    "query": "경복궁 덕수궁 전주한옥마을 비교",
+    "route": "CLARIFY_OR_SCOPE",
+    "mode": "NONE",
+    "reason": "AMBIGUOUS_TARGET",
+    "context": {}
+  },
+  {
+    "name": "three-regions",
+    "query": "서울 또는 경기 또는 부산 한옥 추천",
+    "route": "CLARIFY_OR_SCOPE",
+    "mode": "NONE",
+    "reason": "CONFLICTING_CONDITIONS",
+    "context": {}
+  },
+  {
+    "name": "and-regions",
+    "query": "서울 그리고 부산 한옥 추천",
+    "route": "CLARIFY_OR_SCOPE",
+    "mode": "NONE",
+    "reason": "CONFLICTING_CONDITIONS",
+    "context": {}
+  },
+  {
+    "name": "conflict",
+    "query": "한옥 넣어줘 한옥 빼줘",
+    "route": "CLARIFY_OR_SCOPE",
+    "mode": "NONE",
+    "reason": "CONFLICTING_CONDITIONS",
+    "context": {}
+  },
+  {
+    "name": "pii",
+    "query": "경복궁 주소 user@example.com",
+    "route": "CLARIFY_OR_SCOPE",
+    "mode": "NONE",
+    "reason": "SEMANTIC_LOSS",
+    "context": {}
+  },
+  {
+    "name": "url",
+    "query": "한옥 추천 https://example.com",
+    "route": "CLARIFY_OR_SCOPE",
+    "mode": "NONE",
+    "reason": "SEMANTIC_LOSS",
+    "context": {}
+  },
+  {
+    "name": "phone",
+    "query": "010-1234-5678 한옥 추천",
+    "route": "CLARIFY_OR_SCOPE",
+    "mode": "NONE",
+    "reason": "SEMANTIC_LOSS",
+    "context": {}
+  }
+]
