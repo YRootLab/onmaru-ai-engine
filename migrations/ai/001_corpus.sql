@@ -30,7 +30,7 @@ CREATE TABLE ai.revocation_state (
     sequence bigint NOT NULL CHECK (sequence >= 0),
     heartbeat_at timestamptz
 );
-INSERT INTO ai.revocation_state (id, sequence) VALUES (1, 0);
+INSERT INTO ai.revocation_state (id, sequence, heartbeat_at) VALUES (1, 0, now());
 CREATE TABLE ai.active_corpus (
     id integer PRIMARY KEY CHECK (id = 1),
     revision_id text REFERENCES ai.corpus_revisions,
@@ -141,6 +141,12 @@ CREATE TABLE ai.revision_holds (
     expires_at timestamptz NOT NULL,
     CHECK (expires_at > created_at AND expires_at <= created_at + interval '30 days')
 );
+CREATE TABLE ai.revision_read_leases (
+    lease_id uuid PRIMARY KEY,
+    revision_id text NOT NULL REFERENCES ai.corpus_revisions,
+    expires_at timestamptz NOT NULL
+);
+CREATE INDEX revision_read_leases_live ON ai.revision_read_leases (revision_id, expires_at);
 CREATE TABLE ai.gc_runs (
     run_id uuid PRIMARY KEY,
     state text NOT NULL CHECK (state IN ('RUNNING','SUCCEEDED','FAILED')),
