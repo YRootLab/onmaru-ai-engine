@@ -1,6 +1,6 @@
 # AI RAG OpenTelemetry 관측 계약
 
-> 상태: 구현 전 **RAG 전용** 목표 계약. 사용자 확인에 따라 기존 Grafana·Prometheus 계열 metrics·OpenTelemetry 경로를 재사용한다. [저장소 분리·관측 운영 결정](repository-split-and-monitoring.md)은 Grafana Cloud를 통합 조회·경보 백엔드로 정하고 metrics 전송 경로는 현행 scrape 검증 뒤 한 가지만 택하도록 한다. 이 문서의 RAG 계측·대시보드가 배포됐다는 뜻은 아니다.
+> 상태: W15에서 RAG 단계 span·낮은 카디널리티 metric의 adapter와 테스트 경계를 구현했다. 실제 실행 단계 연결, 비동기 OTLP metric exporter, Grafana dashboard·alert 배포는 후속 작업이다. 사용자 확인에 따라 기존 Grafana·Prometheus 계열 metrics·OpenTelemetry 경로를 재사용한다. [저장소 분리·관측 운영 결정](repository-split-and-monitoring.md)은 Grafana Cloud를 통합 조회·경보 백엔드로 정하고 metrics 전송 경로는 현행 scrape 검증 뒤 한 가지만 택하도록 한다.
 
 FastAPI 단계명·결과/복귀 코드와 하네스가 읽는 비식별 영속 artifact는 [관측 스키마와 품질 하네스 입력 계약](telemetry-and-harness-schema.md)에서 버전 관리한다.
 
