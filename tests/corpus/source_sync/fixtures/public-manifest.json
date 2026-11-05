@@ -1,0 +1,29 @@
+{
+  "contractVersion": "1.0",
+  "revisionId": "catalog-r1",
+  "sourceRevision": "spring-export-1",
+  "publishedAt": "2026-11-05T00:00:00Z",
+  "documentCount": 1,
+  "revocationSequence": 0,
+  "documents": [
+    {
+      "documentId": "doc-1",
+      "placeId": "place-1",
+      "sourceType": "TOUR_API",
+      "sourceId": "tour-1",
+      "sourceRevision": "tour-r1",
+      "publishedAt": "2026-11-04T00:00:00Z",
+      "documentHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "contentUrl": "https://spring.example/export/doc-1",
+      "licenseCode": "KOGL-1",
+      "licenseVerified": true,
+      "publicationEligible": true,
+      "public": true,
+      "revoked": false,
+      "snapshotStatus": "OK",
+      "reviewStatus": null
+    }
+  ],
+  "tombstones": [],
+  "manifestHash": "sha256:c759c0c3ab5c3a6b5f38d21521ad5e10168b75de488c36f8419f64a18278b6db"
+}
