@@ -1,6 +1,11 @@
 # AI RAG corpus 보존·GC 정책
 
-> 상태: 구현 전 운영 계약. 기간은 목표 2GB 운영 환경에서 검증할 초기값이며, 출시 전 권리 조건·복원 실험·실측 저장량으로 확정한다. 2GB 인스턴스 이전은 2026-10-23 오후 예정이며 아직 실행되지 않았다. 이 문서는 공개 검색 corpus에 적용한다. 회원 대화의 보존 기간은 [안전 정책](security-and-abuse.md)을 따른다.
+> 상태: 저장소 수명주기 기준선 구현. 기간은 목표 2GB 운영 환경에서 검증할 초기값이며, 출시 전 권리 조건·복원 실험·실측 저장량으로 확정한다. 2GB 인스턴스 이전은 2026-10-23 오후 예정이며 아직 실행되지 않았다. 이 문서는 공개 검색 corpus에 적용한다. 회원 대화의 보존 기간은 [안전 정책](security-and-abuse.md)을 따른다.
+
+> 구현 위치: `src/onmaru_ai/corpus/revocation.py`가 순서 원장, 60초 heartbeat,
+> 복원 재적용과 철회 본문 purge를 담당한다. `src/onmaru_ai/corpus/gc.py`가 active,
+> rollback, hold, sync/read lease를 보존하며 제한된 batch와 단계 checkpoint로 GC한다.
+> 실행 스키마는 `migrations/ai/001_corpus.sql`에 있다.
 
 ## 보존 대상과 기산점
 
