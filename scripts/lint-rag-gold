@@ -1,0 +1,167 @@
+#!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = ">=3.12,<3.13"
+# dependencies = ["jsonschema>=4.25,<5.0"]
+# ///
+"""Validate reviewed synthetic/public RAG gold inputs; never execute an evaluation."""
+
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+import sys
+from collections import defaultdict
+from pathlib import Path
+from typing import Any
+
+from jsonschema import Draft202012Validator
+
+ROOT = Path(__file__).resolve().parents[1]
+SCHEMA = ROOT / "evals" / "rag-schema" / "gold-dataset.schema.json"
+
+
+def gold_hash(case: dict[str, Any]) -> str:
+    content = {k: v for k, v in case.items() if k not in {"goldHash", "reviews", "adjudication"}}
+    encoded = json.dumps(content, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return "sha256:" + hashlib.sha256(encoded.encode("utf-8")).hexdigest()
+
+
+def lint_case(case: dict[str, Any]) -> list[str]:
+    """Relational constraints that portable JSON Schema cannot express."""
+    errors: list[str] = []
+    if case["goldHash"] != gold_hash(case):
+        errors.append("HASH: case content differs from pinned goldHash")
+    reviews = case["reviews"]
+    reviewer_ids = {review["reviewerId"] for review in reviews}
+    adjudication = case["adjudication"]
+    decisions = {review["decision"] for review in reviews}
+    if len(reviewer_ids) != 2:
+        errors.append("REVIEW: two distinct independent reviewers are required")
+    if any(review["goldHash"] != case["goldHash"] for review in reviews):
+        errors.append("REVIEW: reviewer decision refers to stale goldHash")
+    if adjudication["goldHash"] != case["goldHash"]:
+        errors.append("REVIEW: adjudication refers to stale goldHash")
+    if adjudication["decision"] != "ACCEPT" or adjudication["status"] == "PENDING":
+        errors.append("REVIEW: gold must have completed ACCEPT adjudication")
+    if adjudication["status"] == "AGREED":
+        if decisions != {"ACCEPT"} or adjudication["adjudicatorId"] is not None:
+            errors.append("REVIEW: AGREED requires two ACCEPT decisions and no adjudicator")
+    elif adjudication["status"] == "RESOLVED":
+        if not adjudication["adjudicatorId"] or adjudication["adjudicatorId"] in reviewer_ids:
+            errors.append("REVIEW: RESOLVED requires a third independent adjudicator")
+
+    sources = {(s["placeId"], s["sourceId"], s["sourceRevision"]): s for s in case["sources"]}
+    allowed = set(case["allowedPlaceIds"])
+    forbidden = set(case["forbiddenPlaceIds"])
+    if allowed & forbidden:
+        errors.append("REFERENCE: allowed and forbidden places overlap")
+    for span in case["preserveSpans"]:
+        start, end = span["startOffset"], span["endOffset"]
+        if not 0 <= start < end <= len(case["safeQuery"]):
+            errors.append("OFFSET: preserved span is outside safeQuery")
+        elif case["safeQuery"][start:end] != span["text"]:
+            errors.append("OFFSET: preserved span text differs from safeQuery")
+    evidence = case["goldEvidence"]
+    for item in evidence:
+        source = sources.get((item["placeId"], item["sourceId"], item["sourceRevision"]))
+        if source is None:
+            errors.append("REFERENCE: evidence must refer to a declared place/source revision")
+        elif not 0 <= item["startOffset"] < item["endOffset"] <= source["sourceLength"]:
+            errors.append("OFFSET: evidence must be a nonempty span inside its source snapshot")
+        if item["grade"] > 0 and (item["placeId"] not in allowed or item["placeId"] in forbidden):
+            errors.append("REFERENCE: positive evidence must belong to an allowed place")
+    graded_places = [grade["placeId"] for grade in case["placeGrades"]]
+    if len(graded_places) != len(set(graded_places)):
+        errors.append("REFERENCE: place grades must have unique place IDs")
+    for grade in case["placeGrades"]:
+        if grade["grade"] > 0 and grade["placeId"] not in allowed:
+            errors.append("REFERENCE: positive place grade must belong to an allowed place")
+    claim_ids = [claim["claimId"] for claim in case["minimumClaims"]]
+    if len(claim_ids) != len(set(claim_ids)):
+        errors.append("REFERENCE: minimum claims must have unique claim IDs")
+    for claim in case["minimumClaims"]:
+        if any(
+            index >= len(evidence) or evidence[index]["grade"] == 0
+            for index in claim["evidenceIndexes"]
+        ):
+            errors.append("REFERENCE: claims must refer to positive gold evidence indexes")
+    if case["answerable"] and not any(item["grade"] > 0 for item in evidence):
+        errors.append("REFERENCE: answerable cases require positive gold evidence")
+    if not case["answerable"] and case["minimumClaims"]:
+        errors.append("REFERENCE: unanswerable cases cannot require answer claims")
+    return errors
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "datasets", nargs="+", type=Path, help="JSON dataset files checked together"
+    )
+    args = parser.parse_args(argv)
+    validator = Draft202012Validator(json.loads(SCHEMA.read_text(encoding="utf-8")))
+    errors: list[str] = []
+    seen_ids: set[str] = set()
+    versions: set[str] = set()
+    groups: dict[tuple[str, ...], dict[str, set[str]]] = defaultdict(lambda: defaultdict(set))
+    snapshots: dict[tuple[str, ...], tuple[str, int | None]] = {}
+    count = 0
+    for path in args.datasets:
+        try:
+            dataset = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeError, ValueError):
+            errors.append(f"{path.name}: INPUT: cannot read a UTF-8 JSON dataset")
+            continue
+        schema_errors = list(validator.iter_errors(dataset))
+        if schema_errors:
+            # Emit structural locations only, never question text or rejected raw values.
+            for error in schema_errors:
+                location = "/".join(map(str, error.absolute_path)) or "$"
+                errors.append(f"{path.name}: SCHEMA: {location} violates {error.validator}")
+            continue
+        versions.add(dataset["datasetVersion"])
+        for case in dataset["cases"]:
+            count += 1
+            query_id = case["queryId"]
+            label = f"{path.name}:{query_id}"
+            if query_id in seen_ids:
+                errors.append(f"{label}: DUPLICATE: queryId must be unique across input files")
+            seen_ids.add(query_id)
+            if case["datasetVersion"] != dataset["datasetVersion"]:
+                errors.append(f"{label}: VERSION: case and dataset versions differ")
+            errors.extend(f"{label}: {error}" for error in lint_case(case))
+            corpus_key = ("corpus", case["corpusRevision"])
+            source_records: list[tuple[tuple[str, ...], tuple[str, int | None]]] = [
+                (corpus_key, (case["corpusHash"], None))
+            ]
+            for source in case["sources"]:
+                source_key = ("source", source["sourceId"], source["sourceRevision"])
+                source_records.append((source_key, (source["sourceHash"], source["sourceLength"])))
+                groups[source_key][case["split"]].add(query_id)
+                groups[("place", source["placeId"])][case["split"]].add(query_id)
+            places = set(case["goldQuestionFrame"]["targetPlaceIds"])
+            places.update(item["placeId"] for item in case["placeGrades"] if item["grade"] > 0)
+            for place in places:
+                groups[("place", place)][case["split"]].add(query_id)
+            for snapshot_key, snapshot in source_records:
+                if snapshot_key in snapshots and snapshots[snapshot_key] != snapshot:
+                    errors.append(
+                        f"{label}: PROVENANCE: one revision has conflicting snapshot data"
+                    )
+                snapshots[snapshot_key] = snapshot
+    if len(versions) > 1:
+        errors.append("VERSION: input files must belong to one datasetVersion")
+    for key, splits in sorted(groups.items()):
+        if "development" in splits and "sealed" in splits:
+            ids = sorted(splits["development"] | splits["sealed"])
+            errors.append(f"LEAKAGE: {':'.join(key)} crosses development/sealed: {', '.join(ids)}")
+    if errors:
+        for error in errors:
+            print(error, file=sys.stderr)
+        return 1
+    print(f"OK: {count} reviewed gold cases; no split leakage across {len(args.datasets)} file(s)")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

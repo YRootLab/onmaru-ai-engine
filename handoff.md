@@ -1,28 +1,23 @@
 # Handoff
 
 Current work:
-- Summary: W2 public-body normalization and paragraph-first chunk enrichment implemented on the reviewed W0/W1 contract foundation; awaiting parent review and integration.
-- Issue/PR: [W2 Issue #12](https://github.com/YRootLab/onmaru-ai-engine/issues/12), under AI-RAG Root Issue #3; dependency [W1 #5](https://github.com/YRootLab/onmaru-ai-engine/issues/5).
-- Branch: `feature/ai-rag-w2`, isolated worktree `.worktrees/feature-ai-rag-w2`.
+- Implement W3 AI-owned PostgreSQL corpus storage and atomic revision activation.
+- Issue: https://github.com/YRootLab/onmaru-ai-engine/issues/6 (depends on reviewed W0/#4).
+- Branch: `feature/ai-rag-w3`; isolated worktree `.worktrees/feature-ai-rag-w3`.
 
-Touched files:
-- `src/onmaru_ai/corpus/normalizer.py`: executable markup removal, NFC/space normalization, original-body offset map, and an explicit untrusted-source data envelope.
-- `src/onmaru_ai/corpus/chunker.py`: W1 eligibility gate, document-boundary chunking, 400 target/600 maximum/60 overlap defaults, deterministic IDs/hashes, and corpus/source/place/revision metadata.
-- `tests/corpus/chunking/`: Korean paragraphs, long boundaries, overlap, HTML and role-disguise injection, unclosed executable elements, Unicode offsets, traceability, and fail-closed fixtures.
+Ad hoc request:
+- Use strict TDD, local PostgreSQL integration where available, full pytest/Ruff/mypy and self-review; commit with #6.
+
+Scope:
+- AI schema migrations, immutable revision/document/chunk/vector metadata, CAS activation, two rollback candidates, consistent corpus/config/revocation read snapshot.
+- Spring schema and production DB image are outside this change. Existing memory baseline remains separate.
 
 Verification:
-- TDD RED: focused collection failed because `onmaru_ai.corpus.chunker` did not exist.
-- GREEN: `uv run pytest tests/corpus/chunking -q` → 14 passed; `uv run pytest -q` → 611 passed, 1 skipped (opt-in live provider test).
-- `uv run ruff check src tests scripts` passed; `uv run mypy` → no issues in 75 source files; `git diff --check` passed.
+- TDD RED reproduced 16 storage, activation, rollback, constraint, and snapshot failures before implementation.
+- Disposable PostgreSQL 17 + pgvector integration: 32 passed.
+- Full suite with the integration database: 596 passed, 1 skipped.
+- Ruff, strict mypy, and `git diff --check` pass.
 
 Next step:
-- Parent review W2 against Issue #12 acceptance criteria; open an Issue-linked PR after W1 dependency integration is available.
-- W4/W5 can consume `SourceChunk`; persistence and embedding/index adapters remain separately owned.
-
-Open risk or decision:
-- The initial deterministic token-count profile is whitespace based and recorded in `chunkerVersion`; W4 must introduce a new version and reindex if the pinned embedding tokenizer becomes the shared chunk budget authority.
-- HTML bodies are handled locally and never fetched by this module. Transport, download limits, document-hash verification, persistence, activation, and revocation runtime enforcement remain outside W2.
-- Source offsets refer to the received body. Entity decoding and Unicode composition retain an enclosing source range, which can be wider than one normalized character.
-
-Ad hoc requests captured this session:
-- Implement W2/#12 in its isolated branch with strict TDD, focused/full checks, self-review and a reviewable commit; keep embedding and DB storage outside this change.
+- Parent reviews the W3 commit and prepares its stacked PR after W0 integration.
+- Production must provision separate migration, sync, and runtime roles before wiring this store.
