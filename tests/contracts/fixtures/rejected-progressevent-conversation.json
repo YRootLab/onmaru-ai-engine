@@ -1,0 +1,14 @@
+{
+  "name": "rejected-progressevent-conversation",
+  "model": "ProgressEvent",
+  "payload": {
+    "schemaVersion": "ai-progress.v1",
+    "runId": "45e6a7f5-31bc-469d-9e30-6f510a1dc497",
+    "planHash": "sha256:5b378f462da239732826ee9d9f9e0a535fe95aa1d1ffb02cdc0a5a4fa935baba",
+    "ordinal": 1,
+    "stage": "PREPARING_INPUT",
+    "conversation": "FORBIDDEN"
+  },
+  "expected": "UNEXPECTED_FIELD",
+  "schemaValid": false
+}

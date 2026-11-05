@@ -1,0 +1,179 @@
+{
+  "$defs": {
+    "Candidate": {
+      "additionalProperties": false,
+      "properties": {
+        "sourceId": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+          "title": "Sourceid",
+          "type": "string"
+        },
+        "sourceRevision": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+          "title": "Sourcerevision",
+          "type": "string"
+        },
+        "chunkId": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+          "title": "Chunkid",
+          "type": "string"
+        },
+        "placeId": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+          "title": "Placeid",
+          "type": "string"
+        },
+        "rank": {
+          "minimum": 1,
+          "title": "Rank",
+          "type": "integer"
+        },
+        "score": {
+          "title": "Score",
+          "type": "number"
+        },
+        "exclusionReason": {
+          "anyOf": [
+            {
+              "enum": [
+                "NOT_PUBLIC",
+                "EXCLUDED",
+                "FILTER_MISMATCH",
+                "SOURCE_REVOKED",
+                "REVISION_MISMATCH"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Exclusionreason"
+        }
+      },
+      "required": [
+        "sourceId",
+        "sourceRevision",
+        "chunkId",
+        "placeId",
+        "rank",
+        "score",
+        "exclusionReason"
+      ],
+      "title": "Candidate",
+      "type": "object"
+    },
+    "Versions": {
+      "additionalProperties": false,
+      "properties": {
+        "corpusRevision": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+          "title": "Corpusrevision",
+          "type": "string"
+        },
+        "configHash": {
+          "pattern": "^sha256:[a-f0-9]{64}$",
+          "title": "Confighash",
+          "type": "string"
+        },
+        "questionDictionaryVersion": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+          "title": "Questiondictionaryversion",
+          "type": "string"
+        },
+        "sourceRevocationSequence": {
+          "minimum": 0,
+          "title": "Sourcerevocationsequence",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "corpusRevision",
+        "configHash",
+        "questionDictionaryVersion",
+        "sourceRevocationSequence"
+      ],
+      "title": "Versions",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "runId": {
+      "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$",
+      "title": "Runid",
+      "type": "string"
+    },
+    "planHash": {
+      "pattern": "^sha256:[a-f0-9]{64}$",
+      "title": "Planhash",
+      "type": "string"
+    },
+    "versions": {
+      "$ref": "#/$defs/Versions"
+    },
+    "schemaVersion": {
+      "const": "ai-candidate-set.v1",
+      "title": "Schemaversion",
+      "type": "string"
+    },
+    "stage": {
+      "enum": [
+        "LEXICAL",
+        "DENSE",
+        "FUSION",
+        "RERANK"
+      ],
+      "title": "Stage",
+      "type": "string"
+    },
+    "candidates": {
+      "items": {
+        "$ref": "#/$defs/Candidate"
+      },
+      "maxItems": 40,
+      "title": "Candidates",
+      "type": "array"
+    },
+    "retrievalStatus": {
+      "enum": [
+        "NOT_RUN",
+        "COMPLETE",
+        "DEGRADED",
+        "NO_EVIDENCE",
+        "FAILED"
+      ],
+      "title": "Retrievalstatus",
+      "type": "string"
+    },
+    "latencyMs": {
+      "minimum": 0,
+      "title": "Latencyms",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "runId",
+    "planHash",
+    "versions",
+    "schemaVersion",
+    "stage",
+    "candidates",
+    "retrievalStatus",
+    "latencyMs"
+  ],
+  "title": "CandidateSet",
+  "type": "object"
+}

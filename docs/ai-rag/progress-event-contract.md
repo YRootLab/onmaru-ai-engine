@@ -1,6 +1,6 @@
 # AI progress event contract proposal
 
-> Planning handoff. This repository owns the FastAPI event producer. OnMaru BE owns the public Journey OpenAPI, SSE schema, run snapshot, and Spring receiver. No endpoint in this document has been implemented.
+> W0 fixes the private DTO/schema and synthetic fixtures. This repository owns the planned FastAPI event producer. OnMaru BE owns the public Journey OpenAPI, SSE schema, run snapshot, and Spring receiver. No endpoint in this document has been implemented.
 
 ## Boundaries
 
@@ -14,13 +14,18 @@ The browser never calls FastAPI. The command remains REST, progress remains `run
 
 ## Private AI progress callback
 
-FastAPI reports a stage only after the pipeline actually enters it. Proposed body:
+The implemented [`ProgressEvent` model](../../src/onmaru_ai/contracts/models.py),
+[closed JSON Schema](../../src/onmaru_ai/contracts/schemas/ProgressEvent.schema.json),
+and [shared accepted/rejected fixtures](../../tests/contracts/fixtures/) fix the private
+payload. [W0 contract notes](../../src/onmaru_ai/contracts/README.md) define hash
+serialization and the separate contextual validation rules. The future producer
+reports a stage only after the pipeline actually enters it. Body:
 
 ```json
 {
   "schemaVersion": "ai-progress.v1",
   "runId": "45e6a7f5-31bc-469d-9e30-6f510a1dc497",
-  "planHash": "sha256:approved-plan-hash",
+  "planHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
   "ordinal": 3,
   "stage": "SELECTING_EVIDENCE"
 }

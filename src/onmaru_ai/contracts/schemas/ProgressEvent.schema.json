@@ -1,0 +1,45 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": {
+      "const": "ai-progress.v1",
+      "title": "Schemaversion",
+      "type": "string"
+    },
+    "runId": {
+      "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$",
+      "title": "Runid",
+      "type": "string"
+    },
+    "planHash": {
+      "pattern": "^sha256:[a-f0-9]{64}$",
+      "title": "Planhash",
+      "type": "string"
+    },
+    "ordinal": {
+      "minimum": 1,
+      "title": "Ordinal",
+      "type": "integer"
+    },
+    "stage": {
+      "enum": [
+        "PREPARING_INPUT",
+        "RETRIEVING",
+        "SELECTING_EVIDENCE",
+        "GENERATING",
+        "CHECKING_OUTPUT"
+      ],
+      "title": "Stage",
+      "type": "string"
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "runId",
+    "planHash",
+    "ordinal",
+    "stage"
+  ],
+  "title": "ProgressEvent",
+  "type": "object"
+}

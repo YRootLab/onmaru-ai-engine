@@ -1,0 +1,44 @@
+{
+  "name": "rejected-approvedqueryplan-sourceBody",
+  "model": "ApprovedQueryPlan",
+  "payload": {
+    "schemaVersion": "ai-approved-plan.v1",
+    "planVersion": "ai-query-plan.v1",
+    "runId": "45e6a7f5-31bc-469d-9e30-6f510a1dc497",
+    "approvedPlanHash": "sha256:5b378f462da239732826ee9d9f9e0a535fe95aa1d1ffb02cdc0a5a4fa935baba",
+    "approvedRoute": "HYBRID",
+    "approvedRetrievalMode": "HYBRID",
+    "approvedFilters": {
+      "filterHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "publicOnly": true,
+      "placeIds": [
+        "place-1",
+        "place-2"
+      ],
+      "regionCodes": [
+        "SEOUL"
+      ],
+      "categoryCodes": [
+        "HANOK"
+      ],
+      "pinnedPlaceIds": [
+        "place-1"
+      ],
+      "excludedPlaceIds": [
+        "place-9"
+      ]
+    },
+    "approvedCanonicalFields": [],
+    "semanticQuery": "한적한 한옥",
+    "versions": {
+      "corpusRevision": "corpus-1",
+      "configHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "questionDictionaryVersion": "questions-1",
+      "sourceRevocationSequence": 7
+    },
+    "queryGrantId": null,
+    "sourceBody": "FORBIDDEN"
+  },
+  "expected": "UNEXPECTED_FIELD",
+  "schemaValid": false
+}

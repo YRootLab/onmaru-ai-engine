@@ -1,0 +1,232 @@
+{
+  "$defs": {
+    "Claim": {
+      "additionalProperties": false,
+      "properties": {
+        "claimId": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+          "title": "Claimid",
+          "type": "string"
+        },
+        "text": {
+          "maxLength": 1000,
+          "minLength": 1,
+          "title": "Text",
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/$defs/ClaimKind"
+        },
+        "evidenceIds": {
+          "items": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+            "type": "string"
+          },
+          "maxItems": 3,
+          "minItems": 1,
+          "title": "Evidenceids",
+          "type": "array",
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "claimId",
+        "text",
+        "kind",
+        "evidenceIds"
+      ],
+      "title": "Claim",
+      "type": "object"
+    },
+    "ClaimKind": {
+      "description": "The four claim kinds from grounding-and-review.md's output contract.",
+      "enum": [
+        "FACT",
+        "INTERPRETATION",
+        "PREFERENCE",
+        "CONNECTOR"
+      ],
+      "title": "ClaimKind",
+      "type": "string"
+    },
+    "FailureStage": {
+      "description": "Failure decision table in request-lifecycle.md; distinct from progress.",
+      "enum": [
+        "REQUEST",
+        "INTERPRETATION",
+        "PLANNING",
+        "ROUTING",
+        "QUOTA",
+        "RETRIEVAL",
+        "RETRIEVAL_EMPTY",
+        "GENERATION",
+        "VALIDATION",
+        "DELIVERY"
+      ],
+      "title": "FailureStage",
+      "type": "string"
+    },
+    "PlaceClaims": {
+      "additionalProperties": false,
+      "properties": {
+        "placeId": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+          "title": "Placeid",
+          "type": "string"
+        },
+        "reasonClaims": {
+          "items": {
+            "$ref": "#/$defs/Claim"
+          },
+          "maxItems": 12,
+          "minItems": 1,
+          "title": "Reasonclaims",
+          "type": "array"
+        }
+      },
+      "required": [
+        "placeId",
+        "reasonClaims"
+      ],
+      "title": "PlaceClaims",
+      "type": "object"
+    },
+    "Versions": {
+      "additionalProperties": false,
+      "properties": {
+        "corpusRevision": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+          "title": "Corpusrevision",
+          "type": "string"
+        },
+        "configHash": {
+          "pattern": "^sha256:[a-f0-9]{64}$",
+          "title": "Confighash",
+          "type": "string"
+        },
+        "questionDictionaryVersion": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+          "title": "Questiondictionaryversion",
+          "type": "string"
+        },
+        "sourceRevocationSequence": {
+          "minimum": 0,
+          "title": "Sourcerevocationsequence",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "corpusRevision",
+        "configHash",
+        "questionDictionaryVersion",
+        "sourceRevocationSequence"
+      ],
+      "title": "Versions",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "runId": {
+      "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$",
+      "title": "Runid",
+      "type": "string"
+    },
+    "planHash": {
+      "pattern": "^sha256:[a-f0-9]{64}$",
+      "title": "Planhash",
+      "type": "string"
+    },
+    "versions": {
+      "$ref": "#/$defs/Versions"
+    },
+    "schemaVersion": {
+      "const": "ai-validated-proposal.v1",
+      "title": "Schemaversion",
+      "type": "string"
+    },
+    "candidatePlaceIds": {
+      "items": {
+        "maxLength": 128,
+        "minLength": 1,
+        "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+        "type": "string"
+      },
+      "maxItems": 5,
+      "title": "Candidateplaceids",
+      "type": "array",
+      "uniqueItems": true
+    },
+    "places": {
+      "items": {
+        "$ref": "#/$defs/PlaceClaims"
+      },
+      "maxItems": 5,
+      "title": "Places",
+      "type": "array"
+    },
+    "summaryClaims": {
+      "items": {
+        "$ref": "#/$defs/Claim"
+      },
+      "maxItems": 12,
+      "title": "Summaryclaims",
+      "type": "array"
+    },
+    "retrievalStatus": {
+      "enum": [
+        "NOT_RUN",
+        "COMPLETE",
+        "DEGRADED",
+        "NO_EVIDENCE",
+        "FAILED"
+      ],
+      "title": "Retrievalstatus",
+      "type": "string"
+    },
+    "generationStatus": {
+      "enum": [
+        "NOT_RUN",
+        "GENERATED",
+        "REJECTED",
+        "FAILED"
+      ],
+      "title": "Generationstatus",
+      "type": "string"
+    },
+    "failureStage": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/FailureStage"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    }
+  },
+  "required": [
+    "runId",
+    "planHash",
+    "versions",
+    "schemaVersion",
+    "candidatePlaceIds",
+    "places",
+    "summaryClaims",
+    "retrievalStatus",
+    "generationStatus",
+    "failureStage"
+  ],
+  "title": "ValidatedProposal",
+  "type": "object"
+}
