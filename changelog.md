@@ -4,7 +4,9 @@ Lightweight human-readable summary of meaningful repository changes. Newest date
 
 ## 2026-11-05
 
-- Added the W9 grant-only Spring PlaceQueryPort REST adapter with route gating, single-attempt timeout handling, closed projection validation, and explicit SQL-only/RAG fallback outcomes.
+- Implemented W4's commit-pinned 384-dimensional E5 passage/query embedding boundary and
+  snapshot-scoped exact pgvector retrieval with bounded, fail-closed execution.
+- Implemented W2 public body normalization and paragraph-first 400/600/60 chunk enrichment with source offsets, deterministic hashes, provenance metadata, and untrusted-content isolation.
 - Implemented the W0 private AI↔Spring contract foundation with seven closed DTOs, schemas, canonical plan hashing, authority/revocation validation, and portable accepted/rejected fixtures.
 
 ## 2026-11-04
