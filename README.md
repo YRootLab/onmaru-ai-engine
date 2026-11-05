@@ -14,6 +14,11 @@ AI 저장소는 검증된 FastAPI container image를 발행합니다. AWS creden
 
 현재 이동 중인 FastAPI 코드는 기존 16차원 결정적 임베딩·메모리 검색 baseline입니다. 이 코드를 384차원 pgvector, BM25, hybrid ranking이 구현된 것으로 간주하지 않습니다. 실제 운영 배포 전에는 코드·DB migration·독립 CI·digest 기반 배포 및 공존 검증이 필요합니다. 자세한 목표는 [배포/릴리스 설계](docs/ai-rag/deployment-and-release-model.md)를 참고하세요.
 
+The private two-step plan/execute boundary is documented in
+[`src/onmaru_ai/api/README.md`](src/onmaru_ai/api/README.md). It uses the W0
+contracts and requires explicitly injected planner/executor/authority dependencies;
+the default application returns 503 for these new operations.
+
 ## 개발 환경
 
 Python 3.12와 `uv`를 사용합니다.

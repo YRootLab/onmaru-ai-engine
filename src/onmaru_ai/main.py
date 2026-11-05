@@ -4,6 +4,7 @@ from typing import Any
 
 from fastapi import FastAPI
 
+from onmaru_ai.api.plan_execute import PlanExecuteService, install_plan_execute
 from onmaru_ai.config.secrets import (
     SecretProvider,
     SecretRedactor,
@@ -54,6 +55,7 @@ def create_app(
     corpus_store: InMemoryCorpusStore | None = None,
     corpus_index: CorpusIndexService | None = None,
     environ: Mapping[str, str] | None = None,
+    plan_execute_service: PlanExecuteService | None = None,
 ) -> FastAPI:
     provider = secret_provider or provider_from_environment()
     secrets = validate_required_secrets(provider)
@@ -69,6 +71,7 @@ def create_app(
         rag_feature_enabled=_rag_feature_enabled(environ),
         journey_llm=_journey_llm(provider, environ),
     )
+    install_plan_execute(app, provider, plan_execute_service)
     install_corpus_rest(
         app,
         provider,
