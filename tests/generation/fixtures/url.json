@@ -1,0 +1,19 @@
+{
+  "places": [
+    {
+      "placeId": "place-1",
+      "reasonClaims": [
+        {
+          "claimId": "claim-1",
+          "factId": "fact-1",
+          "text": "https://evil.test",
+          "kind": "FACT",
+          "evidenceIds": [
+            "evidence-1"
+          ]
+        }
+      ]
+    }
+  ],
+  "summaryClaims": []
+}
