@@ -1,35 +1,24 @@
 # Handoff
 
-## W16 current session
-
-- Issue: [#11](https://github.com/YRootLab/onmaru-ai-engine/issues/11); branch `feature/ai-rag-w16`, based on reviewed W0.
-- Request: implement versioned gold schema, review/provenance records and split leakage lint with small synthetic fixtures, using strict TDD. Actual 300-case labeling and evaluation runner belong to W22/W17.
-- Status: schema/linter/provenance docs implemented; synthetic fixtures only. TDD RED: 56 missing-artifact failures, then 6 route/query boundary failures. GREEN: 64 focused tests; full pytest 628 passed, 1 skipped; Ruff, strict mypy (including executable), diff check passed.
-- Next: parent review and Issue #11 PR into `develop`; actual labeling, snapshot verification and sealed ACLs remain dataset-owner/W22 work.
-
 Current work:
-- Summary: W0 implementation and review are complete; prepare its `develop` PR and start dependency-safe Wave 1 branches from the reviewed W0 head.
-- Issue/PR: [W0 Issue #4](https://github.com/YRootLab/onmaru-ai-engine/issues/4), under AI-RAG Root Issue #3.
-- Branch: `feature/ai-rag-w0`, isolated worktree `.worktrees/feature-ai-rag-w0`.
+- Summary: W17 deterministic offline RAG replay and release gates are implemented on W16.
+- Issue: [W17 #16](https://github.com/YRootLab/onmaru-ai-engine/issues/16), under AI-RAG Root #3.
+- Branch: `feature/ai-rag-w17`, based on reviewed `feature/ai-rag-w16`.
 
 Touched files:
-- `src/onmaru_ai/contracts/`: frozen closed models, JSON schemas, authority/hash validation, contract and fixture instructions.
-- `tests/contracts/`: synthetic shared fixtures and schema/model/context validation tests, including both review rounds: authority/vocabulary, claim kind/evidence caps, strict publicOnly and clarification-pair cases.
-- `docs/ai-rag/progress-event-contract.md`: implemented private payload references; Spring receiver/public SSE remains future work.
+- `src/onmaru_ai/evals/rag.py`: closed replay/report models, stage and place metrics, route/claim/safety gates, canonical report hash.
+- `tests/evals/rag/`: deterministic replay, first-loss, hard violation, claim, and run completeness tests.
+- `scripts/run-rag-evals`: report writer with nonzero exit for failed gates.
 
 Verification:
-- TDD RED: initial 15 focused tests failed because the package did not exist; Fix Round 1 added 28 expected failures reproducing empty-scope artifact acceptance, failure-stage vocabulary mismatch and open code vocabularies. Final review fix added 29 expected failures for claim kinds/counts, strict publicOnly and clarification pair mapping.
-- GREEN: `uv run pytest tests/contracts -q` → 259 passed; `uv run pytest -q` → 564 passed, 1 skipped (opt-in live provider test); `uv run ruff check src tests scripts` → passed; `uv run mypy` → no issues in 69 source files.
+- TDD RED: focused collection failed because the W17 replay module did not exist.
+- Focused pytest: 5 passed. Full pytest: 633 passed, 1 skipped.
+- Ruff, strict mypy, and `git diff --check` pass.
+
+Integration limits:
+- Development data can produce metrics but never `promotionEligible=true`; all cases must be sealed and every gate must pass.
+- W22 supplies the reviewed 200/100 dataset. W21 connects real engine artifacts and sealed release evidence.
+- Hard filter, rights, revocation, source-scope, and unsupported-claim violations block the safety gate on the first occurrence.
 
 Next step:
-- Open the W0 PR into `develop`; then begin W1, W3, W7, W8, W12, W15, and W16 only from this reviewed contract head.
-- Share the pinned schema/fixture files with Spring CI. No cross-repository import has been performed or claimed.
-
-Open risk or decision:
-- Spring must adopt the documented canonical SHA-256 serialization, fixed reason/question IDs, `questions-1` dictionary and fixture validation stages.
-- W0 has no HTTP endpoint, progress transport, public SSE serializer, retrieval executor, or publication authority.
-- Inclusion filter `null` means unrestricted public scope; `[]` means deny all. Approval must exactly echo the proposed narrowed filters.
-
-Ad hoc requests captured this session:
-- Implement W0/#4 as the foundation for later AI-RAG issues, with focused TDD, full checks, and a reviewable commit.
-- Continue the GitHub AI-RAG issue graph and parallelize dependency-safe work.
+- Parent reviews and opens the W17 stacked PR after W16 integration.
