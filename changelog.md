@@ -4,6 +4,7 @@ Lightweight human-readable summary of meaningful repository changes. Newest date
 
 ## 2026-11-05
 
+- Implemented the W14 privacy-safe progress sink and bounded Spring callback adapter with stable retry ordinals and failure isolation.
 - Implemented the W0 private AI↔Spring contract foundation with seven closed DTOs, schemas, canonical plan hashing, authority/revocation validation, and portable accepted/rejected fixtures.
 
 ## 2026-11-04
