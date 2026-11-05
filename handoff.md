@@ -5,14 +5,13 @@ Local integration base for W4/W5/W6 only:
 - Parent PRs are #37 and #33; this branch must not be pushed or merged directly.
 - Child work remains stacked until both dependency chains reach `develop`.
 
-W6 implementation for Issue #13:
-- Added ordered revocation ingestion with duplicate conflict detection, 60-second heartbeat
-  freshness, atomic active watermark advancement, and fail-closed restore reapplication.
-- Added revocation-first candidate blocking followed by bounded physical removal from every
-  active, rollback, and staging revision.
-- Added bounded corpus GC with active/two-rollback/hold/sync/read-lease protection, durable
-  stage checkpoints, row/byte audit evidence, and protection rechecks before every batch.
-- Verified 42 PostgreSQL 17 + pgvector storage/lifecycle tests, 612 repository tests
-  (42 skipped without the explicit disposable DSN), Ruff, strict mypy, and diff checks.
-- Work remains local on `feature/ai-rag-w6`; it depends on W2/W3 integration and is not a
-  standalone merge target until parent dependency PRs land.
+W4 / Issue #18 implementation:
+- Added the commit-pinned 384-dimensional multilingual E5 adapter with distinct passage/query
+  prefixes, strict profile/dimension/finiteness/norm checks, bounded batches, timeout handling,
+  process-local online/batch admission, and cold/warm latency plus RSS samples.
+- Added exact cosine pgvector search through the W3 repeatable-read `CorpusSnapshot`, with active
+  revision/profile/public/revocation/hard filters, deterministic chunk tie-breaking, top-20 cap,
+  and fail-closed result validation.
+- The actual model runtime remains an injected backend. Deployment must package the pinned artifact
+  and use shared admission if it runs multiple AI worker processes.
+- Verification: 18 focused tests; full suite, Ruff, strict mypy, and diff check recorded at commit.
