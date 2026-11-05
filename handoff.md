@@ -5,13 +5,11 @@ Local integration base for W4/W5/W6 only:
 - Parent PRs are #37 and #33; this branch must not be pushed or merged directly.
 - Child work remains stacked until both dependency chains reach `develop`.
 
-W4 / Issue #18 implementation:
-- Added the commit-pinned 384-dimensional multilingual E5 adapter with distinct passage/query
-  prefixes, strict profile/dimension/finiteness/norm checks, bounded batches, timeout handling,
-  process-local online/batch admission, and cold/warm latency plus RSS samples.
-- Added exact cosine pgvector search through the W3 repeatable-read `CorpusSnapshot`, with active
-  revision/profile/public/revocation/hard filters, deterministic chunk tie-breaking, top-20 cap,
-  and fail-closed result validation.
-- The actual model runtime remains an injected backend. Deployment must package the pinned artifact
-  and use shared admission if it runs multiple AI worker processes.
-- Verification: 18 focused tests; full suite, Ruff, strict mypy, and diff check recorded at commit.
+W5 / Issue #19 implementation:
+- Added deterministic Korean query normalization, BM25 scoring, exact/prefix name ordering,
+  active snapshot hard filters, and closed lexical `CandidateSet` output capped at 20.
+- Added a PostgreSQL snapshot repository that fails closed when `pg_search` is unavailable.
+- Focused lexical tests: 12 passed. Full suite: 624 passed, 32 skipped because optional
+  PostgreSQL/live-provider environments were not configured.
+- Operational `pg_search` image/version/license/index DDL and reviewed-alias persistence remain
+  explicit BE/environment gates; see `docs/ai-rag/lexical-search-implementation.md`.
