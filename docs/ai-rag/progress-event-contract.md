@@ -1,6 +1,9 @@
 # AI progress event contract proposal
 
-> W0 fixes the private DTO/schema and synthetic fixtures. This repository owns the planned FastAPI event producer. OnMaru BE owns the public Journey OpenAPI, SSE schema, run snapshot, and Spring receiver. No endpoint in this document has been implemented.
+> W0 fixes the private DTO/schema and synthetic fixtures. W14 implements the
+> FastAPI-side `ProgressSink` and bounded Spring callback adapter. OnMaru BE
+> owns the public Journey OpenAPI, SSE schema, run snapshot, and Spring receiver;
+> those endpoints are not implemented in this repository.
 
 ## Boundaries
 
@@ -18,8 +21,10 @@ The implemented [`ProgressEvent` model](../../src/onmaru_ai/contracts/models.py)
 [closed JSON Schema](../../src/onmaru_ai/contracts/schemas/ProgressEvent.schema.json),
 and [shared accepted/rejected fixtures](../../tests/contracts/fixtures/) fix the private
 payload. [W0 contract notes](../../src/onmaru_ai/contracts/README.md) define hash
-serialization and the separate contextual validation rules. The future producer
-reports a stage only after the pipeline actually enters it. Body:
+serialization and the separate contextual validation rules. The
+[`ProgressSink` adapter](../../src/onmaru_ai/progress/__init__.py) reports a stage
+only when its caller explicitly enters it. W13 orchestration will own those calls.
+Body:
 
 ```json
 {
@@ -34,6 +39,13 @@ reports a stage only after the pipeline actually enters it. Body:
 `ordinal` starts at 1 and increases within a run. `stage` is one of `PREPARING_INPUT`, `RETRIEVING`, `SELECTING_EVIDENCE`, `GENERATING`, `CHECKING_OUTPUT`. A route emits only stages it enters. The payload contains no raw question, member ID, document title, source body, prompt, draft answer, or model reasoning.
 
 Spring supplies a short-lived callback bearer token in the execute request, scoped to `journey.progress.write`, this run, and the Spring receiver audience. Spring validates token, active run, and approved plan hash. Repeating the same ordinal and stage is a no-op; an older ordinal cannot regress state; a conflicting same-ordinal event or wrong plan is rejected. Events after terminal state are ignored. Callback delivery failure is observable but does not fail AI execution or start another model run.
+
+The AI adapter validates `runId` and `planHash` before delivery, serializes
+concurrent stage entry, and retries only transport failures, `429`, and `5xx`.
+Each retry reuses the exact serialized event and ordinal. Attempts, per-attempt
+timeout, and retry delay have hard upper bounds. A delivery rejection or exhausted
+retry returns a local outcome instead of raising into execution. The bearer token
+is sent only in the authorization header and is never part of `ProgressEvent`.
 
 ## Public SSE proposal for BE
 
