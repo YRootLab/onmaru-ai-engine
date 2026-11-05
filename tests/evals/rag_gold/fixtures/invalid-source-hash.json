@@ -1,0 +1,105 @@
+{
+  "schemaVersion": "rag-gold-dataset.v1",
+  "datasetVersion": "synthetic-1",
+  "cases": [
+    {
+      "schemaVersion": "rag-gold-case.v1",
+      "datasetVersion": "synthetic-1",
+      "queryId": "synthetic-q1",
+      "split": "development",
+      "corpusRevision": "synthetic-corpus-1",
+      "corpusHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "questionDictionaryVersion": "questions-1",
+      "safeQuery": "한적한 한옥을 알려 줘",
+      "threadContextFixture": null,
+      "sources": [
+        {
+          "placeId": "place-1",
+          "sourceId": "source-1",
+          "sourceRevision": "revision-1",
+          "sourceHash": "not-a-hash",
+          "sourceLength": 20
+        }
+      ],
+      "goldRoute": "HYBRID",
+      "goldQuestionFrame": {
+        "operation": "RECOMMEND",
+        "targetPlaceIds": [],
+        "subjectConceptCodes": [
+          "QUIET"
+        ]
+      },
+      "preserveSpans": [
+        {
+          "startOffset": 0,
+          "endOffset": 3,
+          "text": "한적한"
+        }
+      ],
+      "semanticQuery": {
+        "expected": "한적한 한옥",
+        "forbidden": [
+          "혼잡한 한옥"
+        ]
+      },
+      "allowedPlaceIds": [
+        "place-1"
+      ],
+      "forbiddenPlaceIds": [
+        "place-9"
+      ],
+      "placeGrades": [
+        {
+          "placeId": "place-1",
+          "grade": 2
+        }
+      ],
+      "goldEvidence": [
+        {
+          "chunkId": "chunk-1",
+          "placeId": "place-1",
+          "sourceId": "source-1",
+          "sourceRevision": "revision-1",
+          "startOffset": 0,
+          "endOffset": 10,
+          "grade": 2
+        }
+      ],
+      "answerable": true,
+      "minimumClaims": [
+        {
+          "claimId": "claim-1",
+          "text": "공개 원문이 한옥의 특성을 설명한다.",
+          "evidenceIndexes": [
+            0
+          ]
+        }
+      ],
+      "tags": [
+        "SYNTHETIC"
+      ],
+      "goldHash": "sha256:f4e268761671390057fe35b41cadbe8b9321c92c8d8fcbfa81e92341855b5aea",
+      "reviews": [
+        {
+          "reviewerId": "reviewer-1",
+          "decision": "ACCEPT",
+          "goldHash": "sha256:f4e268761671390057fe35b41cadbe8b9321c92c8d8fcbfa81e92341855b5aea",
+          "rationale": "Synthetic example review, no human labeling claimed."
+        },
+        {
+          "reviewerId": "reviewer-2",
+          "decision": "ACCEPT",
+          "goldHash": "sha256:f4e268761671390057fe35b41cadbe8b9321c92c8d8fcbfa81e92341855b5aea",
+          "rationale": "Synthetic example review, no human labeling claimed."
+        }
+      ],
+      "adjudication": {
+        "status": "AGREED",
+        "adjudicatorId": null,
+        "decision": "ACCEPT",
+        "goldHash": "sha256:f4e268761671390057fe35b41cadbe8b9321c92c8d8fcbfa81e92341855b5aea",
+        "rationale": "Synthetic agreement example."
+      }
+    }
+  ]
+}
