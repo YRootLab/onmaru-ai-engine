@@ -1,28 +1,23 @@
 # Handoff
 
 Current work:
-- Summary: W1 public projection manifest intake and source eligibility validation implemented from the reviewed W0 head; awaiting parent review and integration.
-- Issue/PR: [W1 Issue #5](https://github.com/YRootLab/onmaru-ai-engine/issues/5), under AI-RAG Root Issue #3; dependency [W0 #4](https://github.com/YRootLab/onmaru-ai-engine/issues/4).
-- Branch: `feature/ai-rag-w1`, isolated worktree `.worktrees/feature-ai-rag-w1`.
+- Implement W3 AI-owned PostgreSQL corpus storage and atomic revision activation.
+- Issue: https://github.com/YRootLab/onmaru-ai-engine/issues/6 (depends on reviewed W0/#4).
+- Branch: `feature/ai-rag-w3`; isolated worktree `.worktrees/feature-ai-rag-w3`.
 
-Touched files:
-- `src/onmaru_ai/corpus/source_sync.py`: closed immutable manifest/tombstone models, idempotent preparation-only intake, hash/revision/count/duplicate/order checks, contiguous tombstone watermark handling.
-- `src/onmaru_ai/corpus/source_policy.py`: public/license/eligibility/revocation and source-specific preparation gates.
-- `tests/corpus/source_sync/`: fixed signed public fixture, 33 focused cases, interface and canonicalization notes.
+Ad hoc request:
+- Use strict TDD, local PostgreSQL integration where available, full pytest/Ruff/mypy and self-review; commit with #6.
+
+Scope:
+- AI schema migrations, immutable revision/document/chunk/vector metadata, CAS activation, two rollback candidates, consistent corpus/config/revocation read snapshot.
+- Spring schema and production DB image are outside this change. Existing memory baseline remains separate.
 
 Verification:
-- TDD RED: 33 focused failures because `source_sync` was absent; corrected a local fixture setup command before recording the final RED run.
-- GREEN: `uv run pytest tests/corpus/source_sync -q` → 33 passed; `uv run pytest -q` → 597 passed, 1 skipped (opt-in live provider test).
-- `uv run ruff check src tests scripts` passed; `uv run mypy` → no issues in 72 source files; `git diff --check` passed.
+- TDD RED reproduced 16 storage, activation, rollback, constraint, and snapshot failures before implementation.
+- Disposable PostgreSQL 17 + pgvector integration: 32 passed.
+- Full suite with the integration database: 596 passed, 1 skipped.
+- Ruff, strict mypy, and `git diff --check` pass.
 
 Next step:
-- Parent review W1 against Issue #5 acceptance criteria; open an Issue-linked PR into `develop` following the W0 dependency integration strategy.
-- W2 can consume `prepared_documents`; W6 must implement durable revocation state, runtime blocking/freshness, rollback and restore behavior.
-
-Open risk or decision:
-- Intake is serial and process-local; a new receiver requires history from sequence 1. Durable watermark/checkpoint state is not claimed.
-- The synthetic private manifest shape is documented with its fixture; Spring generation and cross-repository contract adoption remain separate.
-- Existing REST/sync activation is not wired to this preparation boundary and is unchanged. There is no DB access, content fetch, normalization, chunking or activation here.
-
-Ad hoc requests captured this session:
-- Implement W1/#5 in its isolated branch with strict TDD, focused/full checks, self-review and a reviewable commit; keep later W2/W6 features outside this change.
+- Parent reviews the W3 commit and prepares its stacked PR after W0 integration.
+- Production must provision separate migration, sync, and runtime roles before wiring this store.
