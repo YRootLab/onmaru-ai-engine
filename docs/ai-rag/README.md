@@ -4,6 +4,8 @@
 
 이 README는 `onmaru.site` 홈의 여정 검색을 **이어지는 대화형 RAG 경험**으로 확장하는 문서들의 종합 안내이자 단일 진입점이다. 문서 자체는 **일반 Markdown 파일**이며 심볼릭 링크가 아니다. `docs/README.md`와 `docs/ai/README.md`가 이 파일을 링크한다. 입력 자료인 `docs/specs`의 스냅샷 링크와 달리, 이 설계의 원본은 이 폴더에 직접 둔다.
 
+현재 구현 작업의 범위와 병렬 진행 순서는 [AI-RAG 구현 이슈 실행 계획](issue-planning/README.md)과 [Root Issue #3](https://github.com/YRootLab/onmaru-ai-engine/issues/3)에서 추적한다. 설계와 이슈 분해는 완료됐으며, 목표 파이프라인의 구현은 각 하위 이슈에서 진행한다.
+
 AI 엔진 저장소는 **`onmaru-ai-engine`**이다. `Engine`은 사용자 요청에 대한 FastAPI 검색·근거 검증·생성을 뜻한다. 그 저장소 안의 **`quality_harness`**는 비동기 품질 관측·실패 분류·재현·실험·승인 자료를 만드는 논리 모듈 이름이다. 별도 상시 서비스나 모든 단계의 LLM agent를 뜻하지 않는다. 이 사본은 2026-10-22 백엔드 작업공간에서 복사한 migration draft다. 백엔드의 미커밋 설계가 reviewable commit으로 고정되고 교차 저장소 링크를 정리하기 전까지는 canonical/public 문서가 아니다. 검토 가능한 이전 절차는 [저장소 분리·관측 운영 결정](repository-split-and-monitoring.md)을 따른다.
 
 이전 완료 후에도 이 저장소에는 Spring이 구현해야 하는 연동 항목을 남긴다. [Spring 통합 설계](https://github.com/YRootLab/OnMaru-backend/blob/develop/docs/ai-rag-spring/README.md), [공유 API·JSON Schema 계약](https://github.com/YRootLab/OnMaru-backend/blob/develop/docs/contracts/README.md), [DB 소유권과 migration 계획](https://github.com/YRootLab/OnMaru-backend/blob/develop/docs/database/schema.md), Spring 구현의 테스트 및 배포 인수 기준이 해당한다. 이전 대상 AI 문서를 여기서 계속 복제·수정하지 않고, 이 진입 문서는 AI 저장소의 고정 링크로 전환한다.
@@ -105,6 +107,7 @@ flowchart LR
 16. [저장소 분리·관측 운영 결정](repository-split-and-monitoring.md): 문서 정본 소유권, 코드·배포 이전 순서, Grafana Cloud 전송 경로와 검증 게이트.
 17. [관측 스키마와 하네스 입력](telemetry-and-harness-schema.md): 단계별 실행 결과·Trace ID·영속 run의 연결, 실패/복귀 코드와 품질 하네스의 자동 판정 경계.
 18. [Spring 측 AI-RAG 통합](https://github.com/YRootLab/OnMaru-backend/blob/develop/docs/ai-rag-spring/README.md): Online approved query tool과 quality harness용 read-only tools, 공유 schema, 보안·운영 계약. [ADR-0018](https://github.com/YRootLab/OnMaru-backend/blob/develop/docs/decisions/0018-quality-harness-spring-mcp-tools.md) 및 [ADR-0019](https://github.com/YRootLab/OnMaru-backend/blob/develop/docs/decisions/0019-journey-query-mcp-tools.md)은 구현 전 제안이다.
+19. [Spring 연동 및 SSE 스트리밍 아키텍처](spring-backend-integration-and-sse-architecture.md): Spring Backend(v0.3.54) private REST 규격, 런타임 단계별 진행률 콜백, 브라우저 SSE 중계 흐름 및 2GB 공존 원칙.
 
 ## 문서 경계
 

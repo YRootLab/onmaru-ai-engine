@@ -1,0 +1,19 @@
+{
+  "places": [
+    {
+      "placeId": "place-1",
+      "reasonClaims": [
+        {
+          "claimId": "claim-1",
+          "factId": "fact-1",
+          "text": "이 한옥은 1920년에 건립되었습니다.",
+          "kind": "FACT",
+          "evidenceIds": [
+            "evidence-outside"
+          ]
+        }
+      ]
+    }
+  ],
+  "summaryClaims": []
+}

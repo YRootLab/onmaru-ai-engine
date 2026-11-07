@@ -1,0 +1,71 @@
+{
+  "name": "rejected-expression-bound-positiveConceptCodes",
+  "model": "PlanProposal",
+  "payload": {
+    "schemaVersion": "ai-plan-proposal.v1",
+    "planVersion": "ai-query-plan.v1",
+    "runId": "45e6a7f5-31bc-469d-9e30-6f510a1dc497",
+    "route": "HYBRID",
+    "retrievalMode": "HYBRID",
+    "reasonCodes": [
+      "COMPOSITE_QUERY"
+    ],
+    "questionFrame": {
+      "operation": "RECOMMEND",
+      "targetPlaceIds": [],
+      "subjectConceptCodes": [
+        "QUIET"
+      ]
+    },
+    "retrievalExpression": {
+      "positiveConceptCodes": [
+        "QUIET",
+        "FAMILY_SUITABILITY",
+        "WALKABLE",
+        "HANOK",
+        "HISTORY"
+      ],
+      "negativeConceptCodes": [],
+      "publicEntityIds": []
+    },
+    "requestedCanonicalFields": [],
+    "proposedFilters": {
+      "filterHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "publicOnly": true,
+      "placeIds": [
+        "place-1",
+        "place-2"
+      ],
+      "regionCodes": [
+        "SEOUL"
+      ],
+      "categoryCodes": [
+        "HANOK"
+      ],
+      "pinnedPlaceIds": [
+        "place-1"
+      ],
+      "excludedPlaceIds": [
+        "place-9"
+      ]
+    },
+    "semanticQuery": "한적한 한옥",
+    "versions": {
+      "corpusRevision": "corpus-1",
+      "configHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "questionDictionaryVersion": "questions-1",
+      "sourceRevocationSequence": 7
+    },
+    "limits": {
+      "bm25K": 20,
+      "vectorK": 20,
+      "rerankK": 30,
+      "evidenceK": 12,
+      "maxPlaces": 5
+    },
+    "clarification": null,
+    "planHash": "sha256:5222ec8bfb1e2d9589b7c42ee4df32b46d71529809e2238c0cdf7aa080f2b361"
+  },
+  "expected": "INVALID_PAYLOAD",
+  "schemaValid": false
+}

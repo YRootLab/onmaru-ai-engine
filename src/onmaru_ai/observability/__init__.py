@@ -6,6 +6,16 @@ from onmaru_ai.observability.correlation import (
     create_telemetry_sink,
     install_observability,
 )
+from onmaru_ai.observability.rag import (
+    InMemoryMetricSink,
+    InMemorySpanSink,
+    MetricPoint,
+    RagTelemetry,
+    SpanRecord,
+    Stage,
+    StageOutcome,
+    TelemetrySpanSink,
+)
 
 __all__ = [
     "InMemoryTelemetrySink",
@@ -14,4 +24,12 @@ __all__ = [
     "TelemetrySink",
     "create_telemetry_sink",
     "install_observability",
+    "InMemoryMetricSink",
+    "InMemorySpanSink",
+    "MetricPoint",
+    "RagTelemetry",
+    "SpanRecord",
+    "Stage",
+    "StageOutcome",
+    "TelemetrySpanSink",
 ]

@@ -1,0 +1,94 @@
+{
+  "operation": "EXPLAIN",
+  "approvedPlan": {
+    "schemaVersion": "ai-approved-plan.v1",
+    "planVersion": "ai-query-plan.v1",
+    "runId": "45e6a7f5-31bc-469d-9e30-6f510a1dc497",
+    "approvedPlanHash": "sha256:5b378f462da239732826ee9d9f9e0a535fe95aa1d1ffb02cdc0a5a4fa935baba",
+    "approvedRoute": "HYBRID",
+    "approvedRetrievalMode": "HYBRID",
+    "approvedFilters": {
+      "filterHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "publicOnly": true,
+      "placeIds": [
+        "place-1",
+        "place-2"
+      ],
+      "regionCodes": [
+        "SEOUL"
+      ],
+      "categoryCodes": [
+        "HANOK"
+      ],
+      "pinnedPlaceIds": [
+        "place-1"
+      ],
+      "excludedPlaceIds": [
+        "place-9"
+      ]
+    },
+    "approvedCanonicalFields": [],
+    "semanticQuery": "한적한 한옥",
+    "versions": {
+      "corpusRevision": "corpus-1",
+      "configHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "questionDictionaryVersion": "questions-1",
+      "sourceRevocationSequence": 7
+    },
+    "queryGrantId": null
+  },
+  "evidenceSet": {
+    "schemaVersion": "ai-evidence-set.v1",
+    "runId": "45e6a7f5-31bc-469d-9e30-6f510a1dc497",
+    "planHash": "sha256:5b378f462da239732826ee9d9f9e0a535fe95aa1d1ffb02cdc0a5a4fa935baba",
+    "versions": {
+      "corpusRevision": "corpus-1",
+      "configHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "questionDictionaryVersion": "questions-1",
+      "sourceRevocationSequence": 7
+    },
+    "allowedPlaceIds": [
+      "place-1"
+    ],
+    "evidence": [
+      {
+        "evidenceId": "evidence-1",
+        "chunkId": "chunk-1",
+        "placeId": "place-1",
+        "sourceId": "source-1",
+        "sourceRevision": "source-r1",
+        "startOffset": 0,
+        "endOffset": 21
+      }
+    ]
+  },
+  "currentVersions": {
+    "corpusRevision": "corpus-1",
+    "configHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "questionDictionaryVersion": "questions-1",
+    "sourceRevocationSequence": 7
+  },
+  "revokedSources": [],
+  "documents": [
+    {
+      "sourceId": "source-1",
+      "sourceRevision": "source-r1",
+      "corpusRevision": "corpus-1",
+      "text": "이 한옥은 1920년에 건립되었습니다."
+    }
+  ],
+  "verifiedFacts": [
+    {
+      "factId": "fact-1",
+      "placeId": "place-1",
+      "text": "이 한옥은 1920년에 건립되었습니다.",
+      "kind": "FACT",
+      "evidenceIds": [
+        "evidence-1"
+      ],
+      "supportType": "HISTORICAL_FACT",
+      "timeScope": "1920",
+      "relation": null
+    }
+  ]
+}

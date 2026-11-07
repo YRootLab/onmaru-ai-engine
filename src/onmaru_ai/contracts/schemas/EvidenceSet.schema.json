@@ -1,0 +1,153 @@
+{
+  "$defs": {
+    "Evidence": {
+      "additionalProperties": false,
+      "properties": {
+        "sourceId": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+          "title": "Sourceid",
+          "type": "string"
+        },
+        "sourceRevision": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+          "title": "Sourcerevision",
+          "type": "string"
+        },
+        "evidenceId": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+          "title": "Evidenceid",
+          "type": "string"
+        },
+        "chunkId": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+          "title": "Chunkid",
+          "type": "string"
+        },
+        "placeId": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+          "title": "Placeid",
+          "type": "string"
+        },
+        "startOffset": {
+          "minimum": 0,
+          "title": "Startoffset",
+          "type": "integer"
+        },
+        "endOffset": {
+          "minimum": 1,
+          "title": "Endoffset",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "sourceId",
+        "sourceRevision",
+        "evidenceId",
+        "chunkId",
+        "placeId",
+        "startOffset",
+        "endOffset"
+      ],
+      "title": "Evidence",
+      "type": "object"
+    },
+    "Versions": {
+      "additionalProperties": false,
+      "properties": {
+        "corpusRevision": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+          "title": "Corpusrevision",
+          "type": "string"
+        },
+        "configHash": {
+          "pattern": "^sha256:[a-f0-9]{64}$",
+          "title": "Confighash",
+          "type": "string"
+        },
+        "questionDictionaryVersion": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+          "title": "Questiondictionaryversion",
+          "type": "string"
+        },
+        "sourceRevocationSequence": {
+          "minimum": 0,
+          "title": "Sourcerevocationsequence",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "corpusRevision",
+        "configHash",
+        "questionDictionaryVersion",
+        "sourceRevocationSequence"
+      ],
+      "title": "Versions",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "runId": {
+      "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$",
+      "title": "Runid",
+      "type": "string"
+    },
+    "planHash": {
+      "pattern": "^sha256:[a-f0-9]{64}$",
+      "title": "Planhash",
+      "type": "string"
+    },
+    "versions": {
+      "$ref": "#/$defs/Versions"
+    },
+    "schemaVersion": {
+      "const": "ai-evidence-set.v1",
+      "title": "Schemaversion",
+      "type": "string"
+    },
+    "allowedPlaceIds": {
+      "items": {
+        "maxLength": 128,
+        "minLength": 1,
+        "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+        "type": "string"
+      },
+      "maxItems": 5,
+      "title": "Allowedplaceids",
+      "type": "array",
+      "uniqueItems": true
+    },
+    "evidence": {
+      "items": {
+        "$ref": "#/$defs/Evidence"
+      },
+      "maxItems": 12,
+      "title": "Evidence",
+      "type": "array"
+    }
+  },
+  "required": [
+    "runId",
+    "planHash",
+    "versions",
+    "schemaVersion",
+    "allowedPlaceIds",
+    "evidence"
+  ],
+  "title": "EvidenceSet",
+  "type": "object"
+}
