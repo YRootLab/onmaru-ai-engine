@@ -3,6 +3,7 @@ from collections.abc import Mapping
 from typing import Any
 
 from fastapi import FastAPI
+from fastapi.responses import JSONResponse
 
 from onmaru_ai.api.plan_execute import PlanExecuteService, install_plan_execute
 from onmaru_ai.config.secrets import (
@@ -106,8 +107,18 @@ def create_app(
         return {"status": "ok"}
 
     @app.get("/ready")
-    async def readiness() -> dict[str, str]:
-        return {"status": "ready"}
+    async def readiness() -> JSONResponse:
+        # Check required secrets loadable
+        try:
+            for secret_name in ("internal-ai.service-token",):
+                provider.get(secret_name)
+        except Exception:
+            return JSONResponse(
+                status_code=503,
+                content={"status": "not_ready", "reason": "missing_secrets"},
+            )
+
+        return JSONResponse(status_code=200, content={"status": "ready"})
 
     return app
 
