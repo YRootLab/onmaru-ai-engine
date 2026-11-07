@@ -107,6 +107,7 @@ flowchart LR
 16. [저장소 분리·관측 운영 결정](repository-split-and-monitoring.md): 문서 정본 소유권, 코드·배포 이전 순서, Grafana Cloud 전송 경로와 검증 게이트.
 17. [관측 스키마와 하네스 입력](telemetry-and-harness-schema.md): 단계별 실행 결과·Trace ID·영속 run의 연결, 실패/복귀 코드와 품질 하네스의 자동 판정 경계.
 18. [Spring 측 AI-RAG 통합](https://github.com/YRootLab/OnMaru-backend/blob/develop/docs/ai-rag-spring/README.md): Online approved query tool과 quality harness용 read-only tools, 공유 schema, 보안·운영 계약. [ADR-0018](https://github.com/YRootLab/OnMaru-backend/blob/develop/docs/decisions/0018-quality-harness-spring-mcp-tools.md) 및 [ADR-0019](https://github.com/YRootLab/OnMaru-backend/blob/develop/docs/decisions/0019-journey-query-mcp-tools.md)은 구현 전 제안이다.
+19. [Spring 연동 및 SSE 스트리밍 아키텍처](spring-backend-integration-and-sse-architecture.md): Spring Backend(v0.3.54) private REST 규격, 런타임 단계별 진행률 콜백, 브라우저 SSE 중계 흐름 및 2GB 공존 원칙.
 
 ## 문서 경계
 
