@@ -110,14 +110,15 @@ class CallbackProgressSink(_OrderedProgressSink):
     ) -> None:
         super().__init__(run_id=run_id, plan_hash=plan_hash)
         base = httpx.URL(receiver_base_url)
+        # Support both HTTP (internal Docker network) and HTTPS
         if (
-            base.scheme != "https"
+            base.scheme not in ("http", "https")
             or not base.host
             or base.userinfo
             or base.query
             or base.fragment
         ):
-            raise ValueError("receiver_base_url must be a plain HTTPS service URL")
+            raise ValueError("receiver_base_url must be a plain HTTP or HTTPS service URL")
         if not bearer_token or "\n" in bearer_token or "\r" in bearer_token:
             raise ValueError("bearer_token must be a nonempty header value")
         if not 1 <= max_attempts <= 3:
@@ -127,8 +128,9 @@ class CallbackProgressSink(_OrderedProgressSink):
         if not 0 <= retry_delay_seconds <= 0.5:
             raise ValueError("retry_delay_seconds must be in [0, 0.5]")
 
+        # Path aligns with Spring Backend v0.3.54: /internal/ai/runs/{runId}/progress
         self._url = (
-            f"{str(base).rstrip('/')}/internal/v1/ai/runs/{run_id}/progress"
+            f"{str(base).rstrip('/')}/internal/ai/runs/{run_id}/progress"
         )
         self._headers = {
             "Authorization": f"Bearer {bearer_token}",

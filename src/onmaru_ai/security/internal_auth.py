@@ -102,6 +102,11 @@ def install_internal_auth(
         return ()
 
     @app.post(
+        "/internal/ai/journey/propose",
+        status_code=status.HTTP_202_ACCEPTED,
+        response_model=None,
+    )
+    @app.post(
         "/internal/v1/journey/proposals",
         status_code=status.HTTP_202_ACCEPTED,
         response_model=None,

@@ -71,7 +71,7 @@ def test_callback_retries_the_exact_same_event_and_bears_token_only_in_header() 
     }
     assert requests[0].headers["authorization"] == "Bearer short-lived-secret"
     assert b"short-lived-secret" not in requests[0].content
-    assert requests[0].url.path == f"/internal/v1/ai/runs/{RUN_ID}/progress"
+    assert requests[0].url.path == f"/internal/ai/runs/{RUN_ID}/progress"
 
 
 def test_callback_failure_is_bounded_and_does_not_raise() -> None:

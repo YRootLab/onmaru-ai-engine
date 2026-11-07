@@ -86,7 +86,38 @@ def token(
     )
 
 
+def test_journey_propose_endpoint_alias_accepted() -> None:
+    app = create_app(secret_provider=FakeSecretProvider())
+    valid_token = token()
+
+    async def scenario() -> Response:
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            return await client.post(
+                "/internal/ai/journey/propose",
+                headers={
+                    "Authorization": f"Bearer {valid_token}",
+                    "X-Request-Id": "req-ai-001",
+                    "X-Run-Id": "run-ai-001",
+                    "traceparent": "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01",
+                },
+                json={
+                    "schemaVersion": "internal.ai.v1",
+                    "requestId": "req-ai-001",
+                    "runId": "run-ai-001",
+                    "candidateCount": 2,
+                },
+            )
+
+    response = asyncio.run(scenario())
+    assert response.status_code == 202
+    assert response.json()["outcome"] == "PROPOSAL"
+    assert response.json()["runId"] == "run-ai-001"
+
+
 def failing_eval_document() -> dict[str, object]:
+
+
     return {
         "schemaVersion": "1.1",
         "versions": {
