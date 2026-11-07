@@ -2,7 +2,10 @@
   "additionalProperties": false,
   "properties": {
     "schemaVersion": {
-      "const": "ai-progress.v1",
+      "enum": [
+        "internal.ai.progress.v1",
+        "ai-progress.v1"
+      ],
       "title": "Schemaversion",
       "type": "string"
     },

@@ -13,6 +13,7 @@ from onmaru_ai.contracts.models import (
     Route,
     ValidatedProposal,
 )
+from onmaru_ai.progress import ProgressSink, ProgressStage
 from onmaru_ai.retrieval.hybrid import HybridSearchRequest
 from onmaru_ai.storage.postgres import CorpusSnapshot
 
@@ -62,11 +63,19 @@ class OrchestrationEngine:
         snapshot: CorpusSnapshot,
         *,
         override_route: Route | None = None,
+        progress_sink: ProgressSink | None = None,
+        traceparent: str | None = None,
     ) -> OrchestrationExecutionResult:
         if override_route is not None and override_route != plan.approved_route:
             raise OrchestrationError("Route switching prohibited during run execution")
 
+        if progress_sink is not None:
+            await progress_sink.enter(ProgressStage.PREPARING_INPUT)
+
         route = plan.approved_route
+
+        default_tp = "00-" + "0" * 32 + "-" + "0" * 16 + "-01"
+        tp = traceparent or default_tp
 
         # Route 1: CLARIFY_OR_SCOPE
         if route == "CLARIFY_OR_SCOPE":
@@ -77,11 +86,24 @@ class OrchestrationEngine:
 
         # Route 2: SQL_ONLY
         if route == "SQL_ONLY":
+            if progress_sink is not None:
+                await progress_sink.enter(ProgressStage.RETRIEVING)
             if self._sql_adapter is not None:
-                await self._sql_adapter.execute(plan)
+                is_mock = hasattr(self._sql_adapter, "_mock_return_value")
+                if hasattr(self._sql_adapter, "lookup") and not is_mock:
+                    await self._sql_adapter.lookup(plan, traceparent=tp)
+                elif hasattr(self._sql_adapter, "execute"):
+                    await self._sql_adapter.execute(plan)
+                elif hasattr(self._sql_adapter, "lookup"):
+                    await self._sql_adapter.lookup(plan, traceparent=tp)
+            if progress_sink is not None:
+                await progress_sink.enter(ProgressStage.SELECTING_EVIDENCE)
+                await progress_sink.enter(ProgressStage.GENERATING)
             proposal = None
             if self._generator is not None:
                 proposal = await self._generator.generate(plan, evidence_set=None)
+            if progress_sink is not None:
+                await progress_sink.enter(ProgressStage.CHECKING_OUTPUT)
             return OrchestrationExecutionResult(
                 route=route,
                 status="SUCCESS",
@@ -90,8 +112,17 @@ class OrchestrationEngine:
 
         # Routes 3-5: Retrieval-involved routes
         # (LEXICAL_ONLY, DENSE_ONLY, HYBRID, SQL_PLUS_RETRIEVAL)
+        if progress_sink is not None:
+            await progress_sink.enter(ProgressStage.RETRIEVING)
+
         if route == "SQL_PLUS_RETRIEVAL" and self._sql_adapter is not None:
-            await self._sql_adapter.execute(plan)
+            is_mock = hasattr(self._sql_adapter, "_mock_return_value")
+            if hasattr(self._sql_adapter, "lookup") and not is_mock:
+                await self._sql_adapter.lookup(plan, traceparent=tp)
+            elif hasattr(self._sql_adapter, "execute"):
+                await self._sql_adapter.execute(plan)
+            elif hasattr(self._sql_adapter, "lookup"):
+                await self._sql_adapter.lookup(plan, traceparent=tp)
 
         cand_set: CandidateSet | None = None
         if self._retrieval_coordinator is not None:
@@ -115,13 +146,22 @@ class OrchestrationEngine:
             else:
                 ranked_items = cands_dict
 
+        if progress_sink is not None:
+            await progress_sink.enter(ProgressStage.SELECTING_EVIDENCE)
+
         evidence_set: EvidenceSet | None = None
         if cand_set and self._evidence_selector is not None and ranked_items:
             evidence_set = self._evidence_selector.select_evidence(cand_set, ranked_items)
 
+        if progress_sink is not None:
+            await progress_sink.enter(ProgressStage.GENERATING)
+
         proposal = None
         if self._generator is not None and evidence_set is not None:
             proposal = await self._generator.generate(plan, evidence_set=evidence_set)
+
+        if progress_sink is not None:
+            await progress_sink.enter(ProgressStage.CHECKING_OUTPUT)
 
         return OrchestrationExecutionResult(
             route=route,

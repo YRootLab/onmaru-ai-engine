@@ -420,7 +420,7 @@ class ValidatedProposal(RunArtifact):
 
 
 class ProgressEvent(ClosedModel):
-    schema_version: Literal["ai-progress.v1"]
+    schema_version: Literal["internal.ai.progress.v1", "ai-progress.v1"]
     run_id: RunId
     plan_hash: Digest
     ordinal: PositiveInt

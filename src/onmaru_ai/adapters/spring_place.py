@@ -6,7 +6,7 @@ import asyncio
 import re
 from collections.abc import Callable
 from enum import StrEnum
-from typing import Annotated, Literal, Self
+from typing import Annotated, Any, Literal, Self
 from urllib.parse import urlsplit
 
 import httpx
@@ -15,7 +15,8 @@ from pydantic import Field, ValidationError, model_validator
 from onmaru_ai.contracts import ApprovedQueryPlan
 from onmaru_ai.contracts.models import CanonicalField, ClosedModel, Identifier
 
-LOOKUP_PATH = "/internal/v1/ai/place-query/lookup"
+LOOKUP_PATH = "/internal/mcp/journey/tools/journey_execute_approved_lookup"
+LEGACY_LOOKUP_PATH = "/internal/v1/ai/place-query/lookup"
 MAX_RESPONSE_BYTES = 24 * 1024
 _TRACEPARENT = re.compile(r"00-([a-f0-9]{32})-([a-f0-9]{16})-([a-f0-9]{2})")
 _SQL_ROUTES = frozenset(("SQL_ONLY", "SQL_PLUS_RETRIEVAL"))
@@ -32,6 +33,9 @@ class PlaceLookupDisposition(StrEnum):
 
 class PlaceLookupRequest(ClosedModel):
     query_grant_id: Identifier
+    region_code: Identifier | None = None
+    category: Identifier | None = None
+    limit: Annotated[int, Field(ge=1, le=5)] | None = 5
 
 
 class CanonicalPlaceProjection(ClosedModel):
@@ -40,23 +44,38 @@ class CanonicalPlaceProjection(ClosedModel):
     region_code: Identifier | None = None
     category_code: Identifier | None = None
     public_status: Literal["PUBLIC"] | None = None
+    name: Annotated[str, Field(min_length=1, max_length=500)] | None = None
+    category: Identifier | None = None
+    address: Annotated[str, Field(min_length=1, max_length=500)] | None = None
+    latitude: float | None = None
+    longitude: float | None = None
 
     def populated_fields(self) -> frozenset[CanonicalField]:
         values: dict[CanonicalField, object | None] = {
-            "PUBLIC_ADDRESS": self.public_address,
+            "PUBLIC_ADDRESS": self.public_address or self.address,
             "REGION_CODE": self.region_code,
-            "CATEGORY_CODE": self.category_code,
+            "CATEGORY_CODE": self.category_code or self.category,
             "PUBLIC_STATUS": self.public_status,
         }
         return frozenset(field for field, value in values.items() if value is not None)
 
 
 class PlaceLookupResponse(ClosedModel):
-    schema_version: Literal["journey.lookup.result.v1"]
-    status: Literal["OK", "NO_MATCH"]
-    plan_hash: str = Field(pattern=r"^sha256:[a-f0-9]{64}$")
-    source_revocation_sequence: Annotated[int, Field(ge=0, strict=True)]
+    schema_version: Literal["journey.lookup.result.v1", "journey.query.tools.v1"] = Field(
+        default="journey.lookup.result.v1",
+        alias="schemaVersion",
+    )
+    status: Literal["OK", "NO_MATCH"] = "OK"
+    plan_hash: str | None = Field(default=None, pattern=r"^sha256:[a-f0-9]{64}$")
+    source_revocation_sequence: Annotated[int, Field(ge=0, strict=True)] = 0
     places: Annotated[tuple[CanonicalPlaceProjection, ...], Field(max_length=5)]
+
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_version(cls, data: Any) -> Any:
+        if isinstance(data, dict) and "schemaVersion" not in data and "catalogVersion" in data:
+            data["schemaVersion"] = data["catalogVersion"]
+        return data
 
     @model_validator(mode="after")
     def unique_places(self) -> Self:
@@ -112,13 +131,13 @@ class SpringPlaceQueryAdapter:
     ) -> None:
         parsed = urlsplit(base_url)
         if (
-            parsed.scheme != "https"
+            parsed.scheme not in ("http", "https")
             or not parsed.netloc
             or parsed.path not in ("", "/")
             or parsed.query
             or parsed.fragment
         ):
-            raise ValueError("base_url must be an HTTPS origin")
+            raise ValueError("base_url must be an HTTP or HTTPS origin")
         if not 0 < timeout_seconds <= 5:
             raise ValueError("timeout_seconds must be in (0, 5]")
         self._url = base_url.rstrip("/") + LOOKUP_PATH
@@ -151,7 +170,22 @@ class SpringPlaceQueryAdapter:
             return self._failure(plan, "SPRING_UNAVAILABLE")
         if not token or "\n" in token or "\r" in token:
             return self._failure(plan, "SPRING_UNAVAILABLE")
-        request = PlaceLookupRequest.model_validate({"queryGrantId": plan.query_grant_id})
+        region_code = None
+        category = None
+        if plan.approved_filters:
+            if plan.approved_filters.region_codes:
+                region_code = plan.approved_filters.region_codes[0]
+            if plan.approved_filters.category_codes:
+                category = plan.approved_filters.category_codes[0]
+
+        request = PlaceLookupRequest.model_validate(
+            {
+                "queryGrantId": plan.query_grant_id,
+                "regionCode": region_code,
+                "category": category,
+                "limit": 5,
+            }
+        )
         try:
             async with asyncio.timeout(self._timeout_seconds):
                 response = await self._client.post(
@@ -183,13 +217,21 @@ class SpringPlaceQueryAdapter:
             return self._failure(plan, "INVALID_RESPONSE")
         approved_fields = frozenset(plan.approved_canonical_fields)
         if (
-            parsed_response.plan_hash != plan.approved_plan_hash
-            or parsed_response.source_revocation_sequence
-            != plan.versions.source_revocation_sequence
-            or any(
-                not place.populated_fields() <= approved_fields
-                for place in parsed_response.places
+            parsed_response.plan_hash is not None
+            and parsed_response.plan_hash != plan.approved_plan_hash
+        ):
+            return self._failure(plan, "INVALID_RESPONSE")
+        if (
+            parsed_response.source_revocation_sequence > 0
+            and (
+                parsed_response.source_revocation_sequence
+                != plan.versions.source_revocation_sequence
             )
+        ):
+            return self._failure(plan, "INVALID_RESPONSE")
+        if any(
+            not place.populated_fields() <= approved_fields
+            for place in parsed_response.places
         ):
             return self._failure(plan, "INVALID_RESPONSE")
         return PlaceLookupOutcome.model_validate(

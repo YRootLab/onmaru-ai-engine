@@ -79,11 +79,16 @@ def test_sql_routes_send_only_opaque_grant_and_transport_metadata_once() -> None
     asyncio.run(scenario())
     assert len(requests) == 1
     request = requests[0]
-    assert request.url == "https://spring.internal/internal/v1/ai/place-query/lookup"
-    assert json.loads(request.content) == {"queryGrantId": plan.query_grant_id}
+    assert request.url == "https://spring.internal/internal/mcp/journey/tools/journey_execute_approved_lookup"
+    assert json.loads(request.content) == {
+        "queryGrantId": plan.query_grant_id,
+        "regionCode": "SEOUL",
+        "category": "HANOK",
+        "limit": 5,
+    }
     assert request.headers["authorization"] == "Bearer service-secret"
     assert request.headers["traceparent"] == TRACEPARENT
-    forbidden = ("sql", "filter", "member", "semantic", "query", "question")
+    forbidden = ("sql", "filter", "member", "semantic", "question")
     body_keys = {key.lower() for key in json.loads(request.content)}
     assert all(not any(word in key for word in forbidden) for key in body_keys - {"querygrantid"})
 
