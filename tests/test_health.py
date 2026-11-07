@@ -1,4 +1,5 @@
 import asyncio
+from typing import Any
 
 from httpx import ASGITransport, AsyncClient, Response
 
@@ -24,3 +25,21 @@ def test_readiness_reports_service_can_accept_requests() -> None:
 
     assert response.status_code == 200
     assert response.json() == {"status": "ready"}
+
+
+def test_readiness_fails_when_required_secret_missing() -> None:
+    class MissingTokenProvider(FakeSecretProvider):
+        def get(self, name: str) -> Any:
+            if name == "internal-ai.service-token":
+                raise RuntimeError(f"missing: {name}")
+            return super().get(name)
+
+    transport = ASGITransport(app=create_app(secret_provider=MissingTokenProvider()))
+
+    async def check() -> Response:
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            return await client.get("/ready")
+
+    response = asyncio.run(check())
+    assert response.status_code == 503
+    assert response.json()["status"] == "not_ready"

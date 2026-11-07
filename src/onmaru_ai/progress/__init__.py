@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from enum import StrEnum
-from typing import Protocol
+from typing import Literal, Protocol
 
 import httpx
 
@@ -46,11 +46,19 @@ class ProgressHttpClient(Protocol):
 
 
 class _OrderedProgressSink:
-    def __init__(self, *, run_id: str, plan_hash: str) -> None:
+    def __init__(
+        self,
+        *,
+        run_id: str,
+        plan_hash: str,
+        schema_version: Literal[
+            "internal.ai.progress.v1", "ai-progress.v1"
+        ] = "internal.ai.progress.v1",
+    ) -> None:
         # Validate correlation metadata before any network or execution work.
         ProgressEvent.model_validate(
             {
-                "schemaVersion": "ai-progress.v1",
+                "schemaVersion": schema_version,
                 "runId": run_id,
                 "planHash": plan_hash,
                 "ordinal": 1,
@@ -59,6 +67,7 @@ class _OrderedProgressSink:
         )
         self._run_id = run_id
         self._plan_hash = plan_hash
+        self._schema_version = schema_version
         self._ordinal = 0
         # Serial delivery keeps entry order deterministic under concurrent callers.
         self._lock = asyncio.Lock()
@@ -67,7 +76,7 @@ class _OrderedProgressSink:
         self._ordinal += 1
         return ProgressEvent.model_validate(
             {
-                "schemaVersion": "ai-progress.v1",
+                "schemaVersion": self._schema_version,
                 "runId": self._run_id,
                 "planHash": self._plan_hash,
                 "ordinal": self._ordinal,
@@ -104,11 +113,14 @@ class CallbackProgressSink(_OrderedProgressSink):
         receiver_base_url: str,
         bearer_token: str,
         client: ProgressHttpClient,
+        schema_version: Literal[
+            "internal.ai.progress.v1", "ai-progress.v1"
+        ] = "internal.ai.progress.v1",
         max_attempts: int = 2,
         attempt_timeout_seconds: float = 1.0,
         retry_delay_seconds: float = 0.05,
     ) -> None:
-        super().__init__(run_id=run_id, plan_hash=plan_hash)
+        super().__init__(run_id=run_id, plan_hash=plan_hash, schema_version=schema_version)
         base = httpx.URL(receiver_base_url)
         # Support both HTTP (internal Docker network) and HTTPS
         if (
@@ -128,12 +140,13 @@ class CallbackProgressSink(_OrderedProgressSink):
         if not 0 <= retry_delay_seconds <= 0.5:
             raise ValueError("retry_delay_seconds must be in [0, 0.5]")
 
-        # Path aligns with Spring Backend v0.3.54: /internal/ai/runs/{runId}/progress
+        # Canonical path aligns with Spring Backend v0.3.54: /internal/v1/ai/runs/{runId}/progress
         self._url = (
-            f"{str(base).rstrip('/')}/internal/ai/runs/{run_id}/progress"
+            f"{str(base).rstrip('/')}/internal/v1/ai/runs/{run_id}/progress"
         )
         self._headers = {
             "Authorization": f"Bearer {bearer_token}",
+            "X-Run-Progress-Token": bearer_token,
             "Content-Type": "application/json",
         }
         self._client = client
