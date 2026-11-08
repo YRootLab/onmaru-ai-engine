@@ -350,7 +350,12 @@ def test_clarification_never_enters_executor() -> None:
 
 
 def test_default_service_is_unavailable_and_does_not_synthesize_plans() -> None:
-    client = TestClient(create_app(secret_provider=FakeSecretProvider()))
+    client = TestClient(
+        create_app(
+            secret_provider=FakeSecretProvider(),
+            environ={"ONMARU_DISABLE_DEFAULT_PLAN_EXECUTE": "true"},
+        )
+    )
     response = client.post(
         "/internal/v1/journey/plan", headers=headers(), json=fixture()["context"]["request"]
     )

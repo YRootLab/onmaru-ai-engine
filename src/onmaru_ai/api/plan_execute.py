@@ -57,6 +57,7 @@ class ErrorResponse(ClosedModel):
 class TransportContext:
     trace_id: str
     deadline: datetime
+    progress_token: str | None = None
 
 
 def transport_context(request: Request, run_id: str, now: datetime) -> TransportContext:
@@ -81,7 +82,12 @@ def transport_context(request: Request, run_id: str, now: datetime) -> Transport
         raise BoundaryError("DEADLINE_INVALID", 422) from None
     if deadline <= now:
         raise BoundaryError("DEADLINE_EXCEEDED", 504)
-    return TransportContext(trace[1], min(deadline, now + timedelta(seconds=30)))
+    progress_token = request.headers.get("x-run-progress-token")
+    return TransportContext(
+        trace[1],
+        min(deadline, now + timedelta(seconds=30)),
+        progress_token=progress_token,
+    )
 
 
 class PlanExecuteService:
@@ -96,7 +102,10 @@ class PlanExecuteService:
         self,
         *,
         planner: Callable[[SafeQueryRequest], Awaitable[PlanProposal]],
-        executor: Callable[[ApprovedQueryPlan], Awaitable[ExecutionResult]],
+        executor: (
+            Callable[[ApprovedQueryPlan], Awaitable[ExecutionResult]]
+            | Callable[[ApprovedQueryPlan, TransportContext], Awaitable[ExecutionResult]]
+        ),
         current_versions: Callable[[], Versions],
         verify_grant: Callable[[str], QueryGrant | None],
         now: Callable[[], datetime] = lambda: datetime.now(UTC),
@@ -154,17 +163,23 @@ class PlanExecuteService:
         validate_execution(binding, body, self.current_versions())
         if body.approved_route == "CLARIFY_OR_SCOPE":
             raise BoundaryError("PLAN_NOT_EXECUTABLE", 422)
-        if body.query_grant_id is not None and not valid_grant(
-            self.verify_grant(body.query_grant_id), body, self.now()
-        ):
-            raise BoundaryError("GRANT_INVALID", 403)
+        if body.query_grant_id is not None:
+            try:
+                grant_obj = self.verify_grant(body.query_grant_id, body)  # type: ignore[call-arg]
+            except TypeError:
+                grant_obj = self.verify_grant(body.query_grant_id)
+            if not valid_grant(grant_obj, body, self.now()):
+                raise BoundaryError("GRANT_INVALID", 403)
         validate_execution(binding, body, self.current_versions())
         deadline = min(context.deadline, binding.expires_at)
         remaining = self.remaining(deadline)
         # No await between validation and consumption. Failure/timeout never reopens the run.
         self._plans[body.run_id] = None
         async with asyncio.timeout(remaining):
-            result = await self.executor(body)
+            try:
+                result = await self.executor(body, context)  # type: ignore[call-arg]
+            except TypeError:
+                result = await self.executor(body)  # type: ignore[call-arg]
         self.remaining(deadline)
         result = ExecutionResult.model_validate(result.model_dump(by_alias=True))
         if result.run_id != body.run_id:

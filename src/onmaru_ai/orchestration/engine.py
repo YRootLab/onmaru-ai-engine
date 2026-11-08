@@ -88,20 +88,28 @@ class OrchestrationEngine:
         if route == "SQL_ONLY":
             if progress_sink is not None:
                 await progress_sink.enter(ProgressStage.RETRIEVING)
+            lookup_outcome: Any | None = None
             if self._sql_adapter is not None:
                 is_mock = hasattr(self._sql_adapter, "_mock_return_value")
                 if hasattr(self._sql_adapter, "lookup") and not is_mock:
-                    await self._sql_adapter.lookup(plan, traceparent=tp)
+                    lookup_outcome = await self._sql_adapter.lookup(plan, traceparent=tp)
                 elif hasattr(self._sql_adapter, "execute"):
-                    await self._sql_adapter.execute(plan)
+                    lookup_outcome = await self._sql_adapter.execute(plan)
                 elif hasattr(self._sql_adapter, "lookup"):
-                    await self._sql_adapter.lookup(plan, traceparent=tp)
+                    lookup_outcome = await self._sql_adapter.lookup(plan, traceparent=tp)
             if progress_sink is not None:
                 await progress_sink.enter(ProgressStage.SELECTING_EVIDENCE)
                 await progress_sink.enter(ProgressStage.GENERATING)
             proposal = None
             if self._generator is not None:
-                proposal = await self._generator.generate(plan, evidence_set=None)
+                try:
+                    proposal = await self._generator.generate(
+                        plan,
+                        evidence_set=None,
+                        lookup_outcome=lookup_outcome,
+                    )
+                except TypeError:
+                    proposal = await self._generator.generate(plan, evidence_set=None)
             if progress_sink is not None:
                 await progress_sink.enter(ProgressStage.CHECKING_OUTPUT)
             return OrchestrationExecutionResult(
@@ -115,14 +123,15 @@ class OrchestrationEngine:
         if progress_sink is not None:
             await progress_sink.enter(ProgressStage.RETRIEVING)
 
+        sql_lookup_outcome: Any | None = None
         if route == "SQL_PLUS_RETRIEVAL" and self._sql_adapter is not None:
             is_mock = hasattr(self._sql_adapter, "_mock_return_value")
             if hasattr(self._sql_adapter, "lookup") and not is_mock:
-                await self._sql_adapter.lookup(plan, traceparent=tp)
+                sql_lookup_outcome = await self._sql_adapter.lookup(plan, traceparent=tp)
             elif hasattr(self._sql_adapter, "execute"):
-                await self._sql_adapter.execute(plan)
+                sql_lookup_outcome = await self._sql_adapter.execute(plan)
             elif hasattr(self._sql_adapter, "lookup"):
-                await self._sql_adapter.lookup(plan, traceparent=tp)
+                sql_lookup_outcome = await self._sql_adapter.lookup(plan, traceparent=tp)
 
         cand_set: CandidateSet | None = None
         if self._retrieval_coordinator is not None:
@@ -158,7 +167,14 @@ class OrchestrationEngine:
 
         proposal = None
         if self._generator is not None and evidence_set is not None:
-            proposal = await self._generator.generate(plan, evidence_set=evidence_set)
+            try:
+                proposal = await self._generator.generate(
+                    plan,
+                    evidence_set=evidence_set,
+                    lookup_outcome=sql_lookup_outcome,
+                )
+            except TypeError:
+                proposal = await self._generator.generate(plan, evidence_set=evidence_set)
 
         if progress_sink is not None:
             await progress_sink.enter(ProgressStage.CHECKING_OUTPUT)
