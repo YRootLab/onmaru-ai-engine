@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import httpx
+import pytest
 from fastapi.testclient import TestClient
 
 from onmaru_ai.api.plan_execute import PlanExecuteService
+from onmaru_ai.composition import create_production_plan_execute_service
 from onmaru_ai.config.secrets import FakeSecretProvider
 from onmaru_ai.main import create_app
 
@@ -57,3 +59,18 @@ def test_readiness_fails_503_when_spring_url_invalid() -> None:
     assert resp.status_code == 503
     assert resp.json()["status"] == "not_ready"
     assert resp.json()["reason"] == "invalid_spring_base_url"
+
+@pytest.mark.anyio
+async def test_composition_root_wires_retrieval_components() -> None:
+    provider = FakeSecretProvider()
+    client = httpx.AsyncClient()
+    try:
+        service = create_production_plan_execute_service(
+            secret_provider=provider,
+            http_client=client,
+            environ={"ONMARU_SPRING_BASE_URL": "http://127.0.0.1:8080"},
+        )
+        assert service is not None
+        assert service.executor is not None
+    finally:
+        await client.aclose()
