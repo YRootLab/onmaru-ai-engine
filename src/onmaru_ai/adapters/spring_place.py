@@ -73,8 +73,10 @@ class PlaceLookupResponse(ClosedModel):
     @model_validator(mode="before")
     @classmethod
     def normalize_version(cls, data: Any) -> Any:
-        if isinstance(data, dict) and "schemaVersion" not in data and "catalogVersion" in data:
-            data["schemaVersion"] = data["catalogVersion"]
+        if isinstance(data, dict):
+            data = dict(data)
+            if "schemaVersion" not in data and "catalogVersion" in data:
+                data["schemaVersion"] = data.pop("catalogVersion")
         return data
 
     @model_validator(mode="after")

@@ -1,11 +1,18 @@
 import os
-from collections.abc import Mapping
+from collections.abc import AsyncIterator, Mapping
+from contextlib import asynccontextmanager
 from typing import Any
 
+import httpx
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 
 from onmaru_ai.api.plan_execute import PlanExecuteService, install_plan_execute
+from onmaru_ai.composition import (
+    create_production_plan_execute_service,
+    get_spring_base_url,
+    is_valid_http_origin,
+)
 from onmaru_ai.config.secrets import (
     SecretProvider,
     SecretRedactor,
@@ -57,12 +64,37 @@ def create_app(
     corpus_index: CorpusIndexService | None = None,
     environ: Mapping[str, str] | None = None,
     plan_execute_service: PlanExecuteService | None = None,
+    http_client: httpx.AsyncClient | None = None,
 ) -> FastAPI:
     provider = secret_provider or provider_from_environment()
     secrets = validate_required_secrets(provider)
     install_logging_redaction(SecretRedactor(secrets))
 
-    app = FastAPI(title="OnMaru AI")
+    client = http_client or httpx.AsyncClient(timeout=httpx.Timeout(5.0))
+    owns_client = http_client is None
+
+    if plan_execute_service is None:
+        source_env = os.environ if environ is None else environ
+        if source_env.get("ONMARU_DISABLE_DEFAULT_PLAN_EXECUTE", "").strip().lower() != "true":
+            try:
+                plan_execute_service = create_production_plan_execute_service(
+                    secret_provider=provider,
+                    http_client=client,
+                    environ=environ,
+                )
+            except ValueError:
+                # Invalid origin configured; fail closed on /ready
+                plan_execute_service = None
+
+    @asynccontextmanager
+    async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+        yield
+        if owns_client:
+            await client.aclose()
+
+    app = FastAPI(title="OnMaru AI", lifespan=lifespan)
+    app.state.plan_execute_service = plan_execute_service
+    app.state.http_client = client
     install_observability(app, telemetry_sink or create_telemetry_sink())
     install_internal_auth(
         app,
@@ -116,6 +148,28 @@ def create_app(
             return JSONResponse(
                 status_code=503,
                 content={"status": "not_ready", "reason": "missing_secrets"},
+            )
+
+        # Check Spring private base URL validity
+        spring_url = get_spring_base_url(environ)
+        if not is_valid_http_origin(spring_url):
+            return JSONResponse(
+                status_code=503,
+                content={"status": "not_ready", "reason": "invalid_spring_base_url"},
+            )
+
+        # Check PlanExecuteService wired
+        if plan_execute_service is None:
+            return JSONResponse(
+                status_code=503,
+                content={"status": "not_ready", "reason": "plan_execute_service_unwired"},
+            )
+
+        # Check HTTP client ready
+        if client.is_closed:
+            return JSONResponse(
+                status_code=503,
+                content={"status": "not_ready", "reason": "http_client_closed"},
             )
 
         return JSONResponse(status_code=200, content={"status": "ready"})
