@@ -146,7 +146,7 @@ def build_corpus_bundle(
         chunker_version="paragraph-first-w1",
         dictionary_version="questions-1",
         config_hash="sha256:" + "c" * 64,
-        document_hashes=tuple((d.document_id, d.content_hash) for d in docs),
+        document_hashes=tuple((d.document_id, d.digest()) for d in docs),
         chunk_count=len(chunks),
         embedding_count=len(embeddings),
     )

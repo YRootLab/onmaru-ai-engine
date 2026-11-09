@@ -15,6 +15,7 @@ import sys
 from datetime import UTC, datetime
 
 from onmaru_ai.corpus.batch_ingest import IngestItem, build_corpus_bundle
+from onmaru_ai.embedding import DeterministicHashBackend, E5_SMALL_384, EmbeddingService
 from onmaru_ai.storage.postgres import PostgresCorpusStore
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
@@ -100,10 +101,13 @@ def main() -> int:
     revision_id = args.revision_id or f"rev-{datetime.now(UTC).strftime('%Y%m%d%H%M%S')}"
     logger.info("Building corpus bundle for revision: %s", revision_id)
 
+    embedding_backend = DeterministicHashBackend()
+    embedding_service = EmbeddingService(embedding_backend, profile=E5_SMALL_384)
+
     result, revision, docs, chunks, embeddings = build_corpus_bundle(
         revision_id=revision_id,
         items=items,
-        embedding_service=None,
+        embedding_service=embedding_service,
     )
 
     logger.info(
