@@ -15,7 +15,7 @@ import sys
 from datetime import UTC, datetime
 
 from onmaru_ai.corpus.batch_ingest import IngestItem, build_corpus_bundle
-from onmaru_ai.embedding import DeterministicHashBackend, E5_SMALL_384, EmbeddingService
+from onmaru_ai.embedding import E5_SMALL_384, DeterministicHashBackend, EmbeddingService
 from onmaru_ai.storage.postgres import PostgresCorpusStore
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
