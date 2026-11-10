@@ -1,6 +1,13 @@
 # Handoff
 
-Current work:
+Current work (v0.1.2 contract alignment):
+- Issue: [#73](https://github.com/YRootLab/onmaru-ai-engine/issues/73), follow-up of closed [#59](https://github.com/YRootLab/onmaru-ai-engine/issues/59). The PR references #73 and does not close it: RAG/Gemini runtime wiring and the lookup auth change remain open.
+- Branch: `fix/v012-contract-alignment-legacy-refs` from `develop`.
+- Changes: legacy proposal path returns real candidate refs or explicit `NO_RESULTS` with `degradedReason` (no `place:NNN` placeholders); v0.1.2 integration doc corrected to code; README documents runtime defaults, RAG/Gemini activation reality, and pgvector check SQL; grounded contract fixture tests added.
+- Verification: `uv run pytest` 1009 passed, 42 skipped; `ruff check` and `mypy` pass.
+- Open decisions: lookup auth sends the raw secret as Bearer (needs Spring agreement); release line for v0.4.0 vs `v0.1.x`; digest and production embedding stats need main merge and production DB access.
+
+Previous work:
 - Summary: W14 private progress sink and bounded Spring callback adapter implemented from the reviewed W0 head.
 - Issue: [W14 #15](https://github.com/YRootLab/onmaru-ai-engine/issues/15), under AI-RAG Root Issue #3; dependencies [W0 #4](https://github.com/YRootLab/onmaru-ai-engine/issues/4) and [W8 #8](https://github.com/YRootLab/onmaru-ai-engine/issues/8).
 - Branch: `feature/ai-rag-w14`, isolated worktree `.worktrees/feature-ai-rag-w14`.
