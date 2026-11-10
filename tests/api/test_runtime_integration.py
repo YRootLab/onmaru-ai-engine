@@ -44,6 +44,7 @@ async def test_runtime_integration_flow_with_spring_mock() -> None:
             return httpx.Response(200, json={"status": "OK"})
 
         if "/journey_execute_approved_lookup" in url_path:
+            assert "Bearer " in request.headers.get("authorization", "")
             assert request.headers.get("traceparent") is not None
             data = json.loads(request.content.decode("utf-8"))
             received_lookups.append(data)
