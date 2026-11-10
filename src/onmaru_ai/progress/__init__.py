@@ -145,7 +145,6 @@ class CallbackProgressSink(_OrderedProgressSink):
             f"{str(base).rstrip('/')}/internal/v1/ai/runs/{run_id}/progress"
         )
         self._headers = {
-            "Authorization": f"Bearer {bearer_token}",
             "X-Run-Progress-Token": bearer_token,
             "Content-Type": "application/json",
         }
