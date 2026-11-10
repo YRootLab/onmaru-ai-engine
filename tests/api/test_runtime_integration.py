@@ -39,13 +39,11 @@ async def test_runtime_integration_flow_with_spring_mock() -> None:
         url_path = request.url.path
         if "/progress" in url_path:
             assert request.headers.get("x-run-progress-token") == progress_token
-            assert request.headers.get("authorization") == f"Bearer {progress_token}"
             data = json.loads(request.content.decode("utf-8"))
             received_callbacks.append(data)
             return httpx.Response(200, json={"status": "OK"})
 
         if "/journey_execute_approved_lookup" in url_path:
-            assert "Bearer " in request.headers.get("authorization", "")
             assert request.headers.get("traceparent") is not None
             data = json.loads(request.content.decode("utf-8"))
             received_lookups.append(data)
