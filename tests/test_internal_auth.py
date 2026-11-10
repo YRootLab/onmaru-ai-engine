@@ -62,6 +62,7 @@ async def post_proposal(
                 "requestId": "req-ai-001",
                 "runId": "run-ai-001",
                 "candidateCount": 2,
+                "candidateRefs": ["place-a", "place-b"],
             },
         )
 
@@ -106,17 +107,18 @@ def test_journey_propose_endpoint_alias_accepted() -> None:
                     "requestId": "req-ai-001",
                     "runId": "run-ai-001",
                     "candidateCount": 2,
+                    "candidateRefs": ["place-a", "place-b"],
                 },
             )
 
     response = asyncio.run(scenario())
     assert response.status_code == 202
     assert response.json()["outcome"] == "PROPOSAL"
+    assert response.json()["orderedRefs"] == ["place-a", "place-b"]
     assert response.json()["runId"] == "run-ai-001"
 
 
 def failing_eval_document() -> dict[str, object]:
-
 
     return {
         "schemaVersion": "1.1",
@@ -180,8 +182,9 @@ def test_accepts_current_internal_token_and_propagates_correlation_headers() -> 
     assert response.json() == {
         "schemaVersion": "internal.ai.v1",
         "runId": "run-ai-001",
-        "orderedRefs": ["place:001", "place:002"],
+        "orderedRefs": ["place-a", "place-b"],
         "outcome": "PROPOSAL",
+        "degradedReason": "LLM_DISABLED",
     }
     assert response.headers["X-Request-Id"] == "req-ai-001"
     assert response.headers["X-Run-Id"] == "run-ai-001"
@@ -285,6 +288,7 @@ def test_skips_rag_retrieval_when_activation_gate_recorded_rollback() -> None:
 
     assert response.status_code == 202
     assert response.json()["ragEvidenceRefs"] == []
+    assert response.json()["ragDegradedReason"] == "RAG_NO_ACTIVE_EVIDENCE"
     assert retriever.calls == 0
 
 
@@ -466,4 +470,84 @@ def test_internal_stream_disabled_provider_preserves_unary_baseline() -> None:
     assert stream.json()["code"] == "AI_SERVICE_UNAVAILABLE"
     unary = asyncio.run(post_proposal(token(), app=app))
     assert unary.status_code == 202
-    assert unary.json()["orderedRefs"] == ["place:001", "place:002"]
+    assert unary.json()["orderedRefs"] == ["place-a", "place-b"]
+
+
+def test_legacy_proposal_never_emits_placeholder_refs() -> None:
+    response = asyncio.run(
+        post_proposal(
+            token(),
+            body={
+                "schemaVersion": "internal.ai.v1",
+                "requestId": "req-ai-001",
+                "runId": "run-ai-001",
+                "candidateCount": 3,
+                "candidateRefs": ["spring-place-9", "spring-place-4"],
+            },
+        )
+    )
+
+    assert response.status_code == 202
+    assert response.json()["orderedRefs"] == ["spring-place-9", "spring-place-4"]
+    assert not any(ref.startswith("place:") for ref in response.json()["orderedRefs"])
+
+
+def test_legacy_proposal_without_candidate_refs_reports_no_results() -> None:
+    response = asyncio.run(
+        post_proposal(
+            token(),
+            body={
+                "schemaVersion": "internal.ai.v1",
+                "requestId": "req-ai-001",
+                "runId": "run-ai-001",
+                "candidateCount": 2,
+            },
+        )
+    )
+
+    assert response.status_code == 202
+    assert response.json() == {
+        "schemaVersion": "internal.ai.v1",
+        "runId": "run-ai-001",
+        "orderedRefs": [],
+        "outcome": "NO_RESULTS",
+        "degradedReason": "CANDIDATE_REFS_MISSING",
+    }
+
+
+def test_legacy_proposal_with_zero_candidates_reports_no_candidates() -> None:
+    response = asyncio.run(
+        post_proposal(
+            token(),
+            body={
+                "schemaVersion": "internal.ai.v1",
+                "requestId": "req-ai-001",
+                "runId": "run-ai-001",
+                "candidateCount": 0,
+                "candidateRefs": [],
+            },
+        )
+    )
+
+    assert response.status_code == 202
+    assert response.json()["outcome"] == "NO_RESULTS"
+    assert response.json()["degradedReason"] == "NO_CANDIDATES"
+    assert response.json()["orderedRefs"] == []
+
+
+def test_legacy_baseline_caps_at_three_unique_real_refs() -> None:
+    response = asyncio.run(
+        post_proposal(
+            token(),
+            body={
+                "schemaVersion": "internal.ai.v1",
+                "requestId": "req-ai-001",
+                "runId": "run-ai-001",
+                "candidateCount": 5,
+                "candidateRefs": ["r1", "r1", "r2", "r3", "r4", "r5"],
+            },
+        )
+    )
+
+    assert response.status_code == 202
+    assert response.json()["orderedRefs"] == ["r1", "r2", "r3"]
