@@ -1,6 +1,13 @@
 # Handoff
 
-Current work (v0.1.2 contract alignment):
+Current work (journey prompt relaxation):
+- Branch: `feature/journey-prompt-relaxation` from `develop`.
+- Changes: prompt `journey-gemini-v3` treats region as a preference, relaxes theme → category → region when matches are weak, and records `relaxedConstraints`; `NO_RESULTS` is reserved for empty or fully unrelated candidates and split into `NO_CANDIDATES` / `NO_RELEVANT_CANDIDATES` (replaces `LLM_NO_VALID_REFS`); legacy response adds `candidateCount` and `relaxedConstraints`. Contract doc §3.5 updated.
+- Backend handoff: no new Issue. The backend reads the contract doc §3.5; the Spring client ignores unknown fields (tested in `HttpAiProposalClientTests` in OnMaruBE). Spring work (region 0-result re-query, invalid region → 400, reason logging) is tracked on the backend side.
+- Verification: `tests/test_journey_relaxation.py` 6 passed; `tests/test_internal_auth.py`, `tests/providers/gemini`, `tests/proposal` 194 passed, 1 skipped.
+- Open: production smoke (region 11 and no-region, one each) after image digest; decide whether `relaxedConstraints` is shown in the product UI.
+
+Previous work (v0.1.2 contract alignment):
 - Issue: [#73](https://github.com/YRootLab/onmaru-ai-engine/issues/73), follow-up of closed [#59](https://github.com/YRootLab/onmaru-ai-engine/issues/59). The PR references #73 and does not close it: RAG/Gemini runtime wiring and the lookup auth change remain open.
 - Branch: `fix/v012-contract-alignment-legacy-refs` from `develop`.
 - Changes: legacy proposal path returns real candidate refs or explicit `NO_RESULTS` with `degradedReason` (no `place:NNN` placeholders); v0.1.2 integration doc corrected to code; README documents runtime defaults, RAG/Gemini activation reality, and pgvector check SQL; grounded contract fixture tests added.

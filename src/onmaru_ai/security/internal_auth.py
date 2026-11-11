@@ -191,15 +191,21 @@ def _proposal_response(
     body: JourneyProposalRequest, proposal: Mapping[str, Any], evidence: tuple[str, ...]
 ) -> dict[str, object]:
     ordered_refs = proposal.get("orderedRefs", [])
+    relaxed = proposal.get("relaxedConstraints", [])
     response: dict[str, object] = {
         "schemaVersion": "internal.ai.v1",
         "runId": body.run_id,
         "orderedRefs": ordered_refs,
         "outcome": "PROPOSAL" if ordered_refs else "NO_RESULTS",
+        "candidateCount": len(body.candidate_refs),
+        "relaxedConstraints": [item for item in relaxed if isinstance(item, str)],
         "journey": dict(proposal),
     }
     if not ordered_refs:
-        response["degradedReason"] = "LLM_NO_VALID_REFS"
+        # Only reached when the LLM returned nothing usable; split the cause for logs and support.
+        response["degradedReason"] = (
+            "NO_CANDIDATES" if not body.candidate_refs else "NO_RELEVANT_CANDIDATES"
+        )
     _attach_rag(response, body, evidence)
     return response
 
