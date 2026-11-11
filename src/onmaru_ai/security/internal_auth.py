@@ -122,7 +122,8 @@ def install_internal_auth(
         if isinstance(rag_evidence_refs, JSONResponse):
             return rag_evidence_refs
         llm_proposal = None
-        if journey_llm is not None and body.query.strip() and body.candidate_refs:
+        llm_attempted = journey_llm is not None and bool(body.query.strip())
+        if journey_llm is not None and llm_attempted and body.candidate_refs:
             llm_proposal = await journey_llm.generate(
                 query=body.query,
                 candidate_refs=body.candidate_refs,
@@ -130,17 +131,13 @@ def install_internal_auth(
             )
         if llm_proposal is not None:
             return _proposal_response(body, llm_proposal, rag_evidence_refs)
-        candidate_count = body.candidate_count
-        selected_count = min(candidate_count, 3)
-        response: dict[str, object] = {
-            "schemaVersion": "internal.ai.v1",
-            "runId": body.run_id,
-            "orderedRefs": [f"place:{index:03d}" for index in range(1, selected_count + 1)],
-            "outcome": "PROPOSAL" if selected_count else "NO_RESULTS",
-        }
-        if body.use_rag:
-            response["ragEvidenceRefs"] = list(rag_evidence_refs)
-        return response
+        if journey_llm is None:
+            llm_reason = "LLM_DISABLED"
+        elif not body.query.strip():
+            llm_reason = "QUERY_EMPTY"
+        else:
+            llm_reason = "LLM_UNAVAILABLE"
+        return _baseline_response(body, rag_evidence_refs, llm_reason)
 
     @app.post("/internal/v1/journey/proposals/stream", response_model=None)
     async def stream_journey_proposal(
@@ -193,16 +190,62 @@ def install_internal_auth(
 def _proposal_response(
     body: JourneyProposalRequest, proposal: Mapping[str, Any], evidence: tuple[str, ...]
 ) -> dict[str, object]:
+    ordered_refs = proposal.get("orderedRefs", [])
     response: dict[str, object] = {
         "schemaVersion": "internal.ai.v1",
         "runId": body.run_id,
-        "orderedRefs": proposal.get("orderedRefs", []),
-        "outcome": "PROPOSAL" if proposal.get("orderedRefs") else "NO_RESULTS",
+        "orderedRefs": ordered_refs,
+        "outcome": "PROPOSAL" if ordered_refs else "NO_RESULTS",
         "journey": dict(proposal),
     }
-    if body.use_rag:
-        response["ragEvidenceRefs"] = list(evidence)
+    if not ordered_refs:
+        response["degradedReason"] = "LLM_NO_VALID_REFS"
+    _attach_rag(response, body, evidence)
     return response
+
+
+def _baseline_response(
+    body: JourneyProposalRequest,
+    evidence: tuple[str, ...],
+    llm_reason: str,
+) -> dict[str, object]:
+    """Deterministic fallback that only ever returns the caller's own candidate refs.
+
+    Placeholder IDs are never emitted: Spring matches these refs against its candidate set,
+    so an unknown ref would be silently replaced. Missing candidates are reported explicitly.
+    """
+    if body.candidate_count == 0 or not body.candidate_refs:
+        reason = "NO_CANDIDATES" if body.candidate_count == 0 else "CANDIDATE_REFS_MISSING"
+        response: dict[str, object] = {
+            "schemaVersion": "internal.ai.v1",
+            "runId": body.run_id,
+            "orderedRefs": [],
+            "outcome": "NO_RESULTS",
+            "degradedReason": reason,
+        }
+    else:
+        limit = min(body.candidate_count, 3)
+        ordered = list(dict.fromkeys(body.candidate_refs))[:limit]
+        response = {
+            "schemaVersion": "internal.ai.v1",
+            "runId": body.run_id,
+            "orderedRefs": ordered,
+            "outcome": "PROPOSAL" if ordered else "NO_RESULTS",
+            "degradedReason": llm_reason,
+        }
+    _attach_rag(response, body, evidence)
+    return response
+
+
+def _attach_rag(
+    response: dict[str, object], body: JourneyProposalRequest, evidence: tuple[str, ...]
+) -> None:
+    if not body.use_rag:
+        return
+    response["ragEvidenceRefs"] = list(evidence)
+    if not evidence:
+        # The gate returns no evidence both when disabled and when a revision is not active.
+        response["ragDegradedReason"] = "RAG_NO_ACTIVE_EVIDENCE"
 
 
 def _sse(event: str, data: Mapping[str, Any]) -> str:
