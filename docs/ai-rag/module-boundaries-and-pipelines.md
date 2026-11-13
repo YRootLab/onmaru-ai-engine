@@ -146,7 +146,7 @@ flowchart TD
 
 ## 4. 저장소와 패키지 경계
 
-[AI 저장소](https://github.com/YRootLab/onmaru-ai-engine)는 2026-10-22에 공개 빈 저장소로 생성했다. 현재 FastAPI 소스·테스트·평가 자료는 이 백엔드 저장소의 `ai/`에 있으며 **아직 이전하지 않았다**. `onmaru-ai-engine`은 배포 가능한 사용자 응답 엔진을 포함하는 저장소 이름이고, `quality_harness`는 그 안의 비동기 품질 개선 **논리 모듈** 이름이다. 기존 `ai/src/onmaru_ai/evals/`는 현행 오프라인 평가 코드이며, 아래 목표 구조가 이미 구현됐다는 뜻이 아니다.
+[AI 저장소](https://github.com/YRootLab/onmaru-ai-engine)는 2026-10-22에 생성되었으며 현재 FastAPI 소스·테스트·평가 자료를 포함한다. 이 문서는 2026-10-22 백엔드 작업공간에서 옮긴 목표 모듈 설계이므로, 여기에 그려진 전체 파이프라인이 현재 운영 경로에 연결됐다는 뜻은 아니다. 실행 상태는 코드·테스트와 [운영 준비 검토](production-readiness-gaps.md)를 확인한다. `quality_harness`는 비동기 품질 개선을 위한 논리 모듈 이름이다.
 
 ```text
 onmaru-ai-engine/                 # 목표 별도 저장소의 루트

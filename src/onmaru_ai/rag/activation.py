@@ -4,7 +4,7 @@ import logging
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Literal
+from typing import Literal, Protocol
 
 from onmaru_ai.evals import EvalReport
 
@@ -16,6 +16,8 @@ RagActivationReason = Literal[
     "EVAL_GATE_FAILED",
     "BASELINE_COMPARISON_REQUIRED",
     "BASELINE_GAIN_INSUFFICIENT",
+    "CORPUS_REVISION_MISMATCH",
+    "CANDIDATE_POLICY_UNSUPPORTED",
     "EVAL_GATE_PASSED_WITH_BASELINE_GAIN",
 ]
 
@@ -34,14 +36,29 @@ class RagActivationDecision:
     enabled: bool
     action: RagActivationAction
     reason: RagActivationReason
+    candidate_policy: str
     corpus_revision_id: str
+    image_digest: str
+    embedding_profile: str
     dataset_input_sha256: str
     dataset_gold_sha256: str
     evaluated_at: datetime
     metric_deltas: dict[str, float | int]
+    baseline_passed: bool
+    candidate_passed: bool
+
+
+class RagActivationLog(Protocol):
+    durable: bool
+
+    def append(self, decision: RagActivationDecision) -> None: ...
+
+    def latest_for_revision(self, corpus_revision_id: str) -> RagActivationDecision | None: ...
 
 
 class InMemoryRagActivationLog:
+    durable = False
+
     def __init__(self) -> None:
         self._records: list[RagActivationDecision] = []
 
@@ -64,7 +81,7 @@ class RagActivationPolicy:
         self,
         *,
         thresholds: RagActivationThresholds | None = None,
-        log: InMemoryRagActivationLog | None = None,
+        log: RagActivationLog | None = None,
         feature_enabled: bool = True,
         clock: Callable[[], datetime] | None = None,
     ) -> None:
@@ -77,36 +94,49 @@ class RagActivationPolicy:
         if not corpus_revision_id.strip():
             raise ValueError("corpus_revision_id must not be blank")
 
-        reason = self._reason(report)
+        reason = self._reason(report, corpus_revision_id)
         enabled = reason == "EVAL_GATE_PASSED_WITH_BASELINE_GAIN"
         decision = RagActivationDecision(
             enabled=enabled,
             action="ACTIVATE" if enabled else "ROLLBACK",
             reason=reason,
+            candidate_policy=report.candidate_policy,
             corpus_revision_id=corpus_revision_id,
+            image_digest=report.image_digest,
+            embedding_profile=report.embedding_profile,
             dataset_input_sha256=report.dataset.input_sha256,
             dataset_gold_sha256=report.dataset.gold_sha256,
             evaluated_at=self._clock(),
             metric_deltas=dict(report.comparison.metric_deltas)
             if report.comparison is not None
             else {},
+            baseline_passed=self._baseline_passed(report),
+            candidate_passed=report.overall_passed,
         )
         self._log.append(decision)
         logger.info(
-            "rag.activation.decision action=%s reason=%s corpus_revision_id=%s "
+            "rag.activation.decision action=%s reason=%s candidate_policy=%s corpus_revision_id=%s "
+            "image_digest=%s embedding_profile=%s "
             "dataset_gold_sha256=%s enabled=%s",
             decision.action,
             decision.reason,
+            decision.candidate_policy,
             decision.corpus_revision_id,
+            decision.image_digest,
+            decision.embedding_profile,
             decision.dataset_gold_sha256,
             decision.enabled,
         )
         return decision
 
-    def _reason(self, report: EvalReport) -> RagActivationReason:
+    def _reason(self, report: EvalReport, corpus_revision_id: str) -> RagActivationReason:
         if not self._feature_enabled:
             return "FEATURE_FLAG_DISABLED"
-        if not report.overall_passed:
+        if report.corpus_revision != corpus_revision_id:
+            return "CORPUS_REVISION_MISMATCH"
+        if report.candidate_policy != "v1":
+            return "CANDIDATE_POLICY_UNSUPPORTED"
+        if not report.overall_passed or not self._baseline_passed(report):
             return "EVAL_GATE_FAILED"
         comparison = report.comparison
         if comparison is None or not comparison.compatible:
@@ -114,6 +144,15 @@ class RagActivationPolicy:
         if not self._has_required_gain(comparison.metric_deltas):
             return "BASELINE_GAIN_INSUFFICIENT"
         return "EVAL_GATE_PASSED_WITH_BASELINE_GAIN"
+
+    @staticmethod
+    def _baseline_passed(report: EvalReport) -> bool:
+        return (
+            report.comparison is not None
+            and report.comparison.compatible
+            and report.comparison.baseline_passed
+            and all(gate.passed for gate in report.gates)
+        )
 
     def _has_required_gain(self, deltas: dict[str, float | int]) -> bool:
         thresholds = self._thresholds
@@ -140,7 +179,7 @@ class RagActivationPolicy:
 
 
 class RagRetrievalGate:
-    def __init__(self, log: InMemoryRagActivationLog) -> None:
+    def __init__(self, log: RagActivationLog) -> None:
         self._log = log
 
     def retrieve_if_active(

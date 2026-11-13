@@ -57,7 +57,7 @@ def test_migrations_are_atomic_idempotent_and_checksum_verified(
 
     db.execute("DROP SCHEMA ai CASCADE")
     directory = Path(__file__).resolve().parents[2] / "migrations/ai"
-    assert apply_migrations(db, directory) == ("001_corpus.sql",)
+    assert apply_migrations(db, directory) == ("001_corpus.sql", "002_rag_activation.sql")
     assert apply_migrations(db, directory) == ()
     (tmp_path / "001_corpus.sql").write_text("-- changed historical migration")
     with pytest.raises(MigrationError, match="CHECKSUM_MISMATCH"):

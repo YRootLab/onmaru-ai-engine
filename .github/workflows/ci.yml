@@ -38,7 +38,7 @@ jobs:
       - name: Evaluate held-out baseline
         run: |
           uv run python scripts/run-ai-evals \
-            --input evals/journey-held-out-v1.json \
+            --input evals/journey-eval-baseline-100-v1.json \
             --output "$RUNNER_TEMP/ai-eval-report.json" \
             --schema-output "$RUNNER_TEMP/ai-eval-report.schema.json"
           cmp evals/report.schema.json "$RUNNER_TEMP/ai-eval-report.schema.json"

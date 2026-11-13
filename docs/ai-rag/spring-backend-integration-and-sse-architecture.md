@@ -17,13 +17,14 @@ OnMaru의 AI 여정 추천 시스템은 클라이언트(브라우저)와 FastAPI
        ▼
 [ Spring Boot :8080 (Public/Private Bridge) ]
        │
-       │ (3) 내부 여정 추천 요청 (private REST + HMAC 서명)
-       │     URL: POST http://ai-engine:8000/internal/ai/journey/propose
+       │ (3) 내부 여정 플랜/실행 요청 (private REST + HS256 Bearer JWT)
+       │     URL: POST http://ai-engine:8000/internal/v1/journey/plan
+       │     URL: POST http://ai-engine:8000/internal/v1/journey/execute
        ▼
 [ FastAPI AI-Engine :8000 (Private RAG Pipeline) ]
        │
        ├── (4) 실시간 진행 단계 콜백 (Run-Bound Progress Callback)
-       │       URL: POST http://staging-api:8080/internal/ai/runs/{runId}/progress
+       │       URL: POST http://staging-api:8080/internal/v1/ai/runs/{runId}/progress
        │       (Spring이 수신 즉시 브라우저 SSE로 중계)
        │
        └── (5) 정형 데이터 검증 조회 (PlaceQueryPort Lookup)
@@ -45,56 +46,51 @@ sequenceDiagram
     User->>Spring: 2. SSE 연결 수립 (GET /api/v1/explorations/{id}/runs/{runId}/events)
     Note over User,Spring: 브라우저와 Spring 간의 SSE 스트림 활성화
 
-    Spring->>AI: 3. 여정 추천/RAG 실행 요청 (POST /internal/ai/journey/propose)
+    Spring->>AI: 3. 여정 플랜 요청 (POST /internal/v1/journey/plan + Bearer JWT journey.plan:write)
+    AI-->>Spring: 4. 200 OK (PlanProposal 반환)
+
+    Spring->>AI: 5. 여정 실행 요청 (POST /internal/v1/journey/execute + Bearer JWT journey.execute:write)
     Note over AI: RAG 파이프라인 진입 (W13/W14)
 
     critical 단계별 실시간 진행률 콜백 (Run-Bound Progress)
-        AI->>Spring: 4-1. POST /internal/ai/runs/{runId}/progress (stage: RETRIEVING)
-        Spring-->>User: 4-2. SSE event: run.stage (stage: RETRIEVING, "검색 중...")
+        AI->>Spring: 6-1. POST /internal/v1/ai/runs/{runId}/progress (stage: RETRIEVING)
+        Spring-->>User: 6-2. SSE event: run.stage (stage: RETRIEVING, "검색 중...")
         
-        AI->>Spring: 5-1. POST /internal/ai/runs/{runId}/progress (stage: SELECTING_EVIDENCE)
-        Spring-->>User: 5-2. SSE event: run.stage (stage: SELECTING_EVIDENCE)
+        AI->>Spring: 7-1. POST /internal/v1/ai/runs/{runId}/progress (stage: SELECTING_EVIDENCE)
+        Spring-->>User: 7-2. SSE event: run.stage (stage: SELECTING_EVIDENCE)
         
-        AI->>Spring: 6-1. POST /internal/ai/runs/{runId}/progress (stage: GENERATING)
-        Spring-->>User: 6-2. SSE event: run.stage (stage: GENERATING, "추천 코스 작성 중...")
+        AI->>Spring: 8-1. POST /internal/v1/ai/runs/{runId}/progress (stage: GENERATING)
+        Spring-->>User: 8-2. SSE event: run.stage (stage: GENERATING, "추천 코스 작성 중...")
     end
 
-    AI-->>Spring: 7. RAG 최종 추천 완료 응답 (COMPLETED + Proposal JSON)
-    Spring->>Spring: 8. 코스 최종 Snapshot DB 영구 저장
-    Spring-->>User: 9. SSE event: run.completed (최종 결과 전달 및 스트림 종료)
+    AI-->>Spring: 9. ExecutionResult 최종 응답 (proposal, evidenceSet, planHash)
+    Spring->>Spring: 10. 코스 최종 Snapshot DB 영구 저장
+    Spring-->>User: 11. SSE event: run.completed (최종 결과 전달 및 스트림 종료)
 ```
 
 ---
 
 ## 3. 인터페이스 세부 계약 (Contract Specification)
 
-### 3.1 Spring ➔ FastAPI: 여정 추천 요청
+### 3.1 Spring ➔ FastAPI: 여정 플랜 및 실행 요청
 
-- **URL**: `POST http://ai-engine:8000/internal/ai/journey/propose` (또는 `/internal/v1/journey/proposals`)
-- **Headers**:
-  - `Content-Type: application/json`
-  - `traceparent`: W3C 분산 트레이싱 헤더 (`00-{trace_id}-{span_id}-{trace_flags}`)
-  - `X-OnMaru-Internal-Timestamp`: 호출 시각 (Unix epoch ms)
-  - `X-OnMaru-Internal-Signature`: `timestamp + "." + body`의 HMAC-SHA256 서명값
-- **Request Body**:
-  ```json
-  {
-    "runId": "45e6a7f5-31bc-469d-9e30-6f510a1dc497",
-    "prompt": "전주 1박 2일 고즈넉한 한옥 여행 추천해줘",
-    "regionCode": "jeonju",
-    "candidates": []
-  }
-  ```
-- **Response Body**:
-  ```json
-  {
-    "status": "COMPLETED",
-    "proposal": {
-      "summary": "전주 한옥마을 중심 코스",
-      "items": []
-    }
-  }
-  ```
+- **Plan URL**: `POST http://ai-engine:8000/internal/v1/journey/plan`
+  - **인증**: `Authorization: Bearer <JWT Token>` (HS256, Secret: `ONMARU_SECRET_INTERNAL_AI_SERVICE_TOKEN_CURRENT`)
+  - **Claims**: `iss=onmaru-spring`, `sub=spring-api`, `aud=onmaru-ai`, `scope=journey.plan:write`
+  - **Request Body**: `SafeQueryRequest` (schemaVersion: `ai-safe-query.v1`)
+  - **Response Body**: `PlanProposal` (schemaVersion: `ai-plan-proposal.v1`)
+
+- **Execute URL**: `POST http://ai-engine:8000/internal/v1/journey/execute`
+  - **인증**: `Authorization: Bearer <JWT Token>` (HS256, Secret: `ONMARU_SECRET_INTERNAL_AI_SERVICE_TOKEN_CURRENT`)
+  - **Claims**: `iss=onmaru-spring`, `sub=spring-api`, `aud=onmaru-ai`, `scope=journey.execute:write`
+  - **Headers**:
+    - `X-Run-Progress-Token: <progressCapabilityToken>`
+    - `X-Run-Id: <runId>`
+    - `X-Request-Id: <requestId>`
+    - `X-Deadline-At: <ISO-8601-UTC-deadline>`
+    - `traceparent: 00-{traceId}-{spanId}-01`
+  - **Request Body**: `ApprovedQueryPlan` (schemaVersion: `ai-approved-query-plan.v1`)
+  - **Response Body**: `ExecutionResult` (schemaVersion: `ai-execute-result.v1`)
 
 ---
 
@@ -102,11 +98,10 @@ sequenceDiagram
 
 AI-Engine 파이프라인이 각 주요 실행 단계에 진입할 때마다 Spring으로 비동기 콜백을 전송한다.
 
-- **URL**: `POST http://staging-api:8080/internal/ai/runs/{runId}/progress`
+- **URL**: `POST http://staging-api:8080/internal/v1/ai/runs/{runId}/progress`
 - **Headers**:
   - `Content-Type: application/json`
-  - `X-OnMaru-Internal-Timestamp`: 현재 시각 (Unix epoch ms)
-  - `X-OnMaru-Internal-Signature`: `timestamp + "." + body`를 HMAC-SHA256으로 서명한 Base64 토큰
+  - `X-Run-Progress-Token: <progressCapabilityToken>`
 - **Payload (`InternalAiProgressPayload`)**:
   ```json
   {

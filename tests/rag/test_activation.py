@@ -17,7 +17,7 @@ from onmaru_ai.rag.activation import (
 )
 
 EVAL_ROOT = Path(__file__).parents[2] / "evals"
-FIXTURE_PATH = EVAL_ROOT / "journey-held-out-v1.json"
+FIXTURE_PATH = EVAL_ROOT / "journey-eval-contract-fixture-v1.json"
 
 
 class CountingRetriever:
@@ -35,6 +35,7 @@ def fixture_document() -> dict[str, Any]:
 
 def failing_rag_report() -> EvalReport:
     document = fixture_document()
+    document["corpusRevision"] = "catalog-rev-2026-09-17"
     document["versions"]["model"] = "rag-challenger-v1"
     document["versions"]["ranking"] = "rag-ranking-v1"
     document["cases"][0]["actual"]["retrievedRefs"] = []
@@ -43,6 +44,7 @@ def failing_rag_report() -> EvalReport:
 
 def passing_rag_report_with_gain() -> EvalReport:
     baseline_document = fixture_document()
+    baseline_document["corpusRevision"] = "catalog-rev-2026-09-17"
     rag_document = deepcopy(baseline_document)
     rag_document["versions"]["model"] = "rag-challenger-v1"
     rag_document["versions"]["ranking"] = "rag-ranking-v1"
@@ -76,6 +78,30 @@ def test_gate_failure_records_revision_pinned_rollback_and_skips_retrieval() -> 
     assert retriever.calls == 0
 
 
+def test_activation_fails_closed_when_report_corpus_revision_does_not_match() -> None:
+    report = failing_rag_report().model_copy(
+        update={"corpus_revision": "stale-corpus-revision"}
+    )
+
+    decision = RagActivationPolicy().evaluate(
+        report, corpus_revision_id="catalog-rev-2026-09-17"
+    )
+
+    assert decision.enabled is False
+    assert decision.reason == "CORPUS_REVISION_MISMATCH"
+
+
+def test_activation_fails_closed_for_unrecognized_candidate_policy() -> None:
+    report = passing_rag_report_with_gain().model_copy(update={"candidate_policy": "v2"})
+
+    decision = RagActivationPolicy().evaluate(
+        report, corpus_revision_id="catalog-rev-2026-09-17"
+    )
+
+    assert decision.enabled is False
+    assert decision.reason == "CANDIDATE_POLICY_UNSUPPORTED"
+
+
 def test_activation_requires_compatible_baseline_gain_and_records_corpus_revision() -> None:
     log = InMemoryRagActivationLog()
     report = passing_rag_report_with_gain()
@@ -90,6 +116,7 @@ def test_activation_requires_compatible_baseline_gain_and_records_corpus_revisio
         retrieve=retriever.retrieve,
     )
 
+    assert report.overall_passed is True
     assert decision.enabled is True
     assert decision.action == "ACTIVATE"
     assert decision.reason == "EVAL_GATE_PASSED_WITH_BASELINE_GAIN"
@@ -97,6 +124,40 @@ def test_activation_requires_compatible_baseline_gain_and_records_corpus_revisio
     assert decision.dataset_gold_sha256 == report.dataset.gold_sha256
     assert result == ("evidence:001",)
     assert retriever.calls == 1
+
+
+def test_activation_rejects_baseline_report_that_failed_its_own_gate() -> None:
+    baseline_document = fixture_document()
+    baseline_document["corpusRevision"] = "catalog-rev-2026-09-17"
+    baseline_document["cases"][0]["actual"]["retrievedRefs"] = []
+    current_document = deepcopy(baseline_document)
+    current_document["versions"]["model"] = "rag-challenger-v1"
+    current_document["cases"][0]["actual"]["retrievedRefs"] = ["place-a", "place-b"]
+    current_document["cases"][0]["actual"]["outcome"] = "PROPOSE_BOARD"
+    current_document["cases"][0]["actual"]["orderedRefs"] = ["place-a"]
+    current_document["cases"][0]["actual"]["reasons"] = [
+        {
+            "ref": "place-a",
+            "evidenceIds": ["evidence-a"],
+            "summary": "검수된 근거만 사용합니다.",
+            "humanClaimSupported": True,
+        }
+    ]
+    baseline = evaluate_document(baseline_document)
+    candidate = evaluate_document(current_document)
+    report = candidate.model_copy(update={"comparison": compare_reports(candidate, baseline)})
+
+    decision = RagActivationPolicy().evaluate(
+        report,
+        corpus_revision_id="catalog-rev-2026-09-17",
+    )
+
+    assert baseline.overall_passed is False
+    assert report.overall_passed is True
+    assert decision.enabled is False
+    assert decision.reason == "EVAL_GATE_FAILED"
+    assert decision.baseline_passed is False
+    assert decision.candidate_passed is True
 
 
 def test_feature_flag_disabled_rolls_back_even_when_eval_passes() -> None:

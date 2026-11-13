@@ -75,6 +75,36 @@ class _NullMetrics:
         del sample
 
 
+class DeterministicHashBackend:
+    """Deterministic, CPU-only embedding backend implementing E5_SMALL_384.
+
+    Produces normalized, repeatable 384-dimensional vectors via SHA-256 seed expansion.
+    Useful for offline ingestion, testing, and lightweight staging environments without
+    requiring PyTorch/HuggingFace dependencies.
+    """
+
+    model_id: str = E5_SMALL_384.model_id
+    model_commit: str = E5_SMALL_384.model_commit
+    dimensions: int = 384
+
+    def encode(self, texts: tuple[str, ...]) -> tuple[tuple[float, ...], ...]:
+        import hashlib
+        result: list[tuple[float, ...]] = []
+        for text in texts:
+            digest = hashlib.sha256(text.encode("utf-8")).digest()
+            raw_floats = [
+                float((digest[i % len(digest)] - 128) / 128.0) + (0.01 * (i % 7))
+                for i in range(self.dimensions)
+            ]
+            norm = math.sqrt(sum(x * x for x in raw_floats))
+            if norm == 0:
+                raw_floats[0] = 1.0
+                norm = 1.0
+            unit_vec = tuple(x / norm for x in raw_floats)
+            result.append(unit_vec)
+        return tuple(result)
+
+
 class EmbeddingWorkGate:
     """Process-local admission gate separating online queries and offline batches."""
 

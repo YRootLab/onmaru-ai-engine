@@ -31,7 +31,7 @@ from onmaru_ai.observability import TelemetrySink, create_telemetry_sink, instal
 from onmaru_ai.providers.gemini.adapter import GeminiAdapter
 from onmaru_ai.providers.gemini.models import GeminiConfig, GeminiPricing
 from onmaru_ai.providers.gemini.transport import HttpxGeminiTransport
-from onmaru_ai.rag import InMemoryRagActivationLog
+from onmaru_ai.rag import RagActivationLog
 from onmaru_ai.screenhanok.routes import install_screen_hanok_research
 from onmaru_ai.screenhanok.service import ScreenHanokResearchService
 from onmaru_ai.security import install_internal_auth
@@ -58,7 +58,7 @@ def _journey_gemini_enabled(environ: Mapping[str, str] | None = None) -> bool:
 def create_app(
     secret_provider: SecretProvider | None = None,
     telemetry_sink: TelemetrySink | None = None,
-    rag_activation_log: InMemoryRagActivationLog | None = None,
+    rag_activation_log: RagActivationLog | None = None,
     rag_retriever: RagEvidenceRetriever | None = None,
     corpus_store: InMemoryCorpusStore | None = None,
     corpus_index: CorpusIndexService | None = None,
@@ -72,19 +72,33 @@ def create_app(
 
     client = http_client or httpx.AsyncClient(timeout=httpx.Timeout(5.0))
     owns_client = http_client is None
+    source_env = os.environ if environ is None else environ
 
-    if plan_execute_service is None:
-        source_env = os.environ if environ is None else environ
-        if source_env.get("ONMARU_DISABLE_DEFAULT_PLAN_EXECUTE", "").strip().lower() != "true":
-            try:
-                plan_execute_service = create_production_plan_execute_service(
-                    secret_provider=provider,
-                    http_client=client,
-                    environ=environ,
-                )
-            except ValueError:
-                # Invalid origin configured; fail closed on /ready
-                plan_execute_service = None
+    # Wire PostgreSQL RAG components if configured and not explicitly provided
+    db_dsn = source_env.get("ONMARU_AI_DB_DSN") or source_env.get("ONMARU_DB_URL")
+    if db_dsn and db_dsn.strip():
+        from onmaru_ai.rag.postgres_activation import (
+            PostgresRagActivationLog,
+            PostgresRagEvidenceRetriever,
+        )
+
+        if rag_activation_log is None:
+            rag_activation_log = PostgresRagActivationLog(db_dsn.strip())
+        if rag_retriever is None:
+            rag_retriever = PostgresRagEvidenceRetriever(db_dsn.strip())
+
+    if plan_execute_service is None and source_env.get(
+        "ONMARU_DISABLE_DEFAULT_PLAN_EXECUTE", ""
+    ).strip().lower() != "true":
+        try:
+            plan_execute_service = create_production_plan_execute_service(
+                secret_provider=provider,
+                http_client=client,
+                environ=environ,
+            )
+        except ValueError:
+            # Invalid origin configured; fail closed on /ready
+            plan_execute_service = None
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -163,6 +177,16 @@ def create_app(
             return JSONResponse(
                 status_code=503,
                 content={"status": "not_ready", "reason": "plan_execute_service_unwired"},
+            )
+
+        if _rag_feature_enabled(environ) and (
+            rag_activation_log is None
+            or not rag_activation_log.durable
+            or rag_retriever is None
+        ):
+            return JSONResponse(
+                status_code=503,
+                content={"status": "not_ready", "reason": "rag_runtime_unwired"},
             )
 
         # Check HTTP client ready

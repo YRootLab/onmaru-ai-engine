@@ -1,6 +1,7 @@
 {
-  "contract_version": "ai-release-evidence.v1",
-  "generated_at": "2026-11-05T07:18:14.161805+00:00",
+  "contract_version": "ai-release-evidence.v2",
+  "measurement_mode": "SIMULATED_REFERENCE_ONLY",
+  "generated_at": "2026-11-12T05:22:36.895317+00:00",
   "image_tag": "onmaru-ai-engine:staging",
   "image_digest": null,
   "model_version": "multilingual-e5-small-384",

@@ -6,7 +6,7 @@
 
 기존 1GB/$7 Lightsail의 PostgreSQL/PostGIS에 pgvector와 BM25 검색을 추가하기 전에, 사용자가 선택한 **2GB/$12 Lightsail 단일 인스턴스**로 스냅샷 이전한다. 이전 후 Spring·PostgreSQL/PostGIS/pgvector/BM25·Nginx·FastAPI·질문 임베딩·reranker를 새 서버 한 대에서 실행하고 문서 임베딩·색인 배치도 같은 호스트에서 시간대를 분리한다. 기존 Compose의 Spring 448MiB·DB 320MiB·Nginx 64MiB 제한 합계는 832MiB로, 1GB에는 FastAPI/모델을 단순 추가할 여유가 거의 없었다. 2GB에서도 CPU 평균 약 2%만으로 메모리·순간 부하를 보증하지 않는다. 이전 전후 `MemAvailable`, swap, OOM, 컨테이너 RSS/peak, DB 연결·디스크 여유·p95를 기록하고, OS/Docker/파일 캐시 여유를 남긴 **동시 peak 메모리 예산표**와 cold/warm 혼합 부하로 검증한다. Compose 제한·JVM heap·DB pool·FastAPI worker·모델 적재/동시성 값은 2GB 측정 뒤 고정한다. 출시 게이트를 계속 통과하지 못하면 운영 확장을 진행하지 않고 추가 서버·상위 플랜은 별도 결정으로 다룬다.
 
-인스턴스 이전은 **2026-10-23 금요일 오후(KST) 예정**이며 아직 수행하지 않았다. 스냅샷 생성·새 인스턴스 준비·PostgreSQL 백업·고정 IP 전환·롤백의 정확한 절차는 [Lightsail 2GB 마이그레이션 runbook](https://github.com/YRootLab/OnMaru-backend/blob/develop/docs/operations/runbooks/lightsail-2gb-migration.md)을 따른다. 서버 이전과 RAG 기능 출시를 별도 변경으로 검증한다.
+인스턴스 이전은 **2026-10-23 금요일 오후(KST) 예정**으로 기록되어 있으나, AI 저장소에는 완료 여부나 실행 결과가 없다. 현재 상태를 미이전으로 단정하지 않고 운영자 확인 대상으로 둔다. 스냅샷 생성·새 인스턴스 준비·PostgreSQL 백업·고정 IP 전환·롤백의 절차는 [Lightsail 2GB 마이그레이션 runbook](https://github.com/YRootLab/OnMaru-backend/blob/develop/docs/operations/runbooks/lightsail-2gb-migration.md)을 따른다. 서버 이전과 RAG 기능 출시는 별도 변경으로 검증한다.
 
 별도 $5 벡터 DB·FastAPI 서버는 만들지 않는다. FastAPI는 기존 Lightsail Compose의 독립 컨테이너로 두고 Spring·DB와 **외부에 공개되지 않는 전용 Docker 네트워크**에서만 통신한다. `5432`와 FastAPI 포트는 호스트에 publish하지 않으며 Nginx는 FastAPI에 직접 라우팅하지 않는다. 서비스 간 인증, DB 서버 인증 TLS(컨테이너 DNS 이름과 인증서 검증), `pg_hba` 제한, `ai` 스키마의 runtime/migration 분리 최소 권한 계정과 secret 분리를 검증한다. 호스트 방화벽과 외부 포트 스캔으로 노출이 없는지 확인한다. 동일 호스트라는 이유로 업무 schema 권한이나 TLS 검증을 생략하지 않는다.
 

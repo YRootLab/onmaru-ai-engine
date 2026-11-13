@@ -299,7 +299,24 @@ def create_production_plan_execute_service(
 
     query_planner = QueryPlanner(catalog=catalog)
     generator = ProductionGenerator()
-    engine = OrchestrationEngine(sql_adapter=sql_adapter, generator=generator)
+
+    # Issue #63: Wire real retrieval coordinator, reranker, and evidence selector
+    # allowing HYBRID, SQL_PLUS_RETRIEVAL, LEXICAL_ONLY, DENSE_ONLY routes.
+    from onmaru_ai.retrieval.evidence import EvidenceSelector
+    from onmaru_ai.retrieval.hybrid import HybridRetrievalCoordinator
+    from onmaru_ai.retrieval.rerank import Reranker
+
+    retrieval_coordinator = HybridRetrievalCoordinator()
+    reranker = Reranker()
+    evidence_selector = EvidenceSelector()
+
+    engine = OrchestrationEngine(
+        sql_adapter=sql_adapter,
+        retrieval_coordinator=retrieval_coordinator,
+        reranker=reranker,
+        evidence_selector=evidence_selector,
+        generator=generator,
+    )
 
     async def planner_func(request: SafeQueryRequest) -> PlanProposal:
         return query_planner.plan(request)

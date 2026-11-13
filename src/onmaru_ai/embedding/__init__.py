@@ -2,6 +2,7 @@
 
 from .service import (
     E5_SMALL_384,
+    DeterministicHashBackend,
     EmbeddingBackend,
     EmbeddingError,
     EmbeddingMetrics,
@@ -13,6 +14,7 @@ from .service import (
 )
 
 __all__ = [
+    "DeterministicHashBackend",
     "E5_SMALL_384",
     "EmbeddingBackend",
     "EmbeddingError",
