@@ -1,10 +1,14 @@
 {
-  "schemaVersion": "1.1",
+  "schemaVersion": "1.2",
+  "candidatePolicy": "v1",
+  "corpusRevision": "held-out-corpus-v1",
+  "imageDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+  "embeddingProfile": "e5-small-384",
   "versions": {
     "model": "offline-proposal-fixture-v1",
     "prompt": "journey-proposal-v1",
     "ranking": "baseline-ranking-v1",
-    "dataset": "journey-held-out-v1"
+    "dataset": "journey-eval-contract-fixture-v1"
   },
   "thresholds": {
     "minRetrievalRecallAt5": 0.85,
@@ -19,6 +23,9 @@
     {
       "id": "region-alias-hanok-market",
       "gold": {
+        "query": "서울에서 한옥과 전통 시장을 함께 둘러볼 만한 곳을 추천해 주세요.",
+        "regionCode": "kr-11",
+        "candidateRefs": ["place-a", "place-b", "place-c"],
         "relevance": [
           {"ref": "place-a", "grade": 2},
           {"ref": "place-b", "grade": 1}
@@ -57,6 +64,9 @@
     {
       "id": "pin-preserved-after-ranking",
       "gold": {
+        "query": "고정한 장소를 포함해 여행 코스를 만들어 주세요.",
+        "regionCode": null,
+        "candidateRefs": ["place-c", "place-d"],
         "relevance": [{"ref": "place-c", "grade": 2}],
         "supportedEvidence": {"place-c": ["evidence-c"]},
         "allowedRefs": ["place-c", "place-d"],
@@ -83,6 +93,9 @@
     {
       "id": "ambiguous-region-clarification",
       "gold": {
+        "query": "조용한 곳 추천해줘.",
+        "regionCode": null,
+        "candidateRefs": [],
         "relevance": [],
         "supportedEvidence": {},
         "allowedRefs": [],
@@ -102,6 +115,9 @@
     {
       "id": "deleted-revision-no-results",
       "gold": {
+        "query": "삭제된 장소 말고 다른 곳을 추천해 주세요.",
+        "regionCode": null,
+        "candidateRefs": [],
         "relevance": [],
         "supportedEvidence": {},
         "allowedRefs": [],

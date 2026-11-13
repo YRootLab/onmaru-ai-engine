@@ -5,6 +5,7 @@ import contextlib
 import hashlib
 import hmac
 import json
+import logging
 import uuid
 from collections.abc import AsyncIterator, Callable, Mapping
 from dataclasses import dataclass
@@ -18,12 +19,13 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from onmaru_ai.config.secrets import SecretProvider
 from onmaru_ai.observability.correlation import correlation_from
 from onmaru_ai.providers.gemini.models import GeminiFailureCode, GeminiProviderError
-from onmaru_ai.rag import InMemoryRagActivationLog, RagRetrievalGate
+from onmaru_ai.rag import RagActivationLog, RagRetrievalGate
 
 INTERNAL_TOKEN_SECRET_NAME = "internal-ai.service-token"
 EXPECTED_ISSUER = "onmaru-spring"
 EXPECTED_AUDIENCE = "onmaru-ai"
 REQUIRED_SCOPE = "journey.proposal:write"
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -43,7 +45,16 @@ class InternalAuthError(ValueError):
 
 
 class RagEvidenceRetriever(Protocol):
+    def active_revision_id(self) -> str | None: ...
+
     def retrieve(self, corpus_revision_id: str) -> tuple[str, ...]: ...
+
+
+@dataclass(frozen=True)
+class RagRetrievalResult:
+    corpus_revision_id: str | None = None
+    evidence_refs: tuple[str, ...] = ()
+    degraded_reason: str | None = None
 
 
 class JourneyProposalRequest(BaseModel):
@@ -53,6 +64,7 @@ class JourneyProposalRequest(BaseModel):
     request_id: str = Field(alias="requestId", min_length=1, max_length=128)
     run_id: str = Field(alias="runId", min_length=1, max_length=128)
     candidate_count: int = Field(alias="candidateCount", ge=0, le=12)
+    candidate_policy: Literal["v1"] = Field(default="v1", alias="candidatePolicy")
     use_rag: bool = Field(default=False, alias="useRag")
     corpus_revision_id: str | None = Field(
         default=None,
@@ -61,14 +73,14 @@ class JourneyProposalRequest(BaseModel):
         max_length=128,
     )
     query: str = Field(default="", max_length=500)
-    candidate_refs: list[str] = Field(default_factory=list, alias="candidateRefs", max_length=50)
+    candidate_refs: list[str] = Field(default_factory=list, alias="candidateRefs", max_length=12)
 
 
 def install_internal_auth(
     app: FastAPI,
     secret_provider: SecretProvider,
     *,
-    rag_activation_log: InMemoryRagActivationLog | None = None,
+    rag_activation_log: RagActivationLog | None = None,
     rag_retriever: RagEvidenceRetriever | None = None,
     rag_feature_enabled: bool = False,
     journey_llm: Any | None = None,
@@ -87,19 +99,64 @@ def install_internal_auth(
             return _contract_error()
         if body.run_id != context.run_id or body.request_id != context.request_id:
             return _contract_error()
+        logger.info(
+            "journey.request.accepted request_id=%s run_id=%s "
+            "candidate_policy=%s candidate_count=%s",
+            body.request_id,
+            body.run_id,
+            body.candidate_policy,
+            body.candidate_count,
+        )
         return body
 
-    def rag_refs(body: JourneyProposalRequest) -> tuple[str, ...] | JSONResponse:
-        if body.use_rag:
-            if body.corpus_revision_id is None:
-                return _contract_error()
-            if rag_feature_enabled and rag_activation_log is not None and rag_retriever is not None:
-                revision_id = body.corpus_revision_id
-                return RagRetrievalGate(rag_activation_log).retrieve_if_active(
-                    corpus_revision_id=revision_id,
-                    retrieve=lambda: rag_retriever.retrieve(revision_id),
+    def rag_result(body: JourneyProposalRequest) -> RagRetrievalResult:
+        if not body.use_rag:
+            return RagRetrievalResult()
+        if not rag_feature_enabled:
+            return RagRetrievalResult(degraded_reason="RAG_FEATURE_DISABLED")
+        if (
+            rag_activation_log is None
+            or not rag_activation_log.durable
+            or rag_retriever is None
+        ):
+            return RagRetrievalResult(degraded_reason="RAG_RUNTIME_UNAVAILABLE")
+        revision_id: str | None = None
+        try:
+            revision_id = rag_retriever.active_revision_id()
+            if revision_id is None:
+                return RagRetrievalResult(degraded_reason="RAG_NO_ACTIVE_CORPUS")
+            decision = rag_activation_log.latest_for_revision(revision_id)
+            if decision is None or not decision.enabled:
+                return RagRetrievalResult(
+                    degraded_reason="RAG_EVALUATION_NOT_APPROVED",
                 )
-        return ()
+            evidence_refs = RagRetrievalGate(rag_activation_log).retrieve_if_active(
+                corpus_revision_id=revision_id,
+                retrieve=lambda: rag_retriever.retrieve(revision_id),
+            )
+            return RagRetrievalResult(
+                corpus_revision_id=revision_id,
+                evidence_refs=evidence_refs,
+                degraded_reason=None if evidence_refs else "RAG_NO_ACTIVE_EVIDENCE",
+            )
+        except Exception as error:
+            logger.warning("rag.retrieval.failed error_type=%s", type(error).__name__)
+            return RagRetrievalResult(
+                corpus_revision_id=revision_id,
+                degraded_reason="RAG_RETRIEVAL_FAILED",
+            )
+
+    def log_rag_result(body: JourneyProposalRequest, result: RagRetrievalResult) -> None:
+        if body.use_rag:
+            logger.info(
+                "journey.rag.result run_id=%s candidate_policy=%s corpus_revision_id=%s "
+                "retrieved_count=%s degraded_reason=%s",
+                body.run_id,
+                body.candidate_policy,
+                result.corpus_revision_id or "none",
+                len(result.evidence_refs),
+                result.degraded_reason or "none",
+            )
 
     @app.post(
         "/internal/ai/journey/propose",
@@ -118,9 +175,8 @@ def install_internal_auth(
         body = await validated_body(request, authorization)
         if isinstance(body, JSONResponse):
             return body
-        rag_evidence_refs = rag_refs(body)
-        if isinstance(rag_evidence_refs, JSONResponse):
-            return rag_evidence_refs
+        rag_context = rag_result(body)
+        log_rag_result(body, rag_context)
         llm_proposal = None
         llm_attempted = journey_llm is not None and bool(body.query.strip())
         if journey_llm is not None and llm_attempted and body.candidate_refs:
@@ -128,16 +184,17 @@ def install_internal_auth(
                 query=body.query,
                 candidate_refs=body.candidate_refs,
                 request_id=body.request_id,
+                evidence_refs=rag_context.evidence_refs,
             )
         if llm_proposal is not None:
-            return _proposal_response(body, llm_proposal, rag_evidence_refs)
+            return _proposal_response(body, llm_proposal, rag_context)
         if journey_llm is None:
             llm_reason = "LLM_DISABLED"
         elif not body.query.strip():
             llm_reason = "QUERY_EMPTY"
         else:
             llm_reason = "LLM_UNAVAILABLE"
-        return _baseline_response(body, rag_evidence_refs, llm_reason)
+        return _baseline_response(body, rag_context, llm_reason)
 
     @app.post("/internal/v1/journey/proposals/stream", response_model=None)
     async def stream_journey_proposal(
@@ -146,9 +203,8 @@ def install_internal_auth(
         body = await validated_body(request, authorization)
         if isinstance(body, JSONResponse):
             return body
-        evidence = rag_refs(body)
-        if isinstance(evidence, JSONResponse):
-            return evidence
+        rag_context = rag_result(body)
+        log_rag_result(body, rag_context)
         if journey_llm is None:
             return JSONResponse(status_code=503, content={"code": "AI_SERVICE_UNAVAILABLE"})
         if not body.query.strip() or not body.candidate_refs:
@@ -161,6 +217,7 @@ def install_internal_auth(
                         query=body.query,
                         candidate_refs=body.candidate_refs,
                         request_id=body.request_id,
+                        evidence_refs=rag_context.evidence_refs,
                     )
                 ) as source:
                     async for event in source:
@@ -169,7 +226,9 @@ def install_internal_auth(
                         if event["event"] == "text.delta":
                             yield _sse("text.delta", {"text": event["data"]["text"]})
                         elif event["event"] == "proposal":
-                            proposal = _proposal_response(body, event["data"]["proposal"], evidence)
+                            proposal = _proposal_response(
+                                body, event["data"]["proposal"], rag_context
+                            )
                             yield _sse("proposal", {"proposal": proposal})
                             return
                         else:
@@ -188,7 +247,9 @@ def install_internal_auth(
 
 
 def _proposal_response(
-    body: JourneyProposalRequest, proposal: Mapping[str, Any], evidence: tuple[str, ...]
+    body: JourneyProposalRequest,
+    proposal: Mapping[str, Any],
+    rag_context: RagRetrievalResult,
 ) -> dict[str, object]:
     ordered_refs = proposal.get("orderedRefs", [])
     relaxed = proposal.get("relaxedConstraints", [])
@@ -206,13 +267,13 @@ def _proposal_response(
         response["degradedReason"] = (
             "NO_CANDIDATES" if not body.candidate_refs else "NO_RELEVANT_CANDIDATES"
         )
-    _attach_rag(response, body, evidence)
+    _attach_rag(response, body, rag_context)
     return response
 
 
 def _baseline_response(
     body: JourneyProposalRequest,
-    evidence: tuple[str, ...],
+    rag_context: RagRetrievalResult,
     llm_reason: str,
 ) -> dict[str, object]:
     """Deterministic fallback that only ever returns the caller's own candidate refs.
@@ -221,7 +282,9 @@ def _baseline_response(
     so an unknown ref would be silently replaced. Missing candidates are reported explicitly.
     """
     if body.candidate_count == 0 or not body.candidate_refs:
-        reason = "NO_CANDIDATES" if body.candidate_count == 0 else "CANDIDATE_REFS_MISSING"
+        # An empty candidate list is a valid result regardless of a stale/missing count.
+        # Keep the contract's empty-input outcome stable for backend consumers.
+        reason = "NO_CANDIDATES"
         response: dict[str, object] = {
             "schemaVersion": "internal.ai.v1",
             "runId": body.run_id,
@@ -239,19 +302,22 @@ def _baseline_response(
             "outcome": "PROPOSAL" if ordered else "NO_RESULTS",
             "degradedReason": llm_reason,
         }
-    _attach_rag(response, body, evidence)
+    _attach_rag(response, body, rag_context)
     return response
 
 
 def _attach_rag(
-    response: dict[str, object], body: JourneyProposalRequest, evidence: tuple[str, ...]
+    response: dict[str, object],
+    body: JourneyProposalRequest,
+    rag_context: RagRetrievalResult,
 ) -> None:
     if not body.use_rag:
         return
-    response["ragEvidenceRefs"] = list(evidence)
-    if not evidence:
-        # The gate returns no evidence both when disabled and when a revision is not active.
-        response["ragDegradedReason"] = "RAG_NO_ACTIVE_EVIDENCE"
+    response["ragEvidenceRefs"] = list(rag_context.evidence_refs)
+    if rag_context.corpus_revision_id is not None:
+        response["corpusRevisionId"] = rag_context.corpus_revision_id
+    if rag_context.degraded_reason is not None:
+        response["ragDegradedReason"] = rag_context.degraded_reason
 
 
 def _sse(event: str, data: Mapping[str, Any]) -> str:

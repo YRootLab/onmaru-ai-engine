@@ -1,7 +1,11 @@
 from __future__ import annotations
 
 from onmaru_ai.journey_llm import RESPONSE_SCHEMA, JourneyLlmService
-from onmaru_ai.security.internal_auth import JourneyProposalRequest, _proposal_response
+from onmaru_ai.security.internal_auth import (
+    JourneyProposalRequest,
+    RagRetrievalResult,
+    _proposal_response,
+)
 
 
 def _body(candidate_refs: list[str]) -> JourneyProposalRequest:
@@ -24,7 +28,7 @@ def test_relaxed_constraints_are_passed_through_and_candidate_count_is_reported(
             "relaxedConstraints": ["THEME", "REGION"],
             "stops": [],
         },
-        (),
+        RagRetrievalResult(),
     )
 
     assert response["outcome"] == "PROPOSAL"
@@ -35,7 +39,9 @@ def test_relaxed_constraints_are_passed_through_and_candidate_count_is_reported(
 
 def test_missing_relaxed_constraints_defaults_to_empty_list() -> None:
     response = _proposal_response(
-        _body(["place:001"]), {"orderedRefs": ["place:001"], "stops": []}, ()
+        _body(["place:001"]),
+        {"orderedRefs": ["place:001"], "stops": []},
+        RagRetrievalResult(),
     )
 
     assert response["relaxedConstraints"] == []
@@ -43,7 +49,9 @@ def test_missing_relaxed_constraints_defaults_to_empty_list() -> None:
 
 def test_no_result_with_candidates_reports_no_relevant_candidates() -> None:
     response = _proposal_response(
-        _body(["place:001"]), {"orderedRefs": [], "relaxedConstraints": [], "stops": []}, ()
+        _body(["place:001"]),
+        {"orderedRefs": [], "relaxedConstraints": [], "stops": []},
+        RagRetrievalResult(),
     )
 
     assert response["outcome"] == "NO_RESULTS"
@@ -51,7 +59,9 @@ def test_no_result_with_candidates_reports_no_relevant_candidates() -> None:
 
 
 def test_no_result_without_candidates_reports_no_candidates() -> None:
-    response = _proposal_response(_body([]), {"orderedRefs": [], "stops": []}, ())
+    response = _proposal_response(
+        _body([]), {"orderedRefs": [], "stops": []}, RagRetrievalResult()
+    )
 
     assert response["outcome"] == "NO_RESULTS"
     assert response["degradedReason"] == "NO_CANDIDATES"

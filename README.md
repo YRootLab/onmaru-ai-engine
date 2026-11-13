@@ -28,7 +28,7 @@ planner and executor through `create_production_plan_execute_service`; set
 
 | 플래그 / 설정 | 기본값 | 실제 효과 |
 | :--- | :--- | :--- |
-| `ONMARU_RAG_ENABLED` | `false` | 레거시 `/internal/v1/journey/proposals`의 `useRag` 경로에서만 읽습니다. `create_app`이 `rag_retriever`와 `InMemoryRagActivationLog`를 주입하지 않으므로 `true`여도 근거는 `[]`입니다. plan/execute는 읽지 않습니다. |
+| `ONMARU_RAG_ENABLED` | `false` | 레거시 `/internal/v1/journey/proposals`의 `useRag` 경로에서만 읽습니다. 현재 운영 기본 `create_app`에는 retriever와 영속 activation log가 연결되지 않아 검색은 실행되지 않으며, 플래그를 켜면 `/ready`가 `rag_runtime_unwired`로 503을 반환합니다. plan/execute의 실제 검색도 아직 운영 연결 전입니다. |
 | `ONMARU_JOURNEY_GEMINI_ENABLED` | `false` | 레거시 제안 경로와 `/stream`에서만 Gemini를 호출합니다. plan/execute의 근거·제안 생성에는 관여하지 않습니다. |
 | `ONMARU_GEMINI_MODEL_NAME` | `gemini-2.5-flash` | 위 Gemini 호출의 모델 이름입니다. |
 | `ONMARU_SECRET_GEMINI_API_KEY_CURRENT` | 시작 시 필수 | 플래그와 무관하게 시작 시 검증됩니다. |
@@ -42,7 +42,7 @@ staging Compose 파일은 이 저장소에 없습니다. 백엔드 저장소의 
 2. 검색 라우트의 lexical·dense searcher를 `HybridRetrievalCoordinator`에 연결해야 합니다. 현재 후보는 항상 0개입니다.
 3. 코퍼스 revision을 `ai.corpus_revisions`에 `ACTIVE`로 적재하고 `ai.active_corpus.revision_id`로 가리켜야 합니다.
 4. 평가 보고서(`RagActivationPolicy.evaluate`)가 전체 통과하고, 기준선 대비 `retrievalRecallAt5`·`ndcgAt3`·`claimSupport` 중 하나 이상이 양의 개선을 보이며, 지연·비용이 악화되지 않아야 `enabled` 기록이 남습니다.
-5. 요청의 `useRag=true`와 `corpusRevisionId`가 함께 와야 합니다. 빠지면 422입니다.
+5. 요청은 `useRag=true`만 보내면 됩니다. 활성 corpus revision은 AI 서버가 선택하고, 실제 사용한 `corpusRevisionId`를 응답에 반환합니다. 요청의 기존 `corpusRevisionId`는 호환을 위해 받을 수 있지만 선택에는 사용하지 않습니다.
 6. 임베딩은 `e5-small-384` 프로필이고 차원은 384여야 합니다. 현재 적재 스크립트의 `DeterministicHashBackend`는 의미 임베딩이 아닙니다. 의미 검색을 켜기 전에 실제 임베딩 모델로 다시 적재해야 합니다.
 
 ### Gemini 근거 생성을 켜기 전에
@@ -101,6 +101,8 @@ Offline AI 평가:
 
 ```bash
 uv run python scripts/run-ai-evals \
-  --input evals/journey-held-out-v1.json \
+  --input evals/journey-eval-contract-fixture-v1.json \
   --output /tmp/onmaru-ai-eval-report.json
 ```
+
+`evals/journey-eval-contract-fixture-v1.json`은 CLI 계약을 확인하는 4건의 synthetic fixture이며, 활성화 판단용 gold dataset이 아닙니다. 평가 입력 v1.2는 고정 질문·지역·후보 순서와 전체 image digest, embedding profile 및 threshold를 요구합니다. [평가 artifact 안내](evals/README.md)를 참고하세요.

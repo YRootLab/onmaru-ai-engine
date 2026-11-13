@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 from collections.abc import AsyncIterator
+from copy import deepcopy
 from datetime import UTC, datetime, timedelta
 from typing import Any, cast
 
@@ -22,17 +23,45 @@ from onmaru_ai.providers.gemini import (
     GeminiTransportRequest,
     GeminiTransportResponse,
 )
-from onmaru_ai.rag import InMemoryRagActivationLog, RagActivationPolicy, RagActivationThresholds
-from onmaru_ai.security.internal_auth import create_internal_token, install_internal_auth
+from onmaru_ai.rag import (
+    RagActivationDecision,
+    RagActivationPolicy,
+    RagActivationThresholds,
+)
+from onmaru_ai.security.internal_auth import (
+    JourneyProposalRequest,
+    create_internal_token,
+    install_internal_auth,
+)
 
 
 class CountingRagRetriever:
     def __init__(self) -> None:
         self.calls = 0
+        self.revision_id = "catalog-rev-2026-09-17"
+
+    def active_revision_id(self) -> str:
+        return self.revision_id
 
     def retrieve(self, corpus_revision_id: str) -> tuple[str, ...]:
         self.calls += 1
         return (f"{corpus_revision_id}:evidence:001",)
+
+
+class DurableTestRagActivationLog:
+    durable = True
+
+    def __init__(self) -> None:
+        self._records: list[RagActivationDecision] = []
+
+    def append(self, decision: RagActivationDecision) -> None:
+        self._records.append(decision)
+
+    def latest_for_revision(self, corpus_revision_id: str) -> RagActivationDecision | None:
+        for record in reversed(self._records):
+            if record.corpus_revision_id == corpus_revision_id:
+                return record
+        return None
 
 
 async def post_proposal(
@@ -118,15 +147,81 @@ def test_journey_propose_endpoint_alias_accepted() -> None:
     assert response.json()["runId"] == "run-ai-001"
 
 
+def test_candidate_policy_defaults_to_v1_for_legacy_requests() -> None:
+    request = JourneyProposalRequest.model_validate(
+        {
+            "schemaVersion": "internal.ai.v1",
+            "requestId": "req-ai-001",
+            "runId": "run-ai-001",
+            "candidateCount": 0,
+        }
+    )
+
+    assert request.candidate_policy == "v1"
+
+
+def test_journey_proposal_request_json_schema_pins_backend_policy_contract() -> None:
+    schema = JourneyProposalRequest.model_json_schema(by_alias=True)
+    properties = schema["properties"]
+
+    assert "candidatePolicy" not in schema["required"]
+    assert properties["candidatePolicy"]["default"] == "v1"
+    assert properties["candidatePolicy"]["const"] == "v1"
+    assert properties["candidateCount"]["maximum"] == 12
+    assert properties["candidateRefs"]["maxItems"] == 12
+    assert schema["additionalProperties"] is False
+
+
+def test_rejects_unsupported_candidate_policy_value() -> None:
+    response = asyncio.run(
+        post_proposal(
+            token(),
+            body={
+                "schemaVersion": "internal.ai.v1",
+                "requestId": "req-ai-001",
+                "runId": "run-ai-001",
+                "candidateCount": 0,
+                "candidatePolicy": "v99",
+            },
+        )
+    )
+
+    assert response.status_code == 422
+    assert response.json()["code"] == "INTERNAL_AI_CONTRACT_INVALID"
+
+
+def test_empty_candidate_refs_always_return_no_candidates_outcome() -> None:
+    response = asyncio.run(
+        post_proposal(
+            token(),
+            body={
+                "schemaVersion": "internal.ai.v1",
+                "requestId": "req-ai-001",
+                "runId": "run-ai-001",
+                "candidateCount": 3,
+                "candidateRefs": [],
+            },
+        )
+    )
+
+    assert response.status_code == 202
+    assert response.json()["outcome"] == "NO_RESULTS"
+    assert response.json()["degradedReason"] == "NO_CANDIDATES"
+
+
 def failing_eval_document() -> dict[str, object]:
 
     return {
-        "schemaVersion": "1.1",
+        "schemaVersion": "1.2",
+        "candidatePolicy": "v1",
+        "corpusRevision": "catalog-rev-2026-09-17",
+        "imageDigest": "sha256:" + "1" * 64,
+        "embeddingProfile": "e5-small-384",
         "versions": {
             "model": "rag-challenger-v1",
             "prompt": "journey-proposal-v1",
             "ranking": "rag-ranking-v1",
-            "dataset": "journey-held-out-v1",
+            "dataset": "journey-eval-contract-fixture-v1",
         },
         "thresholds": {
             "minRetrievalRecallAt5": 0.85,
@@ -141,6 +236,9 @@ def failing_eval_document() -> dict[str, object]:
             {
                 "id": "rag-disabled",
                 "gold": {
+                    "query": "서울에서 한옥을 추천해 주세요.",
+                    "regionCode": "kr-11",
+                    "candidateRefs": ["place-a"],
                     "relevance": [{"ref": "place-a", "grade": 2}],
                     "supportedEvidence": {"place-a": ["evidence-a"]},
                     "allowedRefs": ["place-a"],
@@ -168,10 +266,97 @@ def failing_eval_document() -> dict[str, object]:
     }
 
 
+def passing_baseline_eval_document() -> dict[str, object]:
+    return {
+        "schemaVersion": "1.2",
+        "candidatePolicy": "v1",
+        "corpusRevision": "catalog-rev-2026-09-17",
+        "imageDigest": "sha256:" + "1" * 64,
+        "embeddingProfile": "e5-small-384",
+        "versions": {
+            "model": "rag-baseline-v1",
+            "prompt": "journey-proposal-v1",
+            "ranking": "rag-ranking-v1",
+            "dataset": "journey-eval-contract-fixture-v1",
+        },
+        "thresholds": {
+            "minRetrievalRecallAt5": 0.6,
+            "minNdcgAt3": 0.6,
+            "minClaimSupport": 0.9,
+            "minSafety": 1.0,
+            "maxLatencyP95Ms": 8000,
+            "maxMeanCostMicros": 1000,
+            "maxPerRunCostMicros": 2000,
+        },
+        "cases": [
+            {
+                "id": "rag-case-1",
+                "gold": {
+                    "query": "서울에서 한옥을 추천해 주세요.",
+                    "regionCode": "kr-11",
+                    "candidateRefs": ["place-a"],
+                    "relevance": [{"ref": "place-a", "grade": 2}],
+                    "supportedEvidence": {"place-a": ["evidence-a"]},
+                    "allowedRefs": ["place-a"],
+                    "pinnedRefs": [],
+                    "excludedRefs": [],
+                    "expectedOutcome": "PROPOSE_BOARD",
+                },
+                "actual": {
+                    "retrievedRefs": ["place-a"],
+                    "outcome": "PROPOSE_BOARD",
+                    "orderedRefs": ["place-a"],
+                    "reasons": [
+                        {
+                            "ref": "place-a",
+                            "evidenceIds": ["evidence-a"],
+                            "summary": "검수된 근거만 사용합니다.",
+                            "humanClaimSupported": True,
+                        }
+                    ],
+                    "latencyMs": 7000,
+                    "costMicros": 300,
+                },
+            },
+            {
+                "id": "rag-case-2",
+                "gold": {
+                    "query": "서울에서 전통시장을 추천해 주세요.",
+                    "regionCode": "kr-11",
+                    "candidateRefs": ["place-b", "place-c"],
+                    "relevance": [{"ref": "place-b", "grade": 2}, {"ref": "place-c", "grade": 1}],
+                    "supportedEvidence": {"place-b": ["evidence-b"], "place-c": ["evidence-c"]},
+                    "allowedRefs": ["place-b", "place-c"],
+                    "pinnedRefs": [],
+                    "excludedRefs": [],
+                    "expectedOutcome": "PROPOSE_BOARD",
+                },
+                "actual": {
+                    "retrievedRefs": ["place-b"],
+                    "outcome": "PROPOSE_BOARD",
+                    "orderedRefs": ["place-b"],
+                    "reasons": [
+                        {
+                            "ref": "place-b",
+                            "evidenceIds": ["evidence-b"],
+                            "summary": "검수된 근거만 사용합니다.",
+                            "humanClaimSupported": True,
+                        }
+                    ],
+                    "latencyMs": 7000,
+                    "costMicros": 300,
+                },
+            },
+        ],
+    }
+
+
 def passing_eval_document() -> dict[str, object]:
-    document = failing_eval_document()
+    document = deepcopy(passing_baseline_eval_document())
+    versions = cast(dict[str, Any], document["versions"])
+    versions["model"] = "rag-challenger-v1"
     cases = cast(list[dict[str, Any]], document["cases"])
-    cases[0]["actual"]["retrievedRefs"] = ["place-a"]
+    cases[1]["actual"]["retrievedRefs"] = ["place-b", "place-c"]
     return document
 
 
@@ -258,7 +443,7 @@ def test_rejects_body_run_id_that_does_not_match_correlation_header() -> None:
 
 
 def test_skips_rag_retrieval_when_activation_gate_recorded_rollback() -> None:
-    log = InMemoryRagActivationLog()
+    log = DurableTestRagActivationLog()
     RagActivationPolicy(log=log).evaluate(
         evaluate_document(failing_eval_document()),
         corpus_revision_id="catalog-rev-2026-09-17",
@@ -288,13 +473,14 @@ def test_skips_rag_retrieval_when_activation_gate_recorded_rollback() -> None:
 
     assert response.status_code == 202
     assert response.json()["ragEvidenceRefs"] == []
-    assert response.json()["ragDegradedReason"] == "RAG_NO_ACTIVE_EVIDENCE"
+    assert response.json()["ragDegradedReason"] == "RAG_EVALUATION_NOT_APPROVED"
+    assert "corpusRevisionId" not in response.json()
     assert retriever.calls == 0
 
 
 def test_returns_rag_evidence_when_activation_gate_recorded_active_revision() -> None:
-    log = InMemoryRagActivationLog()
-    baseline = evaluate_document(failing_eval_document())
+    log = DurableTestRagActivationLog()
+    baseline = evaluate_document(passing_baseline_eval_document())
     current = evaluate_document(passing_eval_document())
     current = current.model_copy(update={"comparison": compare_reports(current, baseline)})
     RagActivationPolicy(
@@ -319,12 +505,49 @@ def test_returns_rag_evidence_when_activation_gate_recorded_active_revision() ->
                 "runId": "run-ai-001",
                 "candidateCount": 2,
                 "useRag": True,
-                "corpusRevisionId": "catalog-rev-2026-09-17",
             },
         )
     )
 
     assert response.status_code == 202
+    assert response.json()["ragEvidenceRefs"] == ["catalog-rev-2026-09-17:evidence:001"]
+    assert response.json()["corpusRevisionId"] == "catalog-rev-2026-09-17"
+    assert retriever.calls == 1
+
+
+def test_rag_request_without_corpus_revision_uses_server_active_revision() -> None:
+    log = DurableTestRagActivationLog()
+    baseline = evaluate_document(passing_baseline_eval_document())
+    current = evaluate_document(passing_eval_document())
+    current = current.model_copy(update={"comparison": compare_reports(current, baseline)})
+    RagActivationPolicy(
+        log=log,
+        thresholds=RagActivationThresholds(min_retrieval_recall_at_5_delta=0.1),
+    ).evaluate(current, corpus_revision_id="catalog-rev-2026-09-17")
+    retriever = CountingRagRetriever()
+    app = create_app(
+        secret_provider=FakeSecretProvider(),
+        rag_activation_log=log,
+        rag_retriever=retriever,
+        environ={"ONMARU_RAG_ENABLED": "true"},
+    )
+
+    response = asyncio.run(
+        post_proposal(
+            token(),
+            app=app,
+            body={
+                "schemaVersion": "internal.ai.v1",
+                "requestId": "req-ai-001",
+                "runId": "run-ai-001",
+                "candidateCount": 2,
+                "useRag": True,
+            },
+        )
+    )
+
+    assert response.status_code == 202
+    assert response.json()["corpusRevisionId"] == "catalog-rev-2026-09-17"
     assert response.json()["ragEvidenceRefs"] == ["catalog-rev-2026-09-17:evidence:001"]
     assert retriever.calls == 1
 
@@ -346,6 +569,28 @@ def test_rejects_blank_rag_corpus_revision_id() -> None:
 
     assert response.status_code == 422
     assert response.json()["code"] == "INTERNAL_AI_CONTRACT_INVALID"
+
+
+def test_rag_opt_in_without_revision_falls_back_when_server_flag_is_off() -> None:
+    response = asyncio.run(
+        post_proposal(
+            token(),
+            body={
+                "schemaVersion": "internal.ai.v1",
+                "requestId": "req-ai-001",
+                "runId": "run-ai-001",
+                "candidateCount": 0,
+                "candidateRefs": [],
+                "useRag": True,
+            },
+        )
+    )
+
+    assert response.status_code == 202
+    assert response.json()["outcome"] == "NO_RESULTS"
+    assert response.json()["degradedReason"] == "NO_CANDIDATES"
+    assert response.json()["ragEvidenceRefs"] == []
+    assert response.json()["ragDegradedReason"] == "RAG_FEATURE_DISABLED"
 
 
 class JourneyStreamTransport:
@@ -492,7 +737,7 @@ def test_legacy_proposal_never_emits_placeholder_refs() -> None:
     assert not any(ref.startswith("place:") for ref in response.json()["orderedRefs"])
 
 
-def test_legacy_proposal_without_candidate_refs_reports_no_results() -> None:
+def test_legacy_proposal_without_candidate_refs_reports_no_candidates() -> None:
     response = asyncio.run(
         post_proposal(
             token(),
@@ -511,7 +756,7 @@ def test_legacy_proposal_without_candidate_refs_reports_no_results() -> None:
         "runId": "run-ai-001",
         "orderedRefs": [],
         "outcome": "NO_RESULTS",
-        "degradedReason": "CANDIDATE_REFS_MISSING",
+        "degradedReason": "NO_CANDIDATES",
     }
 
 

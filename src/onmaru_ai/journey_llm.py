@@ -50,11 +50,16 @@ class JourneyLlmService:
         self._adapter = adapter
 
     async def generate(
-        self, *, query: str, candidate_refs: list[str], request_id: str
+        self,
+        *,
+        query: str,
+        candidate_refs: list[str],
+        request_id: str,
+        evidence_refs: tuple[str, ...] = (),
     ) -> dict[str, Any] | None:
         try:
             result = await self._adapter.generate(
-                self._prompt(query, candidate_refs, request_id),
+                self._prompt(query, candidate_refs, request_id, evidence_refs=evidence_refs),
                 response_schema=RESPONSE_SCHEMA,
                 timeout_seconds=20.0,
             )
@@ -63,11 +68,16 @@ class JourneyLlmService:
         return self._filter_proposal(result.proposal, candidate_refs)
 
     async def stream(
-        self, *, query: str, candidate_refs: list[str], request_id: str
+        self,
+        *,
+        query: str,
+        candidate_refs: list[str],
+        request_id: str,
+        evidence_refs: tuple[str, ...] = (),
     ) -> AsyncGenerator[dict[str, Any], None]:
         async with aclosing(
             self._adapter.stream(
-                self._prompt(query, candidate_refs, request_id),
+                self._prompt(query, candidate_refs, request_id, evidence_refs=evidence_refs),
                 response_schema=RESPONSE_SCHEMA,
                 timeout_seconds=20.0,
             )
@@ -81,7 +91,17 @@ class JourneyLlmService:
                 else:
                     yield event
 
-    def _prompt(self, query: str, candidate_refs: list[str], request_id: str) -> GeminiPrompt:
+    def _prompt(
+        self,
+        query: str,
+        candidate_refs: list[str],
+        request_id: str,
+        *,
+        evidence_refs: tuple[str, ...] = (),
+    ) -> GeminiPrompt:
+        data_block: dict[str, Any] = {"query": query, "candidateRefs": candidate_refs}
+        if evidence_refs:
+            data_block["evidenceRefs"] = list(evidence_refs)
         return GeminiPrompt(
             policy_block=(
                 "You are OnMaru's Korean travel planner. Use only the supplied candidateRefs; "
@@ -104,7 +124,7 @@ class JourneyLlmService:
                 '"stops":[{"ref":"place:001","reason":"질의와 가장 잘 맞습니다."}]}'
                 "</example-output>"
             ),
-            data_block={"query": query, "candidateRefs": candidate_refs},
+            data_block=data_block,
             prompt_version="journey-gemini-v3",
             adapter_version="gemini-adapter-v1",
             candidate_revision=request_id,

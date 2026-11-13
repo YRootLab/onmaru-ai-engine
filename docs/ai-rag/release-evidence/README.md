@@ -1,26 +1,24 @@
-# AI Engine Staging 릴리스 증거와 검증 보고서
+# AI Engine 릴리스 evidence 상태
 
-> W21 인수 기준: AI 소유 이미지와 2GB Lightsail 공존 검증에 필요한 실행 증거 및 BE handoff 상태.
+> 이 디렉터리의 현재 JSON은 실제 staging 계측 결과가 아닙니다. 생성 도구가 만드는 synthetic reference load 수치이며 릴리스 승인 근거로 사용할 수 없습니다.
 
-## 1. 개요 및 릴리스 상태
-- **Contract Version**: `ai-release-evidence.v1`
-- **Embedding Profile**: `multilingual-e5-small-384`
-- **Evaluation Dataset**: `gold-v1` (개발 200건, 봉인 100건)
-- **현재 릴리스 판정**: `HELD_BE_INFRA_PENDING` (출시 보류)
-- **보류 사유**: `OnMaru-backend` 호스트의 2GB 업그레이드, PostgreSQL `pgvector`/`postgis` 확장 설치, AI 스키마 권한 분리 및 배포기 연동 검증 대기 중.
+## 현재 evidence
 
-## 2. 스테이징 혼합 부하 시뮬레이션 결과
-2GB 메모리 예산(최대 1200MB AI 상한) 하에 1/2/5 동시 RAG run 및 10/50/100 SSE 연결 시뮬레이션을 수행했습니다.
+- Contract: `ai-release-evidence.v2`
+- Measurement mode: `SIMULATED_REFERENCE_ONLY`
+- 판정: 인프라 gate 확인 여부와 관계없이 실측 결과가 없어 release hold 상태입니다.
+- 합성 데이터에는 컨테이너 실행, DB 연결, 검색, RSS, latency 측정이 포함되지 않습니다.
+- `generate_release_evidence`는 측정된 host/DB 상태를 확인하지 않습니다. `STAGING_*` 환경 변수는 checklist 예시를 채울 뿐 실제 운영 확인 증거가 아닙니다.
 
-| 동시 RAG Run | 동시 SSE 연결 | 요청 수 (성공/실패) | p50 지연 (ms) | p95 지연 (ms) | Peak RSS (MB) | OOM 발생 | DB 풀 고갈 |
+다음 표는 scenario 형식을 보여주기 위한 추정치입니다. 실제 용량·지연의 증거가 아닙니다.
+
+| 동시 RAG Run | 동시 SSE 연결 | 합성 요청 수 | 합성 p50 지연 (ms) | 합성 p95 지연 (ms) | 추정 RSS (MB) | OOM/DB |
 |:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
-| 1 | 10 | 10 (10 / 0) | 27.5 | 37.5 | ~272.5 | False | False |
-| 2 | 50 | 20 (20 / 0) | 27.5 | 37.5 | ~307.0 | False | False |
-| 5 | 100 | 50 (50 / 0) | 27.5 | 37.5 | ~382.5 | False | False |
+| 1 | 10 | 10 | 27.5 | 37.5 | 272.5 | 합성 기본값 |
+| 2 | 50 | 20 | 27.5 | 37.5 | 307.0 | 합성 기본값 |
+| 5 | 100 | 50 | 27.5 | 37.5 | 382.5 | 합성 기본값 |
 
-- **결과 분석**: 최대 5개 동시 RAG run 및 100 SSE 연결 상태에서도 Peak RSS는 약 382.5MB로 2GB 호스트의 AI 메모리 상한선(1200MB) 이하로 안전하게 유지됩니다.
-
-## 3. 백엔드(BE) 인프라 게이트 체크리스트
+## 인프라 확인 목록
 
 | 게이트 항목 | 상태 | 설명 |
 |---|:---:|---|
@@ -30,5 +28,6 @@
 | AI 전용 DB 권한 격리 | ⏳ PENDING | `ai` 스키마 접근 전용 롤 및 접근 제어 필요 |
 | BE 배포기 호환성 | ⏳ PENDING | AI digest 및 계약 버전 검증 파이프라인 연동 대기 |
 
-**출시 가이드라인**:
-AI 이미지 CI 및 품질 평가는 통과 완료되었으나, BE 인프라 게이트 5개 항목이 모두 staging에서 실측 통과되기 전까지는 운영 환경 배포를 개시하지 않고 출시 보류(`HELD_BE_INFRA_PENDING`) 상태를 유지합니다.
+## 실제 측정 결과 제출
+
+릴리스 판단용 evidence에는 immutable AI image digest, corpus/dataset hash, 환경·컨테이너 제한, 실행 시각·반복 횟수·동시성, 실제 RSS/지연/오류/DB pool 결과와 기존 API 영향이 포함되어야 합니다. 512MB 적재·검색 측정과 2GB 혼합 부하는 실제 staging/container 실행에서 별도로 수집하세요. 모두 수집되기 전에는 RAG 활성화 또는 release approval을 기록하지 않습니다.

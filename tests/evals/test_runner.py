@@ -14,8 +14,9 @@ from onmaru_ai.evals.cli import main
 from onmaru_ai.evals.runner import _ndcg
 
 EVAL_ROOT = Path(__file__).parents[2] / "evals"
-FIXTURE_PATH = EVAL_ROOT / "journey-held-out-v1.json"
+FIXTURE_PATH = EVAL_ROOT / "journey-eval-contract-fixture-v1.json"
 SCHEMA_PATH = EVAL_ROOT / "report.schema.json"
+INPUT_SCHEMA_PATH = EVAL_ROOT / "input.schema.json"
 
 
 def fixture_document() -> dict[str, Any]:
@@ -28,7 +29,13 @@ def test_scores_fixed_versions_quality_safety_latency_and_cost() -> None:
     assert report.versions.model == "offline-proposal-fixture-v1"
     assert report.versions.prompt == "journey-proposal-v1"
     assert report.versions.ranking == "baseline-ranking-v1"
-    assert report.versions.dataset == "journey-held-out-v1"
+    assert report.versions.dataset == "journey-eval-contract-fixture-v1"
+    assert report.candidate_policy == "v1"
+    assert report.corpus_revision == "held-out-corpus-v1"
+    assert report.image_digest == (
+        "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+    )
+    assert report.embedding_profile == "e5-small-384"
     assert report.dataset.case_count == 4
     assert len(report.dataset.input_sha256) == 64
     assert len(report.dataset.gold_sha256) == 64
@@ -65,6 +72,34 @@ def test_scores_fixed_versions_quality_safety_latency_and_cost() -> None:
         "determinism": True,
     }
     assert report.overall_passed is True
+
+
+def test_gold_pins_exact_question_region_and_candidate_snapshot() -> None:
+    document = fixture_document()
+    report = evaluate_document(document)
+    first_gold = load_eval_document(document).cases[0].gold
+
+    assert first_gold.query == "서울에서 한옥과 전통 시장을 함께 둘러볼 만한 곳을 추천해 주세요."
+    assert first_gold.region_code == "kr-11"
+    assert first_gold.candidate_refs == ("place-a", "place-b", "place-c")
+    assert report.dataset.gold_sha256
+
+
+@pytest.mark.parametrize(
+    "mutate",
+    [
+        lambda gold: gold.update(candidateRefs=["place-a", "place-a"]),
+        lambda gold: gold.update(candidateRefs=[f"place-{index}" for index in range(13)]),
+        lambda gold: gold.update(query="  "),
+        lambda gold: gold.update(regionCode="11"),
+    ],
+)
+def test_rejects_invalid_fixed_query_or_candidate_snapshot(mutate: Any) -> None:
+    document = fixture_document()
+    mutate(document["cases"][0]["gold"])
+
+    with pytest.raises(ValueError, match="invalid evaluation document"):
+        load_eval_document(document)
 
 
 def test_fails_closed_for_unsupported_evidence_constraint_latency_and_cost() -> None:
@@ -224,6 +259,7 @@ def test_report_is_byte_reproducible_and_comparable(tmp_path: Path) -> None:
     comparison = compare_reports(second, first)
 
     assert comparison.compatible is True
+    assert comparison.baseline_passed is True
     assert comparison.metric_deltas == {
         "retrievalRecallAt5": 0.0,
         "ndcgAt3": 0.0,
@@ -252,6 +288,101 @@ def test_report_is_byte_reproducible_and_comparable(tmp_path: Path) -> None:
     compared = EvalReport.model_validate_json(compared_path.read_text(encoding="utf-8"))
     assert compared.comparison is not None
     assert compared.comparison.compatible is True
+
+
+def test_eval_report_pins_candidate_policy_and_corpus_revision() -> None:
+    document = fixture_document()
+    document["candidatePolicy"] = "v1"
+    document["corpusRevision"] = "journey-corpus-v7"
+
+    report = evaluate_document(document)
+    payload = report.model_dump(mode="json", by_alias=True)
+
+    assert payload["candidatePolicy"] == "v1"
+    assert payload["corpusRevision"] == "journey-corpus-v7"
+
+
+def test_eval_comparison_rejects_candidate_policy_or_corpus_revision_mismatch() -> None:
+    baseline_document = fixture_document()
+    baseline_document.update(candidatePolicy="v1", corpusRevision="corpus-v7")
+    baseline = evaluate_document(baseline_document)
+
+    policy_changed = fixture_document()
+    policy_changed.update(candidatePolicy="v2", corpusRevision="corpus-v7")
+    assert compare_reports(evaluate_document(policy_changed), baseline).compatible is False
+
+    corpus_changed = fixture_document()
+    corpus_changed.update(candidatePolicy="v1", corpusRevision="corpus-v8")
+    assert compare_reports(evaluate_document(corpus_changed), baseline).compatible is False
+
+
+def test_eval_compare_records_failed_baseline_gate_separately_from_compatibility(
+    tmp_path: Path,
+) -> None:
+    baseline_document = fixture_document()
+    baseline_document["cases"][0]["actual"]["retrievedRefs"] = []
+    baseline_path = tmp_path / "baseline.json"
+    baseline_input_path = tmp_path / "baseline-input.json"
+    baseline_input_path.write_text(json.dumps(baseline_document), encoding="utf-8")
+    assert main(
+        [
+            "--input",
+            str(baseline_input_path),
+            "--output",
+            str(baseline_path),
+        ]
+    ) == 1
+    output_path = tmp_path / "candidate-report.json"
+
+    assert main(
+        [
+            "--input",
+            str(FIXTURE_PATH),
+            "--output",
+            str(output_path),
+            "--compare",
+            str(baseline_path),
+        ]
+    ) == 0
+
+    report = EvalReport.model_validate_json(output_path.read_text(encoding="utf-8"))
+    assert report.overall_passed is True
+    assert report.comparison is not None
+    assert report.comparison.compatible is True
+    assert report.comparison.baseline_passed is False
+    assert report.comparison.metric_deltas["retrievalRecallAt5"] > 0
+    assert report.comparison.baseline_image_digest == fixture_document()["imageDigest"]
+
+
+def test_eval_comparison_records_both_image_digests_and_requires_same_embedding_profile() -> None:
+    baseline = evaluate_document(fixture_document())
+
+    changed_image = baseline.model_copy(update={"image_digest": "sha256:" + "2" * 64})
+    changed_profile = baseline.model_copy(update={"embedding_profile": "other-profile"})
+
+    comparison = compare_reports(changed_image, baseline)
+    assert comparison.compatible is True
+    assert comparison.baseline_image_digest == baseline.image_digest
+    assert compare_reports(changed_profile, baseline).compatible is False
+
+
+def test_activation_gate_does_not_pass_when_baseline_quality_gate_failed() -> None:
+    baseline_document = fixture_document()
+    baseline_document["cases"][0]["actual"]["retrievedRefs"] = []
+    current_document = fixture_document()
+    current_document["versions"]["model"] = "rag-challenger-v1"
+    current_document["cases"][1]["actual"]["retrievedRefs"] = ["place-c", "place-d"]
+    baseline = evaluate_document(baseline_document)
+    current = evaluate_document(current_document)
+    comparison = compare_reports(current, baseline)
+    compared = current.model_copy(update={"comparison": comparison})
+
+    assert baseline.overall_passed is False
+    assert comparison.compatible is True
+    assert comparison.metric_deltas["retrievalRecallAt5"] > 0
+    reparsed = EvalReport.model_validate(compared.model_dump(mode="json", by_alias=True))
+    assert reparsed.comparison is not None
+    assert reparsed.comparison.compatible is True
 
 
 def test_comparison_uses_gold_fingerprint_not_model_actual() -> None:
@@ -366,3 +497,11 @@ def test_checked_in_report_schema_matches_runtime_contract() -> None:
     assert gates_schema["uniqueItems"] is True
     assert len(checked_in["allOf"]) == 5
     assert len(checked_in["oneOf"]) == 2
+
+
+def test_checked_in_input_schema_matches_runtime_contract() -> None:
+    checked_in = json.loads(INPUT_SCHEMA_PATH.read_text(encoding="utf-8"))
+
+    from onmaru_ai.evals.models import EvalDocument
+
+    assert checked_in == EvalDocument.model_json_schema(by_alias=True)

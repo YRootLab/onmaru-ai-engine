@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
-"""
-Staging load and release evidence runner (W21).
-Simulates staging concurrent load scenarios (1/2/5 runs, 10/50/100 SSE connections),
-measures RSS, p50/p95/p99 latencies, DB/connection health, and verifies
-BE gate prerequisites before generating a release evidence bundle.
+"""Generate infrastructure checks and synthetic reference load values.
+
+This script does not run a container load test or measure RSS/latency. Its output
+is never sufficient for release approval.
 """
 
 from __future__ import annotations
@@ -46,6 +45,7 @@ class InfrastructureGateStatus:
 @dataclass(frozen=True)
 class ReleaseEvidenceReport:
     contract_version: str
+    measurement_mode: str
     generated_at: str
     image_tag: str
     image_digest: str | None
@@ -53,7 +53,7 @@ class ReleaseEvidenceReport:
     dataset_version: str
     infrastructure_gates: InfrastructureGateStatus
     load_test_results: list[LoadRunMetrics]
-    release_decision: str  # "RELEASE_APPROVED" or "HELD_BE_INFRA_PENDING" or "REJECTED_METRICS"
+    release_decision: str
     decision_reason: str
 
 
@@ -90,10 +90,7 @@ def simulate_staging_load(
     sse_connections: int,
     duration_seconds: float = 1.0,
 ) -> LoadRunMetrics:
-    """
-    Simulates reference load (1/2/5 runs, 10/50/100 SSE) and records metrics.
-    Ensures zero OOM, zero DB connection exhaustion, and sub-second p95 in staging simulation.
-    """
+    """Return synthetic reference values for examples; these are not measurements."""
     total_reqs = concurrent_runs * 10
     latencies = [15.0 + (i % 10) * 2.5 for i in range(total_reqs)]
     latencies.sort()
@@ -142,19 +139,17 @@ def generate_release_evidence(
     if not gates.all_gates_passed:
         decision = "HELD_BE_INFRA_PENDING"
         reason = "BE host upgrade to 2GB or database extensions/isolation pending verification."
-    elif any(r.oom_killed or r.db_connection_pool_exhausted for r in load_results):
-        decision = "REJECTED_METRICS"
-        reason = "OOM or connection pool exhaustion observed during load test."
-    elif any(r.max_rss_mb > 1200.0 for r in load_results):
-        decision = "REJECTED_METRICS"
-        reason = "Peak RSS exceeded 1200MB budget for 2GB host coexistence."
     else:
-        decision = "RELEASE_APPROVED"
-        reason = "All performance, RSS, and infrastructure gating criteria satisfied."
+        decision = "HELD_MEASURED_EVIDENCE_PENDING"
+        reason = (
+            "Load values are simulated references, not measured; real 512MB and 2GB "
+            "runtime evidence is required before release approval."
+        )
 
     now_iso = datetime.now(UTC).isoformat()
     return ReleaseEvidenceReport(
-        contract_version="ai-release-evidence.v1",
+        contract_version="ai-release-evidence.v2",
+        measurement_mode="SIMULATED_REFERENCE_ONLY",
         generated_at=now_iso,
         image_tag=image_tag,
         image_digest=image_digest,
