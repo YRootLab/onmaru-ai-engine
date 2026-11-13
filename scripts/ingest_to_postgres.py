@@ -58,30 +58,61 @@ def main() -> int:
     raw_items = data if isinstance(data, list) else data.get("places", [])
     logger.info("Loaded %d raw records from %s", len(raw_items), input_path)
 
+    def _resolve_region(raw: dict) -> str:
+        explicit = str(raw.get("regionCode") or raw.get("region_code") or "").strip()
+        if explicit:
+            return explicit.upper()
+        addr = str(raw.get("address") or raw.get("regionName") or "").strip()
+        if addr.startswith("서울"):
+            return "KR-11"
+        if addr.startswith("부산"):
+            return "KR-26"
+        if addr.startswith("대구"):
+            return "KR-27"
+        if addr.startswith("인천"):
+            return "KR-28"
+        if addr.startswith("광주"):
+            return "KR-29"
+        if addr.startswith("대전"):
+            return "KR-30"
+        if addr.startswith("울산"):
+            return "KR-31"
+        if addr.startswith("세종"):
+            return "KR-36"
+        if addr.startswith("경기"):
+            return "KR-41"
+        if addr.startswith("강원"):
+            return "KR-42"
+        if addr.startswith("충청북도") or addr.startswith("충북"):
+            return "KR-43"
+        if addr.startswith("충청남도") or addr.startswith("충남"):
+            return "KR-44"
+        if addr.startswith("전북") or addr.startswith("전라북도"):
+            return "KR-45"
+        if addr.startswith("전남") or addr.startswith("전라남도"):
+            return "KR-46"
+        if addr.startswith("경북") or addr.startswith("경상북도"):
+            return "KR-47"
+        if addr.startswith("경남") or addr.startswith("경상남도"):
+            return "KR-48"
+        if addr.startswith("제주"):
+            return "KR-50"
+        return "KR-11"
+
     items: list[IngestItem] = []
     for raw in raw_items:
         place_id = str(raw.get("placeId") or raw.get("id") or raw.get("place_id"))
         title = str(raw.get("name") or raw.get("title"))
         body = str(
-            raw.get("overview")
-            or raw.get("description")
-            or raw.get("body")
-            or raw.get("name")
+            raw.get("overview") or raw.get("description") or raw.get("body") or raw.get("name")
         )
-        region_code = str(raw.get("regionCode") or raw.get("region_code") or "KR-11")
+        region_code = _resolve_region(raw)
         category_code = str(
-            raw.get("category")
-            or raw.get("categoryCode")
-            or raw.get("category_code")
-            or ""
+            raw.get("category") or raw.get("categoryCode") or raw.get("category_code") or ""
         )
         source_type = str(raw.get("sourceType") or raw.get("source_type") or "TOUR_API")
         source_id = str(raw.get("sourceId") or raw.get("source_id") or "src-1")
-        source_revision = str(
-            raw.get("sourceRevision")
-            or raw.get("source_revision")
-            or "rev-0"
-        )
+        source_revision = str(raw.get("sourceRevision") or raw.get("source_revision") or "rev-0")
         license_code = str(raw.get("licenseCode") or raw.get("license_code") or "KOGL-1")
 
         items.append(

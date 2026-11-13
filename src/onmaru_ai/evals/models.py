@@ -84,6 +84,11 @@ class Relevance(EvalModel):
 
 
 class GoldExpectation(EvalModel):
+    query: str = Field(min_length=1, max_length=500)
+    region_code: str | None = Field(
+        alias="regionCode", min_length=1, max_length=16, pattern=r"^kr-\d{2}$"
+    )
+    candidate_refs: tuple[str, ...] = Field(alias="candidateRefs", max_length=12)
     relevance: tuple[Relevance, ...]
     supported_evidence: dict[str, tuple[str, ...]] = Field(alias="supportedEvidence")
     allowed_refs: tuple[str, ...] = Field(alias="allowedRefs")
@@ -94,6 +99,12 @@ class GoldExpectation(EvalModel):
     @model_validator(mode="after")
     def validate_reference_sets(self) -> GoldExpectation:
         allowed = set(self.allowed_refs)
+        if not self.query.strip():
+            raise ValueError("query must not be blank")
+        if len(self.candidate_refs) != len(set(self.candidate_refs)):
+            raise ValueError("candidate refs must be unique and preserve one fixed order")
+        if not set(self.candidate_refs).issubset(allowed):
+            raise ValueError("candidate refs must belong to allowed refs")
         if len(allowed) != len(self.allowed_refs):
             raise ValueError("allowed refs must be unique")
         if len(set(self.pinned_refs)) != len(self.pinned_refs):
@@ -160,7 +171,16 @@ class EvaluationCase(EvalModel):
 
 
 class EvalDocument(EvalModel):
-    schema_version: Literal["1.1"] = Field(alias="schemaVersion")
+    schema_version: Literal["1.2"] = Field(alias="schemaVersion")
+    candidate_policy: str = Field(
+        alias="candidatePolicy",
+        min_length=1,
+        max_length=64,
+        pattern=r"^[a-z0-9][a-z0-9._-]*$",
+    )
+    corpus_revision: str = Field(alias="corpusRevision", min_length=1, max_length=128)
+    image_digest: str = Field(alias="imageDigest", pattern=r"^sha256:[a-f0-9]{64}$")
+    embedding_profile: str = Field(alias="embeddingProfile", min_length=1, max_length=128)
     versions: VersionPins
     thresholds: EvalThresholds
     cases: tuple[EvaluationCase, ...] = Field(min_length=1)
@@ -212,14 +232,28 @@ class GateResult(EvalModel):
 
 class ReportComparison(EvalModel):
     compatible: bool
+    baseline_passed: bool = Field(alias="baselinePassed")
+    baseline_image_digest: str = Field(
+        alias="baselineImageDigest", pattern=r"^sha256:[a-f0-9]{64}$"
+    )
     metric_deltas: dict[str, float | int] = Field(alias="metricDeltas")
 
 
 class EvalReport(EvalModel):
     model_config = ConfigDict(json_schema_extra=_REPORT_GATE_SCHEMA_INVARIANTS)
 
-    schema_version: Literal["1.1"] = Field(alias="schemaVersion")
+    schema_version: Literal["1.2"] = Field(alias="schemaVersion")
+    candidate_policy: str = Field(
+        alias="candidatePolicy",
+        min_length=1,
+        max_length=64,
+        pattern=r"^[a-z0-9][a-z0-9._-]*$",
+    )
+    corpus_revision: str = Field(alias="corpusRevision", min_length=1, max_length=128)
+    image_digest: str = Field(alias="imageDigest", pattern=r"^sha256:[a-f0-9]{64}$")
+    embedding_profile: str = Field(alias="embeddingProfile", min_length=1, max_length=128)
     versions: VersionPins
+    thresholds: EvalThresholds
     dataset: DatasetIdentity
     metrics: EvalMetrics
     gates: tuple[GateResult, ...] = Field(

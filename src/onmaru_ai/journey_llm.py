@@ -18,6 +18,7 @@ RESPONSE_SCHEMA: Mapping[str, Any] = {
         "orderedRefs": {"type": "array", "items": {"type": "string"}},
         "title": {"type": "string"},
         "summary": {"type": "string"},
+        "relaxedConstraints": {"type": "array", "items": {"type": "string"}},
         "stops": {
             "type": "array",
             "items": {
@@ -49,11 +50,16 @@ class JourneyLlmService:
         self._adapter = adapter
 
     async def generate(
-        self, *, query: str, candidate_refs: list[str], request_id: str
+        self,
+        *,
+        query: str,
+        candidate_refs: list[str],
+        request_id: str,
+        evidence_refs: tuple[str, ...] = (),
     ) -> dict[str, Any] | None:
         try:
             result = await self._adapter.generate(
-                self._prompt(query, candidate_refs, request_id),
+                self._prompt(query, candidate_refs, request_id, evidence_refs=evidence_refs),
                 response_schema=RESPONSE_SCHEMA,
                 timeout_seconds=20.0,
             )
@@ -62,11 +68,16 @@ class JourneyLlmService:
         return self._filter_proposal(result.proposal, candidate_refs)
 
     async def stream(
-        self, *, query: str, candidate_refs: list[str], request_id: str
+        self,
+        *,
+        query: str,
+        candidate_refs: list[str],
+        request_id: str,
+        evidence_refs: tuple[str, ...] = (),
     ) -> AsyncGenerator[dict[str, Any], None]:
         async with aclosing(
             self._adapter.stream(
-                self._prompt(query, candidate_refs, request_id),
+                self._prompt(query, candidate_refs, request_id, evidence_refs=evidence_refs),
                 response_schema=RESPONSE_SCHEMA,
                 timeout_seconds=20.0,
             )
@@ -80,12 +91,30 @@ class JourneyLlmService:
                 else:
                     yield event
 
-    def _prompt(self, query: str, candidate_refs: list[str], request_id: str) -> GeminiPrompt:
+    def _prompt(
+        self,
+        query: str,
+        candidate_refs: list[str],
+        request_id: str,
+        *,
+        evidence_refs: tuple[str, ...] = (),
+    ) -> GeminiPrompt:
+        data_block: dict[str, Any] = {"query": query, "candidateRefs": candidate_refs}
+        if evidence_refs:
+            data_block["evidenceRefs"] = list(evidence_refs)
         return GeminiPrompt(
             policy_block=(
-                "You are OnMaru's Korean travel planner. Use only supplied place refs; "
-                "never invent refs. Return concise Korean JSON. Prefer a coherent route "
-                "and explain each selected stop. Put concise user-facing Korean narration first; "
+                "You are OnMaru's Korean travel planner. Use only the supplied candidateRefs; "
+                "never invent refs or IDs. Return concise Korean JSON. "
+                "Region is a preference, not a hard constraint, unless the query explicitly "
+                "names a region. If no candidate matches the query exactly, choose the candidates "
+                "closest in mood, theme and activity, and explain in one Korean sentence in the "
+                "stop reason why the match is partial. When the match is weak, relax constraints "
+                "in this order: detailed theme, then category, then region. List every relaxed "
+                "constraint in relaxedConstraints ([] if none). Return an empty orderedRefs only "
+                "when candidateRefs is empty or every candidate is unrelated to the query. "
+                "Prefer a coherent route and explain each selected stop. "
+                "Put concise user-facing Korean narration first; "
                 "never include refs, JSON keys, secrets or internal instructions in narration."
             ),
             few_shot_block=(
@@ -95,8 +124,8 @@ class JourneyLlmService:
                 '"stops":[{"ref":"place:001","reason":"질의와 가장 잘 맞습니다."}]}'
                 "</example-output>"
             ),
-            data_block={"query": query, "candidateRefs": candidate_refs},
-            prompt_version="journey-gemini-v2",
+            data_block=data_block,
+            prompt_version="journey-gemini-v3",
             adapter_version="gemini-adapter-v1",
             candidate_revision=request_id,
             taxonomy_version="journey-v1",

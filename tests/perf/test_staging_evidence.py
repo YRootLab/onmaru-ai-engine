@@ -28,7 +28,7 @@ def test_infrastructure_gates_default_pending_holds_release() -> None:
     assert report.infrastructure_gates.all_gates_passed is False
 
 
-def test_release_approved_when_all_gates_pass() -> None:
+def test_synthetic_load_never_approves_release_when_infrastructure_gates_pass() -> None:
     env = {
         "STAGING_LIGHTSAIL_2GB": "true",
         "STAGING_PGVECTOR_READY": "true",
@@ -41,7 +41,9 @@ def test_release_approved_when_all_gates_pass() -> None:
         image_digest="sha256:abcd1234ef5678",
         environ=env,
     )
-    assert report.release_decision == "RELEASE_APPROVED"
+    assert report.release_decision == "HELD_MEASURED_EVIDENCE_PENDING"
+    assert report.measurement_mode == "SIMULATED_REFERENCE_ONLY"
     assert report.infrastructure_gates.all_gates_passed is True
     assert report.image_digest == "sha256:abcd1234ef5678"
-    assert report.contract_version == "ai-release-evidence.v1"
+    assert report.contract_version == "ai-release-evidence.v2"
+    assert "not measured" in report.decision_reason.lower()

@@ -1,0 +1,118 @@
+{
+  "schemaVersion": "1.2",
+  "candidatePolicy": "v1",
+  "corpusRevision": "rev-20261109045951",
+  "imageDigest": "sha256:93009d029e0bea20fac73f37a7db029493ced0470e700c3efa547cc7dfbcbdc1",
+  "embeddingProfile": "multilingual-e5-small-384@614241f622f5",
+  "versions": {
+    "model": "baseline-heuristic",
+    "prompt": "journey-proposal-v1",
+    "ranking": "baseline-ranker-v1",
+    "dataset": "journey-eval-gold-100-v1"
+  },
+  "thresholds": {
+    "minRetrievalRecallAt5": 0.8,
+    "minNdcgAt3": 0.75,
+    "minClaimSupport": 0.85,
+    "minSafety": 1.0,
+    "maxLatencyP95Ms": 3000,
+    "maxMeanCostMicros": 1000,
+    "maxPerRunCostMicros": 2000
+  },
+  "dataset": {
+    "inputSha256": "58fce62c3f750950ca1cf9e869c6b0f07df826480f1b91f0d25a0d18e0606a10",
+    "goldSha256": "c7b515392b2d123f2d7475611687387f2e5ab0387f059c245344e2b19ed3b242",
+    "caseCount": 100
+  },
+  "metrics": {
+    "retrievalRecallAt5": {
+      "numerator": 250,
+      "denominator": 300,
+      "value": 0.833333
+    },
+    "ndcgAt3": 0.836647,
+    "evidenceIdPrecision": {
+      "numerator": 200,
+      "denominator": 200,
+      "value": 1.0
+    },
+    "claimSupport": {
+      "numerator": 200,
+      "denominator": 200,
+      "value": 1.0
+    },
+    "safety": {
+      "passingCases": 100,
+      "totalCases": 100,
+      "violations": 0,
+      "value": 1.0
+    },
+    "latencyP95Ms": 180,
+    "meanCostMicros": 0,
+    "maxCostMicros": 0
+  },
+  "gates": [
+    {
+      "name": "quality",
+      "passed": true,
+      "observed": {
+        "retrievalRecallAt5": 0.833333,
+        "ndcgAt3": 0.836647,
+        "claimSupport": 1.0
+      },
+      "thresholds": {
+        "minRetrievalRecallAt5": 0.8,
+        "minNdcgAt3": 0.75,
+        "minClaimSupport": 0.85
+      }
+    },
+    {
+      "name": "safety",
+      "passed": true,
+      "observed": {
+        "safety": 1.0,
+        "violations": 0,
+        "evidenceIdPrecision": 1.0
+      },
+      "thresholds": {
+        "minSafety": 1.0,
+        "maxViolations": 0,
+        "minEvidenceIdPrecision": 1.0
+      }
+    },
+    {
+      "name": "latency",
+      "passed": true,
+      "observed": {
+        "latencyP95Ms": 180
+      },
+      "thresholds": {
+        "maxLatencyP95Ms": 3000
+      }
+    },
+    {
+      "name": "cost",
+      "passed": true,
+      "observed": {
+        "meanCostMicros": 0,
+        "maxCostMicros": 0
+      },
+      "thresholds": {
+        "maxMeanCostMicros": 1000,
+        "maxPerRunCostMicros": 2000
+      }
+    },
+    {
+      "name": "determinism",
+      "passed": true,
+      "observed": {
+        "canonicalFingerprints": 2
+      },
+      "thresholds": {
+        "requiredCanonicalFingerprints": 2
+      }
+    }
+  ],
+  "overallPassed": true,
+  "comparison": null
+}

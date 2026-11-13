@@ -77,6 +77,61 @@
       "title": "EvalMetrics",
       "type": "object"
     },
+    "EvalThresholds": {
+      "additionalProperties": false,
+      "properties": {
+        "maxLatencyP95Ms": {
+          "minimum": 0,
+          "title": "Maxlatencyp95Ms",
+          "type": "integer"
+        },
+        "maxMeanCostMicros": {
+          "minimum": 0,
+          "title": "Maxmeancostmicros",
+          "type": "integer"
+        },
+        "maxPerRunCostMicros": {
+          "minimum": 0,
+          "title": "Maxperruncostmicros",
+          "type": "integer"
+        },
+        "minClaimSupport": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Minclaimsupport",
+          "type": "number"
+        },
+        "minNdcgAt3": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Minndcgat3",
+          "type": "number"
+        },
+        "minRetrievalRecallAt5": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Minretrievalrecallat5",
+          "type": "number"
+        },
+        "minSafety": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Minsafety",
+          "type": "number"
+        }
+      },
+      "required": [
+        "minRetrievalRecallAt5",
+        "minNdcgAt3",
+        "minClaimSupport",
+        "minSafety",
+        "maxLatencyP95Ms",
+        "maxMeanCostMicros",
+        "maxPerRunCostMicros"
+      ],
+      "title": "EvalThresholds",
+      "type": "object"
+    },
     "GateResult": {
       "additionalProperties": false,
       "properties": {
@@ -164,6 +219,15 @@
     "ReportComparison": {
       "additionalProperties": false,
       "properties": {
+        "baselineImageDigest": {
+          "pattern": "^sha256:[a-f0-9]{64}$",
+          "title": "Baselineimagedigest",
+          "type": "string"
+        },
+        "baselinePassed": {
+          "title": "Baselinepassed",
+          "type": "boolean"
+        },
         "compatible": {
           "title": "Compatible",
           "type": "boolean"
@@ -185,6 +249,8 @@
       },
       "required": [
         "compatible",
+        "baselinePassed",
+        "baselineImageDigest",
         "metricDeltas"
       ],
       "title": "ReportComparison",
@@ -393,6 +459,13 @@
     }
   ],
   "properties": {
+    "candidatePolicy": {
+      "maxLength": 64,
+      "minLength": 1,
+      "pattern": "^[a-z0-9][a-z0-9._-]*$",
+      "title": "Candidatepolicy",
+      "type": "string"
+    },
     "comparison": {
       "anyOf": [
         {
@@ -404,8 +477,20 @@
       ],
       "default": null
     },
+    "corpusRevision": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Corpusrevision",
+      "type": "string"
+    },
     "dataset": {
       "$ref": "#/$defs/DatasetIdentity"
+    },
+    "embeddingProfile": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Embeddingprofile",
+      "type": "string"
     },
     "gates": {
       "items": {
@@ -417,6 +502,11 @@
       "type": "array",
       "uniqueItems": true
     },
+    "imageDigest": {
+      "pattern": "^sha256:[a-f0-9]{64}$",
+      "title": "Imagedigest",
+      "type": "string"
+    },
     "metrics": {
       "$ref": "#/$defs/EvalMetrics"
     },
@@ -425,9 +515,12 @@
       "type": "boolean"
     },
     "schemaVersion": {
-      "const": "1.1",
+      "const": "1.2",
       "title": "Schemaversion",
       "type": "string"
+    },
+    "thresholds": {
+      "$ref": "#/$defs/EvalThresholds"
     },
     "versions": {
       "$ref": "#/$defs/VersionPins"
@@ -435,7 +528,12 @@
   },
   "required": [
     "schemaVersion",
+    "candidatePolicy",
+    "corpusRevision",
+    "imageDigest",
+    "embeddingProfile",
     "versions",
+    "thresholds",
     "dataset",
     "metrics",
     "gates",

@@ -1,0 +1,380 @@
+{
+  "$defs": {
+    "ActualReason": {
+      "additionalProperties": false,
+      "properties": {
+        "evidenceIds": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 3,
+          "minItems": 1,
+          "title": "Evidenceids",
+          "type": "array"
+        },
+        "humanClaimSupported": {
+          "title": "Humanclaimsupported",
+          "type": "boolean"
+        },
+        "ref": {
+          "minLength": 1,
+          "title": "Ref",
+          "type": "string"
+        },
+        "summary": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Summary",
+          "type": "string"
+        }
+      },
+      "required": [
+        "ref",
+        "evidenceIds",
+        "summary",
+        "humanClaimSupported"
+      ],
+      "title": "ActualReason",
+      "type": "object"
+    },
+    "ActualResult": {
+      "additionalProperties": false,
+      "properties": {
+        "costMicros": {
+          "minimum": 0,
+          "title": "Costmicros",
+          "type": "integer"
+        },
+        "latencyMs": {
+          "minimum": 0,
+          "title": "Latencyms",
+          "type": "integer"
+        },
+        "orderedRefs": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 3,
+          "title": "Orderedrefs",
+          "type": "array"
+        },
+        "outcome": {
+          "$ref": "#/$defs/ProposalOutcome"
+        },
+        "reasons": {
+          "items": {
+            "$ref": "#/$defs/ActualReason"
+          },
+          "maxItems": 3,
+          "title": "Reasons",
+          "type": "array"
+        },
+        "retrievedRefs": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 30,
+          "title": "Retrievedrefs",
+          "type": "array"
+        }
+      },
+      "required": [
+        "retrievedRefs",
+        "outcome",
+        "orderedRefs",
+        "reasons",
+        "latencyMs",
+        "costMicros"
+      ],
+      "title": "ActualResult",
+      "type": "object"
+    },
+    "EvalThresholds": {
+      "additionalProperties": false,
+      "properties": {
+        "maxLatencyP95Ms": {
+          "minimum": 0,
+          "title": "Maxlatencyp95Ms",
+          "type": "integer"
+        },
+        "maxMeanCostMicros": {
+          "minimum": 0,
+          "title": "Maxmeancostmicros",
+          "type": "integer"
+        },
+        "maxPerRunCostMicros": {
+          "minimum": 0,
+          "title": "Maxperruncostmicros",
+          "type": "integer"
+        },
+        "minClaimSupport": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Minclaimsupport",
+          "type": "number"
+        },
+        "minNdcgAt3": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Minndcgat3",
+          "type": "number"
+        },
+        "minRetrievalRecallAt5": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Minretrievalrecallat5",
+          "type": "number"
+        },
+        "minSafety": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Minsafety",
+          "type": "number"
+        }
+      },
+      "required": [
+        "minRetrievalRecallAt5",
+        "minNdcgAt3",
+        "minClaimSupport",
+        "minSafety",
+        "maxLatencyP95Ms",
+        "maxMeanCostMicros",
+        "maxPerRunCostMicros"
+      ],
+      "title": "EvalThresholds",
+      "type": "object"
+    },
+    "EvaluationCase": {
+      "additionalProperties": false,
+      "properties": {
+        "actual": {
+          "$ref": "#/$defs/ActualResult"
+        },
+        "gold": {
+          "$ref": "#/$defs/GoldExpectation"
+        },
+        "id": {
+          "minLength": 1,
+          "title": "Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "gold",
+        "actual"
+      ],
+      "title": "EvaluationCase",
+      "type": "object"
+    },
+    "GoldExpectation": {
+      "additionalProperties": false,
+      "properties": {
+        "allowedRefs": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Allowedrefs",
+          "type": "array"
+        },
+        "candidateRefs": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 12,
+          "title": "Candidaterefs",
+          "type": "array"
+        },
+        "excludedRefs": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Excludedrefs",
+          "type": "array"
+        },
+        "expectedOutcome": {
+          "$ref": "#/$defs/ProposalOutcome"
+        },
+        "pinnedRefs": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Pinnedrefs",
+          "type": "array"
+        },
+        "query": {
+          "maxLength": 500,
+          "minLength": 1,
+          "title": "Query",
+          "type": "string"
+        },
+        "regionCode": {
+          "anyOf": [
+            {
+              "maxLength": 16,
+              "minLength": 1,
+              "pattern": "^kr-\\d{2}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Regioncode"
+        },
+        "relevance": {
+          "items": {
+            "$ref": "#/$defs/Relevance"
+          },
+          "title": "Relevance",
+          "type": "array"
+        },
+        "supportedEvidence": {
+          "additionalProperties": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "title": "Supportedevidence",
+          "type": "object"
+        }
+      },
+      "required": [
+        "query",
+        "regionCode",
+        "candidateRefs",
+        "relevance",
+        "supportedEvidence",
+        "allowedRefs",
+        "pinnedRefs",
+        "excludedRefs",
+        "expectedOutcome"
+      ],
+      "title": "GoldExpectation",
+      "type": "object"
+    },
+    "ProposalOutcome": {
+      "enum": [
+        "PROPOSE_BOARD",
+        "ASK_CLARIFICATION",
+        "NO_RESULTS"
+      ],
+      "title": "ProposalOutcome",
+      "type": "string"
+    },
+    "Relevance": {
+      "additionalProperties": false,
+      "properties": {
+        "grade": {
+          "maximum": 2,
+          "minimum": 0,
+          "title": "Grade",
+          "type": "integer"
+        },
+        "ref": {
+          "minLength": 1,
+          "title": "Ref",
+          "type": "string"
+        }
+      },
+      "required": [
+        "ref",
+        "grade"
+      ],
+      "title": "Relevance",
+      "type": "object"
+    },
+    "VersionPins": {
+      "additionalProperties": false,
+      "properties": {
+        "dataset": {
+          "minLength": 1,
+          "title": "Dataset",
+          "type": "string"
+        },
+        "model": {
+          "minLength": 1,
+          "title": "Model",
+          "type": "string"
+        },
+        "prompt": {
+          "minLength": 1,
+          "title": "Prompt",
+          "type": "string"
+        },
+        "ranking": {
+          "minLength": 1,
+          "title": "Ranking",
+          "type": "string"
+        }
+      },
+      "required": [
+        "model",
+        "prompt",
+        "ranking",
+        "dataset"
+      ],
+      "title": "VersionPins",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "candidatePolicy": {
+      "maxLength": 64,
+      "minLength": 1,
+      "pattern": "^[a-z0-9][a-z0-9._-]*$",
+      "title": "Candidatepolicy",
+      "type": "string"
+    },
+    "cases": {
+      "items": {
+        "$ref": "#/$defs/EvaluationCase"
+      },
+      "minItems": 1,
+      "title": "Cases",
+      "type": "array"
+    },
+    "corpusRevision": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Corpusrevision",
+      "type": "string"
+    },
+    "embeddingProfile": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Embeddingprofile",
+      "type": "string"
+    },
+    "imageDigest": {
+      "pattern": "^sha256:[a-f0-9]{64}$",
+      "title": "Imagedigest",
+      "type": "string"
+    },
+    "schemaVersion": {
+      "const": "1.2",
+      "title": "Schemaversion",
+      "type": "string"
+    },
+    "thresholds": {
+      "$ref": "#/$defs/EvalThresholds"
+    },
+    "versions": {
+      "$ref": "#/$defs/VersionPins"
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "candidatePolicy",
+    "corpusRevision",
+    "imageDigest",
+    "embeddingProfile",
+    "versions",
+    "thresholds",
+    "cases"
+  ],
+  "title": "EvalDocument",
+  "type": "object"
+}

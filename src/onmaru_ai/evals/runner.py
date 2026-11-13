@@ -100,8 +100,13 @@ def evaluate_document(value: object) -> EvalReport:
     gold_hash = _gold_hash(document)
     gates = _gates(metrics, document, input_hash, gold_hash)
     return EvalReport(
-        schemaVersion="1.1",
+        schemaVersion="1.2",
+        candidatePolicy=document.candidate_policy,
+        corpusRevision=document.corpus_revision,
+        imageDigest=document.image_digest,
+        embeddingProfile=document.embedding_profile,
         versions=document.versions,
+        thresholds=document.thresholds,
         dataset=DatasetIdentity(
             inputSha256=input_hash,
             goldSha256=gold_hash,
@@ -117,11 +122,17 @@ def compare_reports(current: EvalReport, baseline: EvalReport) -> ReportComparis
     compatible = (
         current.schema_version == baseline.schema_version
         and current.dataset.gold_sha256 == baseline.dataset.gold_sha256
+        and current.candidate_policy == baseline.candidate_policy
+        and current.corpus_revision == baseline.corpus_revision
+        and current.embedding_profile == baseline.embedding_profile
+        and current.thresholds == baseline.thresholds
     )
     current_metrics = current.metrics
     baseline_metrics = baseline.metrics
     return ReportComparison(
         compatible=compatible,
+        baselinePassed=baseline.overall_passed,
+        baselineImageDigest=baseline.image_digest,
         metricDeltas={
             "retrievalRecallAt5": _rounded(
                 current_metrics.retrieval_recall_at_5.value
