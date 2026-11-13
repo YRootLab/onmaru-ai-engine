@@ -73,6 +73,9 @@ jobs:
           push: true
           tags: ${{ env.IMAGE }}:${{ github.sha }}
           labels: org.opencontainers.image.revision=${{ github.sha }}
+          # The runner stage runs `apk upgrade`; reusing its cached layer keeps stale OS packages
+          # (krb5 1.22.2-r1 with fixes in 1.22.3-r0), so rebuild that stage on every publish.
+          no-cache-filters: runner
           cache-from: type=gha,scope=ai-engine
           cache-to: type=gha,mode=max,scope=ai-engine
       - name: Scan published image
