@@ -30,6 +30,7 @@ from onmaru_ai.evals.harness_judge import (
     evaluate_groundedness_suite,
 )
 from onmaru_ai.journey_llm import JourneyLlmService
+from onmaru_ai.observability import create_telemetry_sink
 from onmaru_ai.providers.gemini.adapter import GeminiAdapter
 from onmaru_ai.providers.gemini.models import GeminiConfig, GeminiPricing
 from onmaru_ai.providers.gemini.transport import HttpxGeminiTransport
@@ -40,6 +41,7 @@ from onmaru_ai.rag.postgres_activation import (
 )
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+logging.getLogger("httpx").setLevel(logging.WARNING)
 logger = logging.getLogger("run_live_rag_eval")
 
 
@@ -220,7 +222,12 @@ async def _run_eval_async(args: argparse.Namespace) -> tuple[dict[str, Any], int
             pricing=GeminiPricing(input_micros_per_million=0, output_micros_per_million=0),
         )
         llm_service = JourneyLlmService(
-            GeminiAdapter(config, HttpxGeminiTransport(), api_key=api_key)
+            GeminiAdapter(
+                config,
+                HttpxGeminiTransport(),
+                api_key=api_key,
+                telemetry_sink=create_telemetry_sink(),
+            )
         )
 
     retrieval_only_checks: list[dict[str, Any]] = []

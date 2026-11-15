@@ -30,6 +30,7 @@ from onmaru_ai.embedding import (
 from onmaru_ai.storage.postgres import PostgresCorpusStore
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+logging.getLogger("httpx").setLevel(logging.WARNING)
 logger = logging.getLogger("ingest_catalog_from_postgres")
 
 _CATALOG_QUERY = """
