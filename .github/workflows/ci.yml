@@ -3,7 +3,7 @@ name: AI Engine CI
 on:
   pull_request:
   push:
-    branches: [main]
+    branches: [master]
   workflow_dispatch:
 
 permissions:
@@ -46,7 +46,7 @@ jobs:
         run: docker build --tag onmaru-ai-engine:${{ github.sha }} .
 
   publish:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
     needs: verify
     runs-on: ubuntu-latest
     timeout-minutes: 30
