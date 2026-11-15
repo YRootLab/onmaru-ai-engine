@@ -56,10 +56,17 @@ class JourneyLlmService:
         candidate_refs: list[str],
         request_id: str,
         evidence_refs: tuple[str, ...] = (),
+        evidence_contexts: tuple[dict[str, str], ...] = (),
     ) -> dict[str, Any] | None:
         try:
             result = await self._adapter.generate(
-                self._prompt(query, candidate_refs, request_id, evidence_refs=evidence_refs),
+                self._prompt(
+                    query,
+                    candidate_refs,
+                    request_id,
+                    evidence_refs=evidence_refs,
+                    evidence_contexts=evidence_contexts,
+                ),
                 response_schema=RESPONSE_SCHEMA,
                 timeout_seconds=20.0,
             )
@@ -74,10 +81,17 @@ class JourneyLlmService:
         candidate_refs: list[str],
         request_id: str,
         evidence_refs: tuple[str, ...] = (),
+        evidence_contexts: tuple[dict[str, str], ...] = (),
     ) -> AsyncGenerator[dict[str, Any], None]:
         async with aclosing(
             self._adapter.stream(
-                self._prompt(query, candidate_refs, request_id, evidence_refs=evidence_refs),
+                self._prompt(
+                    query,
+                    candidate_refs,
+                    request_id,
+                    evidence_refs=evidence_refs,
+                    evidence_contexts=evidence_contexts,
+                ),
                 response_schema=RESPONSE_SCHEMA,
                 timeout_seconds=20.0,
             )
@@ -98,14 +112,20 @@ class JourneyLlmService:
         request_id: str,
         *,
         evidence_refs: tuple[str, ...] = (),
+        evidence_contexts: tuple[dict[str, str], ...] = (),
     ) -> GeminiPrompt:
         data_block: dict[str, Any] = {"query": query, "candidateRefs": candidate_refs}
         if evidence_refs:
             data_block["evidenceRefs"] = list(evidence_refs)
+        if evidence_contexts:
+            data_block["evidenceContext"] = list(evidence_contexts)
         return GeminiPrompt(
             policy_block=(
                 "You are OnMaru's Korean travel planner. Use only the supplied candidateRefs; "
                 "never invent refs or IDs. Return concise Korean JSON. "
+                "Ground place names, regions, categories, and stop reasons strictly in the "
+                "supplied evidenceContext when provided; never fabricate facts contradicting "
+                "evidenceContext. "
                 "Region is a preference, not a hard constraint, unless the query explicitly "
                 "names a region. If no candidate matches the query exactly, choose the candidates "
                 "closest in mood, theme and activity, and explain in one Korean sentence in the "

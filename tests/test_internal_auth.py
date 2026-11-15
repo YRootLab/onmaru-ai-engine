@@ -796,3 +796,105 @@ def test_legacy_baseline_caps_at_three_unique_real_refs() -> None:
 
     assert response.status_code == 202
     assert response.json()["orderedRefs"] == ["r1", "r2", "r3"]
+
+
+def test_internal_stream_with_rag_injects_grounded_evidence_context() -> None:
+    log = DurableTestRagActivationLog()
+    baseline = evaluate_document(passing_baseline_eval_document())
+    current = evaluate_document(passing_eval_document())
+    current = current.model_copy(update={"comparison": compare_reports(current, baseline)})
+    RagActivationPolicy(
+        log=log,
+        thresholds=RagActivationThresholds(min_retrieval_recall_at_5_delta=0.1),
+    ).evaluate(current, corpus_revision_id="catalog-rev-2026-09-17")
+
+    captured_requests: list[GeminiTransportRequest] = []
+
+    class CapturingStreamTransport(JourneyStreamTransport):
+        async def stream(
+            self, request: GeminiTransportRequest
+        ) -> AsyncIterator[GeminiTransportResponse]:
+            captured_requests.append(request)
+            async for item in super().stream(request):
+                yield item
+
+    class ContextRagRetriever:
+        def active_revision_id(self) -> str:
+            return "catalog-rev-2026-09-17"
+
+        def retrieve(self, corpus_revision_id: str) -> tuple[str, ...]:
+            return (f"{corpus_revision_id}:chunk:1",)
+
+        def retrieve_context(
+            self,
+            corpus_revision_id: str,
+            *,
+            query: str = "",
+            candidate_refs: list[str] | tuple[str, ...] = (),
+        ) -> tuple[tuple[str, ...], tuple[dict[str, str], ...]]:
+            assert query == "전주 한옥 여행"
+            assert candidate_refs == ["place:allowed"]
+            return (
+                (f"{corpus_revision_id}:chunk:1",),
+                (
+                    {
+                        "evidenceRef": f"{corpus_revision_id}:chunk:1",
+                        "placeRef": "place:allowed",
+                        "title": "전주 한옥마을",
+                        "regionCode": "KR-45",
+                        "categoryCode": "HANOK",
+                        "excerpt": "전북 전주 완산구에 위치한 전통 한옥 지구",
+                    },
+                ),
+            )
+
+    app = FastAPI()
+    sink = InMemoryTelemetrySink()
+    install_observability(app, sink)
+    adapter = GeminiAdapter(
+        GeminiConfig("journey-test", "gemini-test", 2048, GeminiPricing(0, 0)),
+        CapturingStreamTransport(),
+        api_key="provider-secret",
+        telemetry_sink=sink,
+    )
+    install_internal_auth(
+        app,
+        FakeSecretProvider(),
+        rag_activation_log=log,
+        rag_retriever=ContextRagRetriever(),
+        rag_feature_enabled=True,
+        journey_llm=JourneyLlmService(adapter),
+    )
+
+    async def _call() -> Response:
+        async with AsyncClient(transport=ASGITransport(app), base_url="http://test") as client:
+            return await client.post(
+                "/internal/v1/journey/proposals/stream",
+                headers={
+                    "Authorization": "Bearer " + token(),
+                    "X-Request-Id": "req-stream",
+                    "X-Run-Id": "run-stream",
+                },
+                json={
+                    "schemaVersion": "internal.ai.v1",
+                    "requestId": "req-stream",
+                    "runId": "run-stream",
+                    "candidateCount": 1,
+                    "useRag": True,
+                    "query": "전주 한옥 여행",
+                    "candidateRefs": ["place:allowed"],
+                },
+            )
+
+    response = asyncio.run(_call())
+    assert response.status_code == 200
+    events = parse_internal_events(response)
+    assert events[0][0] == "text.delta"
+    assert events[-1][0] == "proposal"
+    proposal = events[-1][1]["proposal"]
+    assert proposal["corpusRevisionId"] == "catalog-rev-2026-09-17"
+    assert proposal["ragEvidenceRefs"] == ["catalog-rev-2026-09-17:chunk:1"]
+    assert len(captured_requests) == 1
+    data_text = captured_requests[0].body["contents"][0]["parts"][1]["text"]
+    assert "전주 한옥마을" in data_text
+    assert "evidenceContext" in data_text

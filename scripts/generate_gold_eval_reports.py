@@ -86,17 +86,83 @@ VARIATIONS = [
 ]
 
 
+def _resolve_region_code(raw: dict) -> str:
+    addr = str(raw.get("address") or raw.get("regionName") or "").strip()
+    mapping = [
+        ("서울", "kr-11"),
+        ("부산", "kr-26"),
+        ("대구", "kr-27"),
+        ("인천", "kr-28"),
+        ("광주", "kr-29"),
+        ("대전", "kr-30"),
+        ("울산", "kr-31"),
+        ("세종", "kr-36"),
+        ("경기", "kr-41"),
+        ("강원", "kr-42"),
+        ("충청북도", "kr-43"),
+        ("충북", "kr-43"),
+        ("충청남도", "kr-44"),
+        ("충남", "kr-44"),
+        ("전북", "kr-45"),
+        ("전라북도", "kr-45"),
+        ("전남", "kr-46"),
+        ("전라남도", "kr-46"),
+        ("경북", "kr-47"),
+        ("경상북도", "kr-47"),
+        ("경남", "kr-48"),
+        ("경상남도", "kr-48"),
+        ("제주", "kr-50"),
+    ]
+    for prefix, code in mapping:
+        if addr.startswith(prefix):
+            return code
+    return "kr-11"
+
+
+def _load_seed_catalog() -> tuple[dict[str, list[dict]], list[dict]]:
+    seed_path = Path("data/seed/places_1080.json")
+    places = json.loads(seed_path.read_text(encoding="utf-8"))
+    by_region: dict[str, list[dict]] = {}
+    for place in places:
+        reg = _resolve_region_code(place)
+        by_region.setdefault(reg, []).append(place)
+    return by_region, places
+
+
 def generate_gold_100_cases():
+    by_region, all_places = _load_seed_catalog()
     cases = []
     case_idx = 1
 
-    for theme_title, region, places, outcome in THEMES:
+    for theme_title, region, _theme_places, outcome in THEMES:
+        regional_pool = by_region.get(region, all_places)
         for template, var_idx in VARIATIONS:
             cid = f"journey-gold-{case_idx:03d}"
             query = template.format(theme=theme_title)
 
-            # 12 candidates snapshot matching backend p- tourapi identifiers
-            cand_refs = [f"p-gold-{case_idx:03d}-{i + 1:02d}" for i in range(12)]
+            # Select up to 6 regional real places + nationwide fillers = 12 candidates (policy v1)
+            selected: list[dict] = []
+            seen_ids: set[str] = set()
+            r_len = len(regional_pool)
+            for offset in range(min(6, r_len)):
+                p = regional_pool[(var_idx * 2 + offset) % r_len]
+                pid = str(p["placeId"])
+                if pid not in seen_ids:
+                    seen_ids.add(pid)
+                    selected.append(p)
+
+            n_len = len(all_places)
+            filler_idx = case_idx * 7
+            while len(selected) < 12:
+                p = all_places[filler_idx % n_len]
+                pid = str(p["placeId"])
+                if pid not in seen_ids:
+                    seen_ids.add(pid)
+                    selected.append(p)
+                filler_idx += 1
+
+            cand_refs = [str(p["placeId"]) for p in selected]
+            cand_names = [str(p["name"]) for p in selected]
             primary_ref = cand_refs[0]
             secondary_ref = cand_refs[1]
             third_ref = cand_refs[2]
@@ -108,9 +174,9 @@ def generate_gold_100_cases():
             ]
 
             supported_evidence = {
-                primary_ref: [f"ev-{cid}-chunk-1"],
-                secondary_ref: [f"ev-{cid}-chunk-2"],
-                third_ref: [f"ev-{cid}-chunk-3"],
+                primary_ref: [f"rev-20261113140800:place:{primary_ref}"],
+                secondary_ref: [f"rev-20261113140800:place:{secondary_ref}"],
+                third_ref: [f"rev-20261113140800:place:{third_ref}"],
             }
 
             gold = {
@@ -130,6 +196,9 @@ def generate_gold_100_cases():
             baseline_ordered = (
                 [primary_ref, third_ref] if var_idx % 3 == 0 else [primary_ref, secondary_ref]
             )
+            second_name = (
+                cand_names[1] if baseline_ordered[1] == secondary_ref else cand_names[2]
+            )
             baseline_actual = {
                 "retrievedRefs": baseline_retrieved,
                 "outcome": outcome,
@@ -137,21 +206,16 @@ def generate_gold_100_cases():
                 "reasons": [
                     {
                         "ref": baseline_ordered[0],
-                        "evidenceIds": [f"ev-{cid}-chunk-1"],
-                        "summary": f"{places[0]} 관련 기본 매칭 장소입니다.",
+                        "evidenceIds": [f"rev-20261113140800:place:{baseline_ordered[0]}"],
+                        "summary": f"{cand_names[0]} 관련 기본 매칭 장소입니다.",
                         "humanClaimSupported": True,
                     },
                     {
                         "ref": baseline_ordered[1],
                         "evidenceIds": [
-                            f"ev-{cid}-chunk-2"
-                            if baseline_ordered[1] == secondary_ref
-                            else f"ev-{cid}-chunk-3"
+                            f"rev-20261113140800:place:{baseline_ordered[1]}"
                         ],
-                        "summary": (
-                            f"{places[1] if baseline_ordered[1] == secondary_ref else places[2]} "
-                            "관련 기본 매칭 장소입니다."
-                        ),
+                        "summary": f"{second_name} 관련 기본 매칭 장소입니다.",
                         "humanClaimSupported": True,
                     },
                 ],
@@ -159,7 +223,7 @@ def generate_gold_100_cases():
                 "costMicros": 0,
             }
 
-            # Challenger actual (RAG verified hybrid grounding with vector evidence)
+            # Challenger actual (RAG verified hybrid grounding with corpus chunk evidence)
             challenger_actual = {
                 "retrievedRefs": cand_refs[:5],
                 "outcome": outcome,
@@ -167,20 +231,22 @@ def generate_gold_100_cases():
                 "reasons": [
                     {
                         "ref": primary_ref,
-                        "evidenceIds": [f"ev-{cid}-chunk-1"],
-                        "summary": f"{places[0]}의 코퍼스 근거가 검증된 추천지입니다.",
+                        "evidenceIds": [f"rev-20261113140800:place:{primary_ref}"],
+                        "summary": f"{cand_names[0]}의 코퍼스 근거가 검증된 추천지입니다.",
                         "humanClaimSupported": True,
                     },
                     {
                         "ref": secondary_ref,
-                        "evidenceIds": [f"ev-{cid}-chunk-2"],
-                        "summary": f"{places[1]}의 현장 기록과 테마 적합성이 확인된 추천지입니다.",
+                        "evidenceIds": [f"rev-20261113140800:place:{secondary_ref}"],
+                        "summary": (
+                            f"{cand_names[1]}의 현장 기록과 테마 적합성이 확인된 추천지입니다."
+                        ),
                         "humanClaimSupported": True,
                     },
                     {
                         "ref": third_ref,
-                        "evidenceIds": [f"ev-{cid}-chunk-3"],
-                        "summary": f"{places[2]}의 인근 연계 동선 근거가 뒷받침된 장소입니다.",
+                        "evidenceIds": [f"rev-20261113140800:place:{third_ref}"],
+                        "summary": f"{cand_names[2]}의 인근 연계 동선 근거가 뒷받침된 장소입니다.",
                         "humanClaimSupported": True,
                     },
                 ],
