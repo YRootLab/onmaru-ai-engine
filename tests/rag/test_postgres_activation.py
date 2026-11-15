@@ -249,3 +249,27 @@ def test_postgres_rag_evidence_retriever_hybrid_rrf_and_region_inference() -> No
     assert contexts[0]["placeRef"] == "p-tourapi-shared"
     assert contexts[1]["placeRef"] == "p-tourapi-vec1"
 
+
+def test_extract_topic_tokens_and_lexical_scoring() -> None:
+    from onmaru_ai.rag.postgres_activation import _extract_topic_tokens, _score_lexical_rows
+
+    tokens = _extract_topic_tokens("경주 불국사와 유네스코 역사 유적 중심의 당일치기 여정")
+    assert "경주" not in tokens
+    assert "여정" not in tokens
+    assert "불국사" in tokens
+    assert "역사" in tokens
+
+    scored = _score_lexical_rows(
+        [
+            {"chunk_id": "a", "title": "또봇정크아트뮤지엄", "chunk_text": "경주 유적 인근 박물관"},
+            {
+                "chunk_id": "b",
+                "title": "경주 불국사",
+                "chunk_text": "유네스코 세계문화유산 역사 사찰",
+            },
+        ],
+        tokens,
+    )
+    assert scored[0]["chunk_id"] == "b"
+
+

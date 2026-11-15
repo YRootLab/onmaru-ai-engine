@@ -151,6 +151,63 @@ def _infer_query_region_code(query: str) -> str | None:
     return None
 
 
+_QUERY_STOPWORDS: frozenset[str] = frozenset(
+    {
+        "추천", "추천해줘", "여행", "여정", "코스", "일정", "탐방", "산책", "중심",
+        "당일치기", "주변", "부근", "명소", "장소", "어울리는", "어우러진", "잇는",
+        "있는", "좋은", "조용한", "고즈넉한", "힐링", "힐링하는", "체험", "알려줘",
+        "찾아줘", "부탁해", "주세요", "에서", "으로", "함께",
+    }
+)
+
+
+def _extract_topic_tokens(clean_query: str) -> list[str]:
+    import re
+
+    raw_tokens = re.findall(r"[가-힣A-Za-z0-9]{2,}", clean_query)
+    region_words = {kw for kws, _ in _QUERY_REGION_HINTS for kw in kws}
+    expanded: list[str] = []
+    seen: set[str] = set()
+    for tok in raw_tokens:
+        candidates = [tok]
+        for suffix in (
+            "에서", "으로", "과", "와", "의", "에",
+            "로", "을", "를", "은", "는", "이", "가",
+        ):
+            if len(tok) >= len(suffix) + 2 and tok.endswith(suffix):
+                candidates.append(tok[: -len(suffix)])
+                break
+        for cand in candidates:
+            if cand in _QUERY_STOPWORDS or cand in region_words or cand in seen:
+                continue
+            seen.add(cand)
+            expanded.append(cand)
+    return expanded[:8]
+
+
+def _score_lexical_rows(
+    rows: list[dict[str, object]], tokens: list[str]
+) -> list[dict[str, object]]:
+    if not rows:
+        return []
+
+    def _row_score(row: dict[str, object]) -> tuple[float, int, str]:
+        title = str(row.get("title") or "").lower()
+        body = str(row.get("chunk_text") or "").lower()
+        score = 0.0
+        for tok in tokens:
+            t_low = tok.lower()
+            if t_low in title:
+                score += 4.0
+            elif t_low in body:
+                score += 1.0
+        if len(body) > 120:
+            score += 0.25
+        return (score, len(body), str(row.get("chunk_id") or ""))
+
+    return sorted(rows, key=_row_score, reverse=True)
+
+
 class PostgresRagEvidenceRetriever:
     """Retrieves active corpus evidence refs & contexts via Hybrid Vector + Lexical RRF."""
 
@@ -302,28 +359,48 @@ class PostgresRagEvidenceRetriever:
 
                 lexical_rows: list[dict[str, object]] = []
                 if clean_query:
-                    import re
+                    topic_tokens = _extract_topic_tokens(clean_query)
+                    if not topic_tokens:
+                        import re
 
-                    raw_tokens = re.findall(r"[가-힣A-Za-z0-9]{2,}", clean_query)
-                    expanded_tokens: list[str] = []
-                    seen_tokens: set[str] = set()
-                    for tok in raw_tokens:
-                        if tok not in seen_tokens:
-                            seen_tokens.add(tok)
-                            expanded_tokens.append(tok)
-                        for suffix in (
-                            "에서", "으로", "과", "와", "의", "에",
-                            "로", "을", "를", "은", "는", "이", "가",
-                        ):
-                            if len(tok) >= len(suffix) + 2 and tok.endswith(suffix):
-                                stem = tok[: -len(suffix)]
-                                if stem not in seen_tokens:
-                                    seen_tokens.add(stem)
-                                    expanded_tokens.append(stem)
-                                break
-                    like_patterns = [f"%{tok}%" for tok in expanded_tokens[:8]]
-                    if like_patterns:
-                        lexical_rows = [
+                        topic_tokens = [
+                            t for t in re.findall(r"[가-힣A-Za-z0-9]{2,}", clean_query)
+                            if t not in _QUERY_STOPWORDS
+                        ][:6]
+                    like_patterns = [f"%{tok}%" for tok in topic_tokens]
+
+                    if inferred_region and like_patterns:
+                        raw_lex = [
+                            dict(r)
+                            for r in conn.execute(
+                                """
+                                SELECT
+                                    c.chunk_id,
+                                    d.place_id,
+                                    d.source_id,
+                                    d.title,
+                                    d.region_code,
+                                    d.category_code,
+                                    c.chunk_text
+                                FROM ai.documents d
+                                JOIN ai.chunks c USING (revision_id, document_id)
+                                WHERE d.revision_id = %s
+                                  AND d.region_code = %s
+                                  AND d.eligibility_status = 'PUBLIC'
+                                  AND NOT EXISTS (
+                                      SELECT 1 FROM ai.place_revocations pr
+                                      WHERE pr.place_id = d.place_id
+                                  )
+                                  AND c.search_text ILIKE ANY(%s)
+                                LIMIT 120
+                                """,
+                                (corpus_revision_id, inferred_region, like_patterns),
+                            ).fetchall()
+                        ]
+                        lexical_rows = _score_lexical_rows(raw_lex, topic_tokens)[:20]
+
+                    if not lexical_rows and like_patterns:
+                        raw_lex = [
                             dict(r)
                             for r in conn.execute(
                                 """
@@ -347,10 +424,38 @@ class PostgresRagEvidenceRetriever:
                                       c.search_tsv @@ plainto_tsquery('simple', %s)
                                       OR c.search_text ILIKE ANY(%s)
                                   )
-                                ORDER BY c.ordinal ASC, c.chunk_id ASC
-                                LIMIT 20
+                                LIMIT 120
                                 """,
                                 (corpus_revision_id, clean_query, like_patterns),
+                            ).fetchall()
+                        ]
+                        lexical_rows = _score_lexical_rows(raw_lex, topic_tokens)[:20]
+
+                    if not lexical_rows and inferred_region:
+                        lexical_rows = [
+                            dict(r)
+                            for r in conn.execute(
+                                """
+                                SELECT
+                                    c.chunk_id,
+                                    d.place_id,
+                                    d.source_id,
+                                    d.title,
+                                    d.region_code,
+                                    d.category_code,
+                                    c.chunk_text
+                                FROM ai.documents d
+                                JOIN ai.chunks c USING (revision_id, document_id)
+                                WHERE d.revision_id = %s
+                                  AND d.region_code = %s
+                                  AND d.eligibility_status = 'PUBLIC'
+                                  AND NOT EXISTS (
+                                      SELECT 1 FROM ai.place_revocations pr
+                                      WHERE pr.place_id = d.place_id
+                                  )
+                                LIMIT 20
+                                """,
+                                (corpus_revision_id, inferred_region),
                             ).fetchall()
                         ]
 

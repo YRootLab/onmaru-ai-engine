@@ -78,9 +78,18 @@ def evaluate_groundedness_case(case: GroundednessCaseInput) -> GroundednessCaseS
         if matched_ctx is not None:
             covered_stops += 1
             title = str(matched_ctx.get("title") or "").strip()
-            # Grounded if reason cites real place title (or core tokens of title) or excerpt terms
+            compact_title = "".join(title.split())
+            compact_reason = "".join(stop_reason.split())
             title_tokens = [tok for tok in title.split() if len(tok) >= 2]
-            if (title and title in stop_reason) or any(tok in stop_reason for tok in title_tokens):
+            excerpt = str(matched_ctx.get("excerpt") or "")
+            excerpt_tokens = [
+                tok for tok in excerpt.split() if len(tok) >= 2 and not tok.startswith("위치:")
+            ][:8]
+            if (
+                (compact_title and compact_title in compact_reason)
+                or any(tok in stop_reason for tok in title_tokens)
+                or any(tok in stop_reason for tok in excerpt_tokens)
+            ):
                 grounded_hits += 1
             else:
                 reasons.append(f"UNGROUNDED_REASON_FOR:{ref}")
