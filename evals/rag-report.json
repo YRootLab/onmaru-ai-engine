@@ -1,8 +1,8 @@
 {
   "schemaVersion": "1.2",
   "candidatePolicy": "v1",
-  "corpusRevision": "rev-20261109045951",
-  "imageDigest": "sha256:f004c4f049d61597caf47d166ffa55d24cc940eb454cbe31e5f1f855e42ead54",
+  "corpusRevision": "rev-20261113140800",
+  "imageDigest": "sha256:ce29541b8cf8a3006945ebb2ba18cd67d6c92a27d3ae2c8192c22ed89ab20b8f",
   "embeddingProfile": "multilingual-e5-small-384@614241f622f5",
   "versions": {
     "model": "gemini-3.5-flash-lite",
@@ -20,8 +20,8 @@
     "maxPerRunCostMicros": 2000
   },
   "dataset": {
-    "inputSha256": "3bbf323ec3e36df3679d23d607c25d20b9322b5320a60d519480be3afd469b7a",
-    "goldSha256": "c7b515392b2d123f2d7475611687387f2e5ab0387f059c245344e2b19ed3b242",
+    "inputSha256": "c1ace3f2a9385cafff59bcd2817dc3265c93e963ba54a2cff1101f8b20f08870",
+    "goldSha256": "197080cb83c6202774b755d650652ff5c6ee01c63199e9782e95a667ec06f8e1",
     "caseCount": 100
   },
   "metrics": {

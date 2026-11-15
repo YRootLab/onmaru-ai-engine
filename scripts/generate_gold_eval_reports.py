@@ -95,8 +95,8 @@ def generate_gold_100_cases():
             cid = f"journey-gold-{case_idx:03d}"
             query = template.format(theme=theme_title)
 
-            # 6-8 candidates snapshot for each case
-            cand_refs = [f"cand-{cid}-{i + 1}" for i in range(6)]
+            # 12 candidates snapshot matching backend p- tourapi identifiers
+            cand_refs = [f"p-gold-{case_idx:03d}-{i + 1:02d}" for i in range(12)]
             primary_ref = cand_refs[0]
             secondary_ref = cand_refs[1]
             third_ref = cand_refs[2]
@@ -195,9 +195,9 @@ def generate_gold_100_cases():
 
 
 def build_dataset_doc(cases, use_challenger=True):
-    corpus_rev = "rev-20261109045951"
+    corpus_rev = "rev-20261113140800"
     image_digest = (
-        "sha256:f004c4f049d61597caf47d166ffa55d24cc940eb454cbe31e5f1f855e42ead54"
+        "sha256:ce29541b8cf8a3006945ebb2ba18cd67d6c92a27d3ae2c8192c22ed89ab20b8f"
         if use_challenger
         else "sha256:93009d029e0bea20fac73f37a7db029493ced0470e700c3efa547cc7dfbcbdc1"
     )
