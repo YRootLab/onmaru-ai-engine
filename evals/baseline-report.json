@@ -1,7 +1,7 @@
 {
   "schemaVersion": "1.2",
   "candidatePolicy": "v1",
-  "corpusRevision": "rev-20261109045951",
+  "corpusRevision": "rev-20261113140800",
   "imageDigest": "sha256:93009d029e0bea20fac73f37a7db029493ced0470e700c3efa547cc7dfbcbdc1",
   "embeddingProfile": "multilingual-e5-small-384@614241f622f5",
   "versions": {
@@ -20,8 +20,8 @@
     "maxPerRunCostMicros": 2000
   },
   "dataset": {
-    "inputSha256": "58fce62c3f750950ca1cf9e869c6b0f07df826480f1b91f0d25a0d18e0606a10",
-    "goldSha256": "c7b515392b2d123f2d7475611687387f2e5ab0387f059c245344e2b19ed3b242",
+    "inputSha256": "9529e2fd6d57d2a37c9c1be93b9d963fa627e9fa93bac31d407cce04124c78c8",
+    "goldSha256": "9135521a7c9130b250dba55f2f3a60da4219375dc9b46a18f6db4de61c7e3853",
     "caseCount": 100
   },
   "metrics": {

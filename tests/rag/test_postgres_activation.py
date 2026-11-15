@@ -113,3 +113,163 @@ def test_postgres_rag_evidence_retriever_mocked() -> None:
 
     assert active_rev == "rev-test-1"
     assert chunks == ("rev-test-1:chunk:c1", "rev-test-1:chunk:c2")
+
+
+def test_postgres_rag_evidence_retriever_context_matching() -> None:
+    from uuid import NAMESPACE_DNS, uuid5
+
+    retriever = PostgresRagEvidenceRetriever("postgresql://fake", max_refs=3)
+    place_ref = "p-tourapi-1005548"
+    place_uuid = str(uuid5(NAMESPACE_DNS, f"place:{place_ref}"))
+
+    mock_cand_cursor = MagicMock()
+    mock_cand_cursor.fetchall.return_value = [
+        {
+            "chunk_id": "c-cand",
+            "place_id": place_uuid,
+            "title": "충주 최응성 고가",
+            "region_code": "KR-43",
+            "category_code": "HANOK",
+            "chunk_text": "충청북도 충주시 살미면 소재 한옥 고택",
+        }
+    ]
+
+    mock_lex_cursor = MagicMock()
+    mock_lex_cursor.fetchall.return_value = [
+        {
+            "chunk_id": "c-lex",
+            "place_id": "00000000-0000-0000-0000-000000000099",
+            "title": "북촌 한옥마을",
+            "region_code": "KR-11",
+            "category_code": "HANOK",
+            "chunk_text": "서울 종로구 북촌 한옥마을 산책로",
+        }
+    ]
+
+    mock_conn = MagicMock()
+    mock_conn.__enter__.return_value = mock_conn
+
+    def execute_side_effect(sql: str, params: tuple[object, ...] | None = None) -> MagicMock:
+        if "d.place_id = ANY" in sql:
+            return mock_cand_cursor
+        return mock_lex_cursor
+
+    mock_conn.execute.side_effect = execute_side_effect
+
+    with patch("psycopg.connect", return_value=mock_conn):
+        refs, contexts = retriever.retrieve_context(
+            "rev-test-1",
+            query="조용한 한옥 코스",
+            candidate_refs=[place_ref],
+        )
+
+    assert refs == ("rev-test-1:chunk:c-cand", "rev-test-1:chunk:c-lex")
+    assert len(contexts) == 2
+    assert contexts[0]["placeRef"] == place_ref
+    assert contexts[0]["title"] == "충주 최응성 고가"
+    assert contexts[0]["regionCode"] == "KR-43"
+    assert "placeRef" not in contexts[1]
+    assert contexts[1]["title"] == "북촌 한옥마을"
+
+
+def test_postgres_rag_evidence_retriever_hybrid_rrf_and_region_inference() -> None:
+    from onmaru_ai.rag.postgres_activation import _infer_query_region_code
+
+    assert _infer_query_region_code("경주 불국사와 석굴암 당일치기") == "KR-47"
+    assert _infer_query_region_code("부산 해운대 바다 산책") == "KR-26"
+    assert _infer_query_region_code("테마 없는 일반 여행") is None
+
+    def ok_embedder(text: str) -> tuple[float, ...]:
+        return (1.0,) + (0.0,) * 383
+
+    retriever = PostgresRagEvidenceRetriever(
+        "postgresql://fake",
+        max_refs=3,
+        query_embedder=ok_embedder,
+        query_embedding_profile_id="gemini-embedding-001-384@v1",
+    )
+
+    mock_rev_cursor = MagicMock()
+    mock_rev_cursor.fetchone.return_value = {
+        "embedding_profile_id": "gemini-embedding-001-384@v1"
+    }
+
+    mock_vec_cursor = MagicMock()
+    mock_vec_cursor.fetchall.return_value = [
+        {
+            "chunk_id": "c-vec-1",
+            "place_id": "00000000-0000-0000-0000-000000000001",
+            "source_id": "p-tourapi-vec1",
+            "title": "경주 불국사",
+            "region_code": "KR-47",
+            "category_code": "HISTORIC_SITE",
+            "chunk_text": "경주 토함산 자락의 신라 사찰",
+        },
+        {
+            "chunk_id": "c-shared",
+            "place_id": "00000000-0000-0000-0000-000000000002",
+            "source_id": "p-tourapi-shared",
+            "title": "경주 양동마을",
+            "region_code": "KR-47",
+            "category_code": "FOLK_VILLAGE",
+            "chunk_text": "유네스코 세계문화유산 한옥 마을",
+        },
+    ]
+
+    mock_lex_cursor = MagicMock()
+    mock_lex_cursor.fetchall.return_value = [
+        {
+            "chunk_id": "c-shared",
+            "place_id": "00000000-0000-0000-0000-000000000002",
+            "source_id": "p-tourapi-shared",
+            "title": "경주 양동마을",
+            "region_code": "KR-47",
+            "category_code": "FOLK_VILLAGE",
+            "chunk_text": "유네스코 세계문화유산 한옥 마을",
+        }
+    ]
+
+    mock_conn = MagicMock()
+    mock_conn.__enter__.return_value = mock_conn
+
+    def execute_side_effect(sql: str, params: tuple[object, ...] | None = None) -> MagicMock:
+        if "SELECT embedding_profile_id" in sql:
+            return mock_rev_cursor
+        if "FROM ai.embeddings e" in sql:
+            return mock_vec_cursor
+        return mock_lex_cursor
+
+    mock_conn.execute.side_effect = execute_side_effect
+
+    with patch("psycopg.connect", return_value=mock_conn):
+        refs, contexts = retriever.retrieve_context("rev-vec-1", query="경주 한옥과 유적")
+
+    # c-shared appears in BOTH vector and lexical results, so RRF ranks it first!
+    assert refs == ("rev-vec-1:chunk:c-shared", "rev-vec-1:chunk:c-vec-1")
+    assert contexts[0]["placeRef"] == "p-tourapi-shared"
+    assert contexts[1]["placeRef"] == "p-tourapi-vec1"
+
+
+def test_extract_topic_tokens_and_lexical_scoring() -> None:
+    from onmaru_ai.rag.postgres_activation import _extract_topic_tokens, _score_lexical_rows
+
+    tokens = _extract_topic_tokens("경주 불국사와 유네스코 역사 유적 중심의 당일치기 여정")
+    assert "경주" not in tokens
+    assert "여정" not in tokens
+    assert "불국사" in tokens
+    assert "역사" in tokens
+
+    scored = _score_lexical_rows(
+        [
+            {"chunk_id": "a", "title": "또봇정크아트뮤지엄", "chunk_text": "경주 유적 인근 박물관"},
+            {
+                "chunk_id": "b",
+                "title": "경주 불국사",
+                "chunk_text": "유네스코 세계문화유산 역사 사찰",
+            },
+        ],
+        tokens,
+    )
+    assert scored[0]["chunk_id"] == "b"
+
+

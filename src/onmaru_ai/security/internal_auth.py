@@ -54,6 +54,7 @@ class RagEvidenceRetriever(Protocol):
 class RagRetrievalResult:
     corpus_revision_id: str | None = None
     evidence_refs: tuple[str, ...] = ()
+    evidence_contexts: tuple[dict[str, str], ...] = ()
     degraded_reason: str | None = None
 
 
@@ -130,13 +131,28 @@ def install_internal_auth(
                 return RagRetrievalResult(
                     degraded_reason="RAG_EVALUATION_NOT_APPROVED",
                 )
+            captured_contexts: list[dict[str, str]] = []
+
+            def _do_retrieve() -> tuple[str, ...]:
+                retrieve_ctx = getattr(rag_retriever, "retrieve_context", None)
+                if callable(retrieve_ctx):
+                    refs, contexts = retrieve_ctx(
+                        revision_id,
+                        query=body.query,
+                        candidate_refs=body.candidate_refs,
+                    )
+                    captured_contexts.extend(contexts)
+                    return tuple(refs)
+                return rag_retriever.retrieve(revision_id)
+
             evidence_refs = RagRetrievalGate(rag_activation_log).retrieve_if_active(
                 corpus_revision_id=revision_id,
-                retrieve=lambda: rag_retriever.retrieve(revision_id),
+                retrieve=_do_retrieve,
             )
             return RagRetrievalResult(
                 corpus_revision_id=revision_id,
                 evidence_refs=evidence_refs,
+                evidence_contexts=tuple(captured_contexts),
                 degraded_reason=None if evidence_refs else "RAG_NO_ACTIVE_EVIDENCE",
             )
         except Exception as error:
@@ -185,6 +201,7 @@ def install_internal_auth(
                 candidate_refs=body.candidate_refs,
                 request_id=body.request_id,
                 evidence_refs=rag_context.evidence_refs,
+                evidence_contexts=rag_context.evidence_contexts,
             )
         if llm_proposal is not None:
             return _proposal_response(body, llm_proposal, rag_context)
@@ -218,6 +235,7 @@ def install_internal_auth(
                         candidate_refs=body.candidate_refs,
                         request_id=body.request_id,
                         evidence_refs=rag_context.evidence_refs,
+                        evidence_contexts=rag_context.evidence_contexts,
                     )
                 ) as source:
                     async for event in source:

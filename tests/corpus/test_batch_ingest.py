@@ -49,3 +49,50 @@ def test_build_corpus_bundle_filters_unapproved_categories() -> None:
     assert len(chunks) >= 2
     assert revision.chunk_count == len(chunks)
     assert {d.category_code for d in docs} == {"HISTORIC_SITE", "HANOK_CAFE"}
+
+
+def test_build_corpus_bundle_normalizes_html_and_batches_embeddings() -> None:
+    from onmaru_ai.embedding import GEMINI_EMBEDDING_384, EmbeddingService
+    from onmaru_ai.storage.postgres import _validate
+
+    class FakeGeminiBackend:
+        model_id = GEMINI_EMBEDDING_384.model_id
+        model_commit = GEMINI_EMBEDDING_384.model_commit
+        dimensions = 384
+
+        def __init__(self) -> None:
+            self.batches: list[int] = []
+
+        def encode(self, texts: tuple[str, ...]) -> tuple[tuple[float, ...], ...]:
+            self.batches.append(len(texts))
+            return tuple((1.0,) + (0.0,) * 383 for _ in texts)
+
+    backend = FakeGeminiBackend()
+    svc = EmbeddingService(backend, profile=GEMINI_EMBEDDING_384, max_batch_size=2)
+    items = [
+        IngestItem(
+            place_id=f"p-tourapi-{i}",
+            title=f"경주 유적 {i}",
+            body=f"<p>경상북도 경주시 유적 {i}&nbsp;&nbsp;소개입니다.</p><br>방문해보세요.  ",
+            region_code="KR-47",
+            category_code="HISTORIC_SITE",
+            source_id=f"p-tourapi-{i}",
+        )
+        for i in range(3)
+    ]
+
+    result, revision, docs, chunks, embeddings = build_corpus_bundle(
+        revision_id="rev-test-html",
+        items=items,
+        embedding_service=svc,
+        embed_batch_size=2,
+    )
+
+    assert result.accepted_documents == 3
+    assert result.total_embeddings == 3
+    assert revision.embedding_profile_id == GEMINI_EMBEDDING_384.profile_id
+    assert backend.batches == [2, 1]
+    assert all("<p>" not in d.normalized_text for d in docs)
+    # Must pass PostgresCorpusStore._validate() invariants cleanly
+    _validate(revision, docs, chunks, embeddings)
+
