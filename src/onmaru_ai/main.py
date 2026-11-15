@@ -85,7 +85,32 @@ def create_app(
         if rag_activation_log is None:
             rag_activation_log = PostgresRagActivationLog(db_dsn.strip())
         if rag_retriever is None:
-            rag_retriever = PostgresRagEvidenceRetriever(db_dsn.strip())
+            query_embedder = None
+            try:
+                gemini_key = provider.get("gemini.api-key").current.strip()
+                if gemini_key:
+                    from onmaru_ai.embedding import GEMINI_EMBEDDING_384, GeminiEmbeddingBackend
+
+                    embed_backend = GeminiEmbeddingBackend(
+                        gemini_key,
+                        task_type="RETRIEVAL_QUERY",
+                        timeout_seconds=2.5,
+                    )
+
+                    def _embed_query(text: str) -> tuple[float, ...]:
+                        return embed_backend.encode((text,))[0]
+
+                    query_embedder = _embed_query
+                    query_profile_id = GEMINI_EMBEDDING_384.profile_id
+                else:
+                    query_profile_id = "gemini-embedding-001-384@v1"
+            except Exception:
+                query_profile_id = "gemini-embedding-001-384@v1"
+            rag_retriever = PostgresRagEvidenceRetriever(
+                db_dsn.strip(),
+                query_embedder=query_embedder,
+                query_embedding_profile_id=query_profile_id,
+            )
 
     if plan_execute_service is None and source_env.get(
         "ONMARU_DISABLE_DEFAULT_PLAN_EXECUTE", ""

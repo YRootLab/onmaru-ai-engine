@@ -121,12 +121,51 @@ class PostgresRagActivationLog:
         )
 
 
-class PostgresRagEvidenceRetriever:
-    """Retrieves verified active corpus evidence refs and contexts from PostgreSQL ai schema."""
+_QUERY_REGION_HINTS: tuple[tuple[tuple[str, ...], str], ...] = (
+    (("서울", "북촌", "인사동", "경복궁", "창덕궁", "익선동", "종로", "강남", "홍대"), "KR-11"),
+    (("부산", "해운대", "자갈치", "국제시장", "태종대", "광안리"), "KR-26"),
+    (("대구",), "KR-27"),
+    (("인천", "강화"), "KR-28"),
+    (("대전",), "KR-30"),
+    (("울산",), "KR-31"),
+    (("세종",), "KR-36"),
+    (("경기", "수원", "파주", "용인", "연천", "가평", "양평"), "KR-41"),
+    (("강원", "강릉", "속초", "평창", "춘천", "양양", "오대산"), "KR-42"),
+    (("충북", "충청북", "충주", "단양", "제천", "음성"), "KR-43"),
+    (("충남", "충청남", "공주", "부여", "서천", "서산", "태안", "보령"), "KR-44"),
+    (("전북", "전라북", "전주", "고창", "남원", "군산", "부안"), "KR-45"),
+    (("전남", "전라남", "광주", "담양", "순천", "여수", "완도", "보성"), "KR-46"),
+    (("경북", "경상북", "경주", "안동", "영주", "봉화", "문경"), "KR-47"),
+    (("경남", "경상남", "통영", "거제", "진주", "합천", "하동", "남해"), "KR-48"),
+    (("제주", "서귀포"), "KR-50"),
+)
 
-    def __init__(self, dsn: str, max_refs: int = 12) -> None:
+
+def _infer_query_region_code(query: str) -> str | None:
+    lowered = query.strip().lower()
+    if not lowered:
+        return None
+    for keywords, region_code in _QUERY_REGION_HINTS:
+        if any(kw in lowered for kw in keywords):
+            return region_code
+    return None
+
+
+class PostgresRagEvidenceRetriever:
+    """Retrieves active corpus evidence refs & contexts via Hybrid Vector + Lexical RRF."""
+
+    def __init__(
+        self,
+        dsn: str,
+        max_refs: int = 12,
+        *,
+        query_embedder: object | None = None,
+        query_embedding_profile_id: str = "gemini-embedding-001-384@v1",
+    ) -> None:
         self._dsn = dsn
         self._max_refs = max_refs
+        self._query_embedder = query_embedder
+        self._query_embedding_profile_id = query_embedding_profile_id
 
     def active_revision_id(self) -> str | None:
         try:
@@ -151,6 +190,19 @@ class PostgresRagEvidenceRetriever:
         refs, _ = self.retrieve_context(corpus_revision_id)
         return refs
 
+    def _embed_query_safe(self, query: str) -> str | None:
+        if self._query_embedder is None or not callable(self._query_embedder):
+            return None
+        try:
+            vec = self._query_embedder(query)
+            vals = [float(x) for x in vec]
+            if len(vals) != 384:
+                return None
+            return json.dumps(vals, allow_nan=False)
+        except Exception as e:
+            logger.warning("hybrid query embedding fallback to lexical-only: %s", e)
+            return None
+
     def retrieve_context(
         self,
         corpus_revision_id: str,
@@ -167,48 +219,30 @@ class PostgresRagEvidenceRetriever:
         }
         candidate_uuids = list(uuid_to_ref.keys())
         clean_query = query.strip()
+        inferred_region = _infer_query_region_code(clean_query)
 
         try:
             with psycopg.connect(self._dsn, row_factory=dict_row) as conn:
-                rows: list[dict[str, object]] = []
-                seen_chunks: set[str] = set()
+                rev_row = conn.execute(
+                    "SELECT embedding_profile_id FROM ai.corpus_revisions WHERE revision_id = %s",
+                    (corpus_revision_id,),
+                ).fetchone()
+                rev_profile = (
+                    str(rev_row["embedding_profile_id"])
+                    if rev_row is not None and rev_row.get("embedding_profile_id")
+                    else ""
+                )
 
+                anchor_rows: list[dict[str, object]] = []
                 if candidate_uuids:
-                    cand_rows = conn.execute(
-                        """
-                        SELECT
-                            c.chunk_id,
-                            d.place_id,
-                            d.title,
-                            d.region_code,
-                            d.category_code,
-                            c.chunk_text
-                        FROM ai.chunks c
-                        JOIN ai.documents d USING (revision_id, document_id)
-                        WHERE c.revision_id = %s
-                          AND d.eligibility_status = 'PUBLIC'
-                          AND d.place_id = ANY(%s::uuid[])
-                        ORDER BY c.ordinal ASC, c.chunk_id ASC
-                        LIMIT %s
-                        """,
-                        (corpus_revision_id, candidate_uuids, self._max_refs),
-                    ).fetchall()
-                    for row in cand_rows:
-                        cid = str(row["chunk_id"])
-                        if cid not in seen_chunks:
-                            seen_chunks.add(cid)
-                            rows.append(dict(row))
-
-                remaining = self._max_refs - len(rows)
-                if remaining > 0 and clean_query:
-                    tokens = [t for t in clean_query.split() if len(t) >= 2][:4]
-                    like_patterns = [f"%{tok}%" for tok in tokens]
-                    if like_patterns:
-                        lex_rows = conn.execute(
+                    anchor_rows = [
+                        dict(r)
+                        for r in conn.execute(
                             """
                             SELECT
                                 c.chunk_id,
                                 d.place_id,
+                                d.source_id,
                                 d.title,
                                 d.region_code,
                                 d.category_code,
@@ -217,51 +251,178 @@ class PostgresRagEvidenceRetriever:
                             JOIN ai.documents d USING (revision_id, document_id)
                             WHERE c.revision_id = %s
                               AND d.eligibility_status = 'PUBLIC'
-                              AND c.search_text ILIKE ANY(%s)
+                              AND d.place_id = ANY(%s::uuid[])
+                              AND NOT EXISTS (
+                                  SELECT 1 FROM ai.place_revocations pr
+                                  WHERE pr.place_id = d.place_id
+                              )
                             ORDER BY c.ordinal ASC, c.chunk_id ASC
                             LIMIT %s
                             """,
-                            (corpus_revision_id, like_patterns, remaining + len(seen_chunks)),
+                            (corpus_revision_id, candidate_uuids, self._max_refs),
                         ).fetchall()
-                        for row in lex_rows:
-                            cid = str(row["chunk_id"])
-                            if cid not in seen_chunks and len(rows) < self._max_refs:
-                                seen_chunks.add(cid)
-                                rows.append(dict(row))
+                    ]
 
-                remaining = self._max_refs - len(rows)
-                if remaining > 0 and not candidate_uuids:
-                    fallback_rows = conn.execute(
-                        """
-                        SELECT
-                            c.chunk_id,
-                            d.place_id,
-                            d.title,
-                            d.region_code,
-                            d.category_code,
-                            c.chunk_text
-                        FROM ai.chunks c
-                        JOIN ai.documents d USING (revision_id, document_id)
-                        WHERE c.revision_id = %s
-                          AND d.eligibility_status = 'PUBLIC'
-                        ORDER BY c.ordinal ASC, c.chunk_id ASC
-                        LIMIT %s
-                        """,
-                        (corpus_revision_id, remaining + len(seen_chunks)),
-                    ).fetchall()
-                    for row in fallback_rows:
-                        cid = str(row["chunk_id"])
-                        if cid not in seen_chunks and len(rows) < self._max_refs:
-                            seen_chunks.add(cid)
-                            rows.append(dict(row))
+                vector_rows: list[dict[str, object]] = []
+                if (
+                    clean_query
+                    and self._query_embedder is not None
+                    and rev_profile == self._query_embedding_profile_id
+                ):
+                    vec_json = self._embed_query_safe(clean_query)
+                    if vec_json is not None:
+                        vector_rows = [
+                            dict(r)
+                            for r in conn.execute(
+                                """
+                                SELECT
+                                    c.chunk_id,
+                                    d.place_id,
+                                    d.source_id,
+                                    d.title,
+                                    d.region_code,
+                                    d.category_code,
+                                    c.chunk_text
+                                FROM ai.embeddings e
+                                JOIN ai.chunks c USING (revision_id, chunk_id)
+                                JOIN ai.documents d USING (revision_id, document_id)
+                                WHERE e.revision_id = %s
+                                  AND e.embedding_profile_id = %s
+                                  AND d.eligibility_status = 'PUBLIC'
+                                  AND NOT EXISTS (
+                                      SELECT 1 FROM ai.place_revocations pr
+                                      WHERE pr.place_id = d.place_id
+                                  )
+                                ORDER BY e.embedding <=> %s::vector ASC, c.chunk_id ASC
+                                LIMIT 20
+                                """,
+                                (corpus_revision_id, rev_profile, vec_json),
+                            ).fetchall()
+                        ]
+
+                lexical_rows: list[dict[str, object]] = []
+                if clean_query:
+                    import re
+
+                    raw_tokens = re.findall(r"[가-힣A-Za-z0-9]{2,}", clean_query)
+                    expanded_tokens: list[str] = []
+                    seen_tokens: set[str] = set()
+                    for tok in raw_tokens:
+                        if tok not in seen_tokens:
+                            seen_tokens.add(tok)
+                            expanded_tokens.append(tok)
+                        for suffix in (
+                            "에서", "으로", "과", "와", "의", "에",
+                            "로", "을", "를", "은", "는", "이", "가",
+                        ):
+                            if len(tok) >= len(suffix) + 2 and tok.endswith(suffix):
+                                stem = tok[: -len(suffix)]
+                                if stem not in seen_tokens:
+                                    seen_tokens.add(stem)
+                                    expanded_tokens.append(stem)
+                                break
+                    like_patterns = [f"%{tok}%" for tok in expanded_tokens[:8]]
+                    if like_patterns:
+                        lexical_rows = [
+                            dict(r)
+                            for r in conn.execute(
+                                """
+                                SELECT
+                                    c.chunk_id,
+                                    d.place_id,
+                                    d.source_id,
+                                    d.title,
+                                    d.region_code,
+                                    d.category_code,
+                                    c.chunk_text
+                                FROM ai.chunks c
+                                JOIN ai.documents d USING (revision_id, document_id)
+                                WHERE c.revision_id = %s
+                                  AND d.eligibility_status = 'PUBLIC'
+                                  AND NOT EXISTS (
+                                      SELECT 1 FROM ai.place_revocations pr
+                                      WHERE pr.place_id = d.place_id
+                                  )
+                                  AND (
+                                      c.search_tsv @@ plainto_tsquery('simple', %s)
+                                      OR c.search_text ILIKE ANY(%s)
+                                  )
+                                ORDER BY c.ordinal ASC, c.chunk_id ASC
+                                LIMIT 20
+                                """,
+                                (corpus_revision_id, clean_query, like_patterns),
+                            ).fetchall()
+                        ]
+
+                # Deterministic RRF merge: anchor candidates lead, followed by Vector+Lexical RRF
+                rrf_k = 60
+                by_chunk: dict[str, dict[str, object]] = {}
+                scores: dict[str, float] = {}
+
+                for rank, row in enumerate(anchor_rows, start=1):
+                    cid = str(row["chunk_id"])
+                    by_chunk[cid] = row
+                    scores[cid] = scores.get(cid, 0.0) + 10.0 + (1.0 / (rrf_k + rank))
+
+                for rank, row in enumerate(vector_rows, start=1):
+                    cid = str(row["chunk_id"])
+                    by_chunk.setdefault(cid, row)
+                    scores[cid] = scores.get(cid, 0.0) + (1.0 / (rrf_k + rank))
+
+                for rank, row in enumerate(lexical_rows, start=1):
+                    cid = str(row["chunk_id"])
+                    by_chunk.setdefault(cid, row)
+                    scores[cid] = scores.get(cid, 0.0) + (1.0 / (rrf_k + rank))
+
+                if inferred_region:
+                    for cid, row in by_chunk.items():
+                        if str(row.get("region_code") or "").upper() == inferred_region:
+                            scores[cid] = scores.get(cid, 0.0) + 0.01
+
+                merged_rows = [
+                    by_chunk[cid]
+                    for cid, _ in sorted(
+                        scores.items(),
+                        key=lambda item: (-item[1], item[0]),
+                    )
+                ]
+
+                if not merged_rows and not candidate_uuids:
+                    merged_rows = [
+                        dict(r)
+                        for r in conn.execute(
+                            """
+                            SELECT
+                                c.chunk_id,
+                                d.place_id,
+                                d.source_id,
+                                d.title,
+                                d.region_code,
+                                d.category_code,
+                                c.chunk_text
+                            FROM ai.chunks c
+                            JOIN ai.documents d USING (revision_id, document_id)
+                            WHERE c.revision_id = %s
+                              AND d.eligibility_status = 'PUBLIC'
+                              AND NOT EXISTS (
+                                  SELECT 1 FROM ai.place_revocations pr
+                                  WHERE pr.place_id = d.place_id
+                              )
+                            ORDER BY c.ordinal ASC, c.chunk_id ASC
+                            LIMIT %s
+                            """,
+                            (corpus_revision_id, self._max_refs),
+                        ).fetchall()
+                    ]
 
                 refs: list[str] = []
                 contexts: list[dict[str, str]] = []
-                for row in rows[: self._max_refs]:
+                for row in merged_rows[: self._max_refs]:
                     chunk_id = str(row["chunk_id"])
                     ref = f"{corpus_revision_id}:chunk:{chunk_id}"
                     refs.append(ref)
                     place_uuid = str(row.get("place_id") or "")
+                    source_id = str(row.get("source_id") or "")
                     ctx: dict[str, str] = {
                         "evidenceRef": ref,
                         "title": str(row.get("title") or ""),
@@ -271,6 +432,8 @@ class PostgresRagEvidenceRetriever:
                     }
                     if place_uuid in uuid_to_ref:
                         ctx["placeRef"] = uuid_to_ref[place_uuid]
+                    elif source_id.startswith("p-"):
+                        ctx["placeRef"] = source_id
                     contexts.append(ctx)
                 return tuple(refs), tuple(contexts)
         except Exception as e:

@@ -38,6 +38,15 @@ E5_SMALL_384 = EmbeddingProfile(
     query_prefix="query: ",
 )
 
+GEMINI_EMBEDDING_384 = EmbeddingProfile(
+    profile_id="gemini-embedding-001-384@v1",
+    model_id="gemini-embedding-001",
+    model_commit="v1beta-384",
+    dimensions=384,
+    passage_prefix="",
+    query_prefix="",
+)
+
 
 class EmbeddingBackend(Protocol):
     model_id: str
@@ -89,6 +98,7 @@ class DeterministicHashBackend:
 
     def encode(self, texts: tuple[str, ...]) -> tuple[tuple[float, ...], ...]:
         import hashlib
+
         result: list[tuple[float, ...]] = []
         for text in texts:
             digest = hashlib.sha256(text.encode("utf-8")).digest()
@@ -102,6 +112,75 @@ class DeterministicHashBackend:
                 norm = 1.0
             unit_vec = tuple(x / norm for x in raw_floats)
             result.append(unit_vec)
+        return tuple(result)
+
+
+class GeminiEmbeddingBackend:
+    """Semantic 384-D embedding backend using Google Gemini gemini-embedding-001."""
+
+    model_id: str = GEMINI_EMBEDDING_384.model_id
+    model_commit: str = GEMINI_EMBEDDING_384.model_commit
+    dimensions: int = 384
+
+    def __init__(
+        self,
+        api_key: str,
+        *,
+        task_type: str = "RETRIEVAL_DOCUMENT",
+        timeout_seconds: float = 15.0,
+        base_url: str = "https://generativelanguage.googleapis.com/v1beta",
+        transport: object | None = None,
+    ) -> None:
+        if not api_key.strip():
+            raise ValueError("api_key must not be blank")
+        self._api_key = api_key.strip()
+        self._task_type = task_type
+        self._timeout_seconds = timeout_seconds
+        self._base_url = base_url.rstrip("/")
+        self._transport = transport
+
+    def encode(self, texts: tuple[str, ...]) -> tuple[tuple[float, ...], ...]:
+        import httpx
+
+        if not texts:
+            return ()
+        url = f"{self._base_url}/models/{self.model_id}:batchEmbedContents"
+        payload = {
+            "requests": [
+                {
+                    "model": f"models/{self.model_id}",
+                    "content": {"parts": [{"text": text}]},
+                    "taskType": self._task_type,
+                    "outputDimensionality": self.dimensions,
+                }
+                for text in texts
+            ]
+        }
+        kwargs: dict[str, object] = {"timeout": self._timeout_seconds}
+        if isinstance(self._transport, httpx.BaseTransport):
+            kwargs["transport"] = self._transport
+        with httpx.Client(**kwargs) as client:  # type: ignore[arg-type]
+            response = client.post(
+                url,
+                params={"key": self._api_key},
+                json=payload,
+            )
+            response.raise_for_status()
+            data = response.json()
+
+        raw_embeddings = data.get("embeddings", [])
+        if len(raw_embeddings) != len(texts):
+            raise EmbeddingError("GEMINI_EMBEDDING_COUNT_MISMATCH")
+
+        result: list[tuple[float, ...]] = []
+        for entry in raw_embeddings:
+            values = [float(v) for v in entry.get("values", ())]
+            if len(values) != self.dimensions:
+                raise EmbeddingError("GEMINI_EMBEDDING_DIM_MISMATCH")
+            norm = math.sqrt(sum(v * v for v in values))
+            if norm <= 0.0:
+                raise EmbeddingError("GEMINI_EMBEDDING_ZERO_NORM")
+            result.append(tuple(v / norm for v in values))
         return tuple(result)
 
 

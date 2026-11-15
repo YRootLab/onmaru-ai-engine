@@ -2,6 +2,7 @@
 
 from .service import (
     E5_SMALL_384,
+    GEMINI_EMBEDDING_384,
     DeterministicHashBackend,
     EmbeddingBackend,
     EmbeddingError,
@@ -10,12 +11,14 @@ from .service import (
     EmbeddingProfile,
     EmbeddingService,
     EmbeddingWorkGate,
+    GeminiEmbeddingBackend,
     InMemoryEmbeddingMetrics,
 )
 
 __all__ = [
     "DeterministicHashBackend",
     "E5_SMALL_384",
+    "GEMINI_EMBEDDING_384",
     "EmbeddingBackend",
     "EmbeddingError",
     "EmbeddingMetricSample",
@@ -23,5 +26,6 @@ __all__ = [
     "EmbeddingProfile",
     "EmbeddingService",
     "EmbeddingWorkGate",
+    "GeminiEmbeddingBackend",
     "InMemoryEmbeddingMetrics",
 ]

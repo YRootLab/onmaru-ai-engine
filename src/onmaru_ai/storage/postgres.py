@@ -82,28 +82,30 @@ class PostgresCorpusStore:
                     "embedding_count": revision.embedding_count,
                 },
             )
-            for document in documents:
-                _insert(
-                    connection,
-                    "documents",
-                    {"revision_id": revision.revision_id, **asdict(document)},
-                )
-            for chunk in chunks:
-                _insert(
-                    connection, "chunks", {"revision_id": revision.revision_id, **asdict(chunk)}
-                )
-            for embedding in embeddings:
-                _insert(
-                    connection,
-                    "embeddings",
+            if documents:
+                doc_rows = [
+                    {"revision_id": revision.revision_id, **asdict(document)}
+                    for document in documents
+                ]
+                _insert_many(connection, "documents", doc_rows)
+            if chunks:
+                chunk_rows = [
+                    {"revision_id": revision.revision_id, **asdict(chunk)}
+                    for chunk in chunks
+                ]
+                _insert_many(connection, "chunks", chunk_rows)
+            if embeddings:
+                emb_rows = [
                     {
                         "revision_id": revision.revision_id,
                         "chunk_id": embedding.chunk_id,
                         "embedding_profile_id": embedding.embedding_profile_id,
                         "embedding": json.dumps(embedding.values, allow_nan=False),
                         "normalized": True,
-                    },
-                )
+                    }
+                    for embedding in embeddings
+                ]
+                _insert_many(connection, "embeddings", emb_rows)
             _insert(
                 connection,
                 "corpus_sync_runs",
@@ -312,6 +314,26 @@ def _insert(connection: Database, table: str, values: Mapping[str, object]) -> N
         ),
         tuple(values.values()),
     )
+
+
+def _insert_many(
+    connection: Database,
+    table: str,
+    rows: list[dict[str, object]],
+    chunk_size: int = 500,
+) -> None:
+    if not rows:
+        return
+    keys = list(rows[0].keys())
+    stmt = sql.SQL("INSERT INTO ai.{} ({}) VALUES ({})").format(
+        sql.Identifier(table),
+        sql.SQL(",").join(map(sql.Identifier, keys)),
+        sql.SQL(",").join(sql.Placeholder() for _ in keys),
+    )
+    with connection.cursor() as cursor:
+        for start in range(0, len(rows), chunk_size):
+            batch = [tuple(row[key] for key in keys) for row in rows[start : start + chunk_size]]
+            cursor.executemany(stmt, batch)
 
 
 def _read_bundle(
