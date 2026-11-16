@@ -1,7 +1,9 @@
+import logging
 import os
+import sys
 from collections.abc import AsyncIterator, Mapping
 from contextlib import asynccontextmanager
-from typing import Any
+from typing import Any, TextIO
 
 import httpx
 from fastapi import FastAPI
@@ -55,6 +57,27 @@ def _journey_gemini_enabled(environ: Mapping[str, str] | None = None) -> bool:
     return source.get("ONMARU_JOURNEY_GEMINI_ENABLED", "").strip().lower() == "true"
 
 
+class _ApplicationStdoutHandler(logging.StreamHandler[TextIO]):
+    """Dedicated stdout log handler for the onmaru_ai logger hierarchy."""
+
+
+def configure_application_logging(
+    level: int = logging.INFO,
+    stream: TextIO | None = None,
+) -> logging.Logger:
+    app_logger = logging.getLogger("onmaru_ai")
+    if app_logger.level == logging.NOTSET or app_logger.level > level:
+        app_logger.setLevel(level)
+    if not any(isinstance(handler, _ApplicationStdoutHandler) for handler in app_logger.handlers):
+        handler = _ApplicationStdoutHandler(sys.stdout if stream is None else stream)
+        handler.setLevel(level)
+        handler.setFormatter(
+            logging.Formatter("%(asctime)s %(levelname)s [%(name)s] %(message)s")
+        )
+        app_logger.addHandler(handler)
+    return app_logger
+
+
 def create_app(
     secret_provider: SecretProvider | None = None,
     telemetry_sink: TelemetrySink | None = None,
@@ -68,7 +91,10 @@ def create_app(
 ) -> FastAPI:
     provider = secret_provider or provider_from_environment()
     secrets = validate_required_secrets(provider)
-    install_logging_redaction(SecretRedactor(secrets))
+    app_logger = configure_application_logging()
+    redactor = SecretRedactor(secrets)
+    install_logging_redaction(redactor)
+    install_logging_redaction(redactor, logger=app_logger)
 
     client = http_client or httpx.AsyncClient(timeout=httpx.Timeout(5.0))
     owns_client = http_client is None

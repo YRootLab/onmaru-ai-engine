@@ -144,3 +144,57 @@ async def test_composition_root_wires_retrieval_components() -> None:
         assert service.executor is not None
     finally:
         await client.aclose()
+
+
+def test_create_app_configures_onmaru_ai_stdout_info_logging_and_redaction() -> None:
+    import logging
+    from io import StringIO
+
+    from onmaru_ai.main import _ApplicationStdoutHandler, configure_application_logging
+
+    app_logger = logging.getLogger("onmaru_ai")
+    original_level = app_logger.level
+    original_handlers = list(app_logger.handlers)
+    stream = StringIO()
+    try:
+        app_logger.handlers = []
+        app_logger.setLevel(logging.NOTSET)
+        configure_application_logging(stream=stream)
+        create_app(secret_provider=FakeSecretProvider())
+
+        assert app_logger.level == logging.INFO
+        stdout_handlers = [
+            h for h in app_logger.handlers if isinstance(h, _ApplicationStdoutHandler)
+        ]
+        assert len(stdout_handlers) == 1
+
+        child_logger = logging.getLogger("onmaru_ai.security.internal_auth")
+        child_logger.info(
+            "journey.request.accepted request_id=req-1 run_id=run-1 secret=%s",
+            FakeSecretProvider().get("gemini.api-key").current,
+        )
+
+        output = stream.getvalue()
+        assert "INFO [onmaru_ai.security.internal_auth] journey.request.accepted" in output
+        assert "<REDACTED>" in output
+        assert "fake-gemini-api-key-current" not in output
+    finally:
+        app_logger.handlers = original_handlers
+        app_logger.setLevel(original_level)
+
+
+def test_create_app_registers_screen_hanok_route_only_when_enabled() -> None:
+    disabled_app = create_app(
+        secret_provider=FakeSecretProvider(),
+        environ={"ONMARU_SCREEN_HANOK_RESEARCH_ENABLED": "false"},
+    )
+    enabled_app = create_app(
+        secret_provider=FakeSecretProvider(),
+        environ={"ONMARU_SCREEN_HANOK_RESEARCH_ENABLED": "true"},
+    )
+
+    disabled_paths = {getattr(route, "path", "") for route in disabled_app.routes}
+    enabled_paths = {getattr(route, "path", "") for route in enabled_app.routes}
+
+    assert "/internal/v1/screen-hanok/research" not in disabled_paths
+    assert "/internal/v1/screen-hanok/research" in enabled_paths
