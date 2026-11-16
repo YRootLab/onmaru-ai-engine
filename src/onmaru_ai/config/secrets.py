@@ -97,8 +97,12 @@ def install_logging_redaction(
 ) -> None:
     target = logging.getLogger() if logger is None else logger
     redacting_filter = RedactingLogFilter(redactor)
+    target.filters[:] = [f for f in target.filters if not isinstance(f, RedactingLogFilter)]
     target.addFilter(redacting_filter)
     for handler in target.handlers:
+        handler.filters[:] = [
+            f for f in handler.filters if not isinstance(f, RedactingLogFilter)
+        ]
         handler.addFilter(redacting_filter)
 
 
