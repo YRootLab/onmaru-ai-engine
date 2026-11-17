@@ -16,13 +16,13 @@ Spring과 FastAPI는 서로 다른 애플리케이션 프로세스이며 목표�
 
 ## HTML 브리핑
 
-[`../reports/2026-10-21-system-briefing.html`](https://github.com/YRootLab/OnMaru-backend/blob/develop/docs/ai-rag/reports/2026-10-21-system-briefing.html)은 큰 컨테이너 그림, 다섯 책임으로 확대한 Quality Harness 흐름도, 네 개의 C4-PlantUML SVG, LikeC4 인터랙티브 모델 진입점을 함께 제공한다. FastAPI C4 그림은 서버 내부 경계를 보여주고, 상세 Quality Harness 그림은 책임·운영자 gate·LLM 선택 경계·사람 승인을 따로 확대한다. 저장소 루트에서 정적 보고서를 열려면 다음처럼 HTTP 서버를 시작한다.
+[`../reports/2026-10-21-system-briefing.html`](../reports/2026-10-21-system-briefing.html)은 당시 목표 아키텍처를 담은 생성 스냅샷이다. 이 파일은 로컬 `file:///...` 주소로는 해당 Mac 사용자만 읽을 수 있으며, 저장소에 반영되면 [GitHub 저장소의 HTML 원본](https://github.com/YRootLab/onmaru-ai-engine/blob/develop/docs/ai-rag/reports/2026-10-21-system-briefing.html)에서 읽을 수 있다. 브라우저에서 다이어그램을 렌더링하려면 clone한 저장소에서 아래처럼 로컬 HTTP 서버를 시작한다. 현재 역할 경계 및 카나리 대조의 정본은 [2026-11-17 진단 보고서](../reports/2026-11-17-canary-role-boundary-review.md)이며, 이 10월 시각 자료는 실제 운영 구현의 증거가 아니다.
 
 ```bash
 python3 -m http.server 18765 --bind 127.0.0.1
 ```
 
-그 뒤 `http://127.0.0.1:18765/docs/ai-rag/reports/2026-10-21-system-briefing.html`을 연다. LikeC4 사이트는 HTML 보고서가 사용하는 상대 경로 아래에 빌드되어 있어 HTTP로 여는 것을 권장한다.
+그 뒤 `http://127.0.0.1:18765/docs/ai-rag/reports/2026-10-21-system-briefing.html`을 연다. LikeC4 사이트는 HTML 보고서가 사용하는 상대 경로 아래에 빌드되어 있어 HTTP로 여는 것을 권장한다. 현재 `build_system_briefing.py`는 이 10월 파일을 덮어쓰도록 고정돼 있으므로, 역사적 스냅샷을 보존하려면 새 출력 경로 지원을 추가하기 전까지 재생성하지 않는다.
 
 ## 재생성
 

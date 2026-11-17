@@ -1,6 +1,6 @@
 # 홈 여정 AI RAG 운영·평가 설계
 
-> 상태: 구현 전. [아키텍처](architecture.md)의 출시 게이트와 후속 품질 개선을 구분한다. 평가셋 구성·지표 정의·환경 시험의 실행 계약은 [평가·환경 검증](evaluation-and-environment-tests.md)을 따른다.
+> 상태: 구현 전. [아키텍처](../architecture/architecture.md)의 출시 게이트와 후속 품질 개선을 구분한다. 평가셋 구성·지표 정의·환경 시험의 실행 계약은 [평가·환경 검증](../quality/evaluation-and-environment-tests.md)을 따른다.
 
 ## 인프라·검색 엔진 선택
 
@@ -49,7 +49,7 @@
 | 확정 snapshot 완료 p95 | 기준선 측정 후 결정 | REST 접수부터 DB 확정/terminal까지 측정; fallback도 포함 |
 | 시스템 원인 fallback 비율 | ≤ 5% | 정상 RAG 대상 run 중 검색/DB/provider/검증 장애 fallback; 근거 부족·한도 초과는 별도 |
 
-300건도 희귀 유형별 성능을 통계적으로 보증하지 않는다. 필수 유형마다 개발·봉인 최소 수를 [평가셋 표](evaluation-and-environment-tests.md)에 고정하고 유형별 분자·분모를 별도 공개한다. 100건 봉인셋의 실패 사례를 전수 검토하며 점수 하나로 미세한 품질 차이를 확정하지 않는다. 새 모델·청킹·ranker를 고를 때는 데이터 누설 없이 셋을 확장한다. 기존 1~3개 proposal용 [평가 하네스](https://github.com/YRootLab/OnMaru-backend/blob/develop/docs/ai/evaluation-harness.md)의 threshold를 새 3~5개 RAG에 그대로 복사하지 않는다.
+300건도 희귀 유형별 성능을 통계적으로 보증하지 않는다. 필수 유형마다 개발·봉인 최소 수를 [평가셋 표](../quality/evaluation-and-environment-tests.md)에 고정하고 유형별 분자·분모를 별도 공개한다. 100건 봉인셋의 실패 사례를 전수 검토하며 점수 하나로 미세한 품질 차이를 확정하지 않는다. 새 모델·청킹·ranker를 고를 때는 데이터 누설 없이 셋을 확장한다. 기존 1~3개 proposal용 [평가 하네스](https://github.com/YRootLab/OnMaru-backend/blob/develop/docs/ai/evaluation-harness.md)의 threshold를 새 3~5개 RAG에 그대로 복사하지 않는다.
 
 ### 요청 시간·비용 예산
 
@@ -73,8 +73,8 @@
 
 평가 job은 corpus 공개 revision, chunker/embedding/ranker/prompt 변경 PR, 그리고 주간 예약 실행에서 같은 고정 질의셋을 재생한다. 산출물에는 질의 ID, 정답 근거 ID, top-k 결과, 생성 claim별 인용 지지, 각 단계 지연·토큰/비용, 모든 version과 기준선 대비 차이를 남긴다. 자동 job은 퇴행을 표시하고 후보 설정만 제안한다. 운영 승격은 사람이 실패 질의와 비용·지연·출처 위험을 검토한 뒤 version을 고정하고 이전 version으로 되돌릴 수 있을 때만 한다. 실제 회원 질의는 동의 없이 평가셋으로 복사하지 않는다.
 
-평가 보고서를 읽는 agent는 누락된 원천·질문 해석·BM25/vector 검색·RRF·reranker·생성 중 어느 단계에서 실패했는지 가설과 재현 실험을 제안할 수 있다. 승인되지 않은 문서·모델·prompt·색인 설정을 자동 반영하지 않는다. 구체적인 도구 allowlist, 입력 보존, 승인 상태와 효과 측정은 [품질 감독 설계](quality-engineering-agent.md)를 따른다.
-온라인 run trace와 gold 평가 결과의 비동기 연결, `FailureCase` 판정, 반사실적 실험, 격리 runner, review gate, 모델/도구 비용 상한은 [RAG Quality Engineering 상세 설계](quality-engineering-agent.md)를 따른다. 관측 도구 장애는 사용자 답변의 결과를 바꾸지 않지만 trace 유실률을 경보로 관리한다.
+평가 보고서를 읽는 agent는 누락된 원천·질문 해석·BM25/vector 검색·RRF·reranker·생성 중 어느 단계에서 실패했는지 가설과 재현 실험을 제안할 수 있다. 승인되지 않은 문서·모델·prompt·색인 설정을 자동 반영하지 않는다. 구체적인 도구 allowlist, 입력 보존, 승인 상태와 효과 측정은 [품질 감독 설계](../quality/quality-engineering-agent.md)를 따른다.
+온라인 run trace와 gold 평가 결과의 비동기 연결, `FailureCase` 판정, 반사실적 실험, 격리 runner, review gate, 모델/도구 비용 상한은 [RAG Quality Engineering 상세 설계](../quality/quality-engineering-agent.md)를 따른다. 관측 도구 장애는 사용자 답변의 결과를 바꾸지 않지만 trace 유실률을 경보로 관리한다.
 
 ## 단계
 

@@ -1,6 +1,6 @@
 # AI RAG 모듈 경계와 세 파이프라인
 
-> 상태: 구현 전 상세 설계. 이 문서는 [제품 PRD](prd.md), [질문 처리](query-processing.md), [요청 생명주기](request-lifecycle.md), [Corpus 저장·GC](rag-storage-schema.md), [품질 감독](quality-engineering-agent.md)을 한 실행 구조로 묶는다. 현재 코드에 이미 존재한다는 뜻이 아니다. 각 모듈의 책임과 artifact 경계를 바꾸면 관련 계약·평가 fixture·HTML 보고서를 함께 갱신한다.
+> 상태: 구현 전 상세 설계. 이 문서는 [제품 PRD](../product/prd.md), [질문 처리](./query-processing.md), [요청 생명주기](./request-lifecycle.md), [Corpus 저장·GC](../data/rag-storage-schema.md), [품질 감독](../quality/quality-engineering-agent.md)을 한 실행 구조로 묶는다. 현재 코드에 이미 존재한다는 뜻이 아니다. 각 모듈의 책임과 artifact 경계를 바꾸면 관련 계약·평가 fixture·HTML 보고서를 함께 갱신한다.
 
 ## 1. 시스템 경계: 세 파이프라인은 연결되지만 실행 주기가 다르다
 
@@ -130,7 +130,7 @@ flowchart TD
   V --> O[확정 snapshot + SSE]
 ```
 
-`LEXICAL_ONLY`와 `DENSE_ONLY`도 첫 출시부터 **활성 route**다. 이름·별칭/정확한 용어 단독, 고유명사·부정 없는 단일 의미 주제, 복합 설명·추천의 `HYBRID`를 결정적 순서로 구분한다. 각 route별 gold 평가에서 recall·최종 장소 품질·claim 지지율·지연·메모리와 오라우팅을 검증해야 출시할 수 있다. `SQL_PLUS_RETRIEVAL`은 주연산 하나와 부수 정형 사실 하나만 허용한다. 외부 Wiki/API는 첫 출시 온라인 route가 아니며 승인된 source adapter 또는 오프라인 corpus 수집 경로의 후속 설계 대상이다. 자세한 조건은 [질문 처리 계약](query-processing.md)의 결정표가 정본이다.
+`LEXICAL_ONLY`와 `DENSE_ONLY`도 첫 출시부터 **활성 route**다. 이름·별칭/정확한 용어 단독, 고유명사·부정 없는 단일 의미 주제, 복합 설명·추천의 `HYBRID`를 결정적 순서로 구분한다. 각 route별 gold 평가에서 recall·최종 장소 품질·claim 지지율·지연·메모리와 오라우팅을 검증해야 출시할 수 있다. `SQL_PLUS_RETRIEVAL`은 주연산 하나와 부수 정형 사실 하나만 허용한다. 외부 Wiki/API는 첫 출시 온라인 route가 아니며 승인된 source adapter 또는 오프라인 corpus 수집 경로의 후속 설계 대상이다. 자세한 조건은 [질문 처리 계약](./query-processing.md)의 결정표가 정본이다.
 
 ### 계획 경계의 최소 artifact
 
@@ -146,7 +146,7 @@ flowchart TD
 
 ## 4. 저장소와 패키지 경계
 
-[AI 저장소](https://github.com/YRootLab/onmaru-ai-engine)는 2026-10-22에 생성되었으며 현재 FastAPI 소스·테스트·평가 자료를 포함한다. 이 문서는 2026-10-22 백엔드 작업공간에서 옮긴 목표 모듈 설계이므로, 여기에 그려진 전체 파이프라인이 현재 운영 경로에 연결됐다는 뜻은 아니다. 실행 상태는 코드·테스트와 [운영 준비 검토](production-readiness-gaps.md)를 확인한다. `quality_harness`는 비동기 품질 개선을 위한 논리 모듈 이름이다.
+[AI 저장소](https://github.com/YRootLab/onmaru-ai-engine)는 2026-10-22에 생성되었으며 현재 FastAPI 소스·테스트·평가 자료를 포함한다. 이 문서는 2026-10-22 백엔드 작업공간에서 옮긴 목표 모듈 설계이므로, 여기에 그려진 전체 파이프라인이 현재 운영 경로에 연결됐다는 뜻은 아니다. 실행 상태는 코드·테스트와 [운영 준비 검토](../operations/production-readiness-gaps.md)를 확인한다. `quality_harness`는 비동기 품질 개선을 위한 논리 모듈 이름이다.
 
 ```text
 onmaru-ai-engine/                 # 목표 별도 저장소의 루트
@@ -160,7 +160,7 @@ onmaru-ai-engine/                 # 목표 별도 저장소의 루트
   tests/ · evals/                 # 계약·단위·고정 평가 자료
 ```
 
-이 폴더명은 책임 이름이며 즉시 코드 이동이나 별도 worker 상주를 요구하지 않는다. Spring은 회원·대화·정형 SQL·공개 자격·최종 검증·SSE를 계속 소유한다. AI 저장소는 FastAPI와 필요한 배치/수동 실행 코드를 소유하며 Spring 업무 테이블을 직접 수정하지 않는다. 이전 후 제품·서비스 간 목표 설계는 BE `docs/ai-rag/`에, AI 내부 구현 설계는 AI 저장소에 둔다. 내부 OpenAPI/JSON Schema·예제 fixture의 정본은 BE `docs/contracts/`에 두고 버전 고정·양쪽 계약 테스트로 확인한다. 문서별 소유권과 이전 순서, 관측 경로는 [저장소 분리·관측 운영 결정](repository-split-and-monitoring.md)을 따른다. 저장소 분리 전에 새 AI 이미지의 독립 CI, 기존 BE의 `ai/` 경로를 참조하는 CI·Docker·배포 변경, 호환 배포 순서, 동일 trace context 전파를 검증한다. 이를 완료하기 전에는 BE의 현재 `ai/`를 제거하지 않는다.
+이 폴더명은 책임 이름이며 즉시 코드 이동이나 별도 worker 상주를 요구하지 않는다. Spring은 회원·대화·정형 SQL·공개 자격·최종 검증·SSE를 계속 소유한다. AI 저장소는 FastAPI와 필요한 배치/수동 실행 코드를 소유하며 Spring 업무 테이블을 직접 수정하지 않는다. 이전 후 제품·서비스 간 목표 설계는 BE `docs/ai-rag/`에, AI 내부 구현 설계는 AI 저장소에 둔다. 내부 OpenAPI/JSON Schema·예제 fixture의 정본은 BE `docs/contracts/`에 두고 버전 고정·양쪽 계약 테스트로 확인한다. 문서별 소유권과 이전 순서, 관측 경로는 [저장소 분리·관측 운영 결정](../integration/repository-split-and-monitoring.md)을 따른다. 저장소 분리 전에 새 AI 이미지의 독립 CI, 기존 BE의 `ai/` 경로를 참조하는 CI·Docker·배포 변경, 호환 배포 순서, 동일 trace context 전파를 검증한다. 이를 완료하기 전에는 BE의 현재 `ai/`를 제거하지 않는다.
 
 ## 5. 오프라인 Corpus 준비 모듈
 
@@ -221,4 +221,4 @@ flowchart LR
 6. **출시 평가**: 300문항 개발/봉인셋에서 질문 해석·plan 선택·BM25/vector/RRF/rerank·claim 지지·안전·지연·2GB 자원을 단계별 측정한다. 조건 미달이면 해당 모듈을 수정하고 재시험한다.
 7. **감독 단계 제공**: OTel trace→결정적 replay·검토 큐→Grafana/주간 양 채널→운영자 선택형 조사·격리 runner→사람 승인 승격을 순서대로 연다. 자동 개선·자동 CLI 호출은 두지 않는다.
 
-이 문서의 단계별 계약이 구현 완료를 의미하지 않는다. 현재 구현과 목표 사이의 차이는 [운영 준비 검토](production-readiness-gaps.md)에 기록한다.
+이 문서의 단계별 계약이 구현 완료를 의미하지 않는다. 현재 구현과 목표 사이의 차이는 [운영 준비 검토](../operations/production-readiness-gaps.md)에 기록한다.

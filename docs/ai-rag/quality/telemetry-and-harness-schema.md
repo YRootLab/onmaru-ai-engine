@@ -1,6 +1,6 @@
 # RAG 관측 스키마와 품질 하네스 입력 계약
 
-> 상태: 구현 전 v1 목표 계약. [관측 계약](observability-contract.md)의 OTel span/metric과 [품질 감독](quality-engineering-agent.md)의 검토 큐 사이에 둘 **비식별 실행 결과**를 정의한다. 현재 FastAPI가 이 schema를 발행한다는 뜻은 아니다. JSON Schema 정본은 [`schemas/run-observation.v1.schema.json`](schemas/run-observation.v1.schema.json)이다.
+> 상태: 구현 전 v1 목표 계약. [관측 계약](../operations/observability-contract.md)의 OTel span/metric과 [품질 감독](./quality-engineering-agent.md)의 검토 큐 사이에 둘 **비식별 실행 결과**를 정의한다. 현재 FastAPI가 이 schema를 발행한다는 뜻은 아니다. JSON Schema 정본은 [`schemas/run-observation.v1.schema.json`](../schemas/run-observation.v1.schema.json)이다.
 
 ## 1. 세 종류의 기록과 정본
 
@@ -30,7 +30,7 @@ FastAPI는 plan/execute 두 내부 요청의 허용된 `runId`를 echo하고, �
 
 `errorCode`는 닫힌 enum으로 시작한다: `AUTH_REJECTED`, `SCHEMA_MISMATCH`, `VERSION_MISMATCH`, `PLAN_REJECTED`, `CONCEPT_LOSS`, `DB_TIMEOUT`, `DB_ERROR`, `EMBEDDING_ERROR`, `DIMENSION_MISMATCH`, `MODEL_TIMEOUT`, `MODEL_ERROR`, `INVALID_SCORE`, `SOURCE_REVOKED`, `EVIDENCE_EMPTY`, `PROVIDER_RATE_LIMIT`, `PROVIDER_TIMEOUT`, `PROVIDER_ERROR`, `RESPONSE_SCHEMA_INVALID`, `CLAIM_UNSUPPORTED`, `FINAL_POLICY_REJECTED`, `PERSISTENCE_ERROR`, `DELIVERY_INTERRUPTED`, `UNKNOWN`. 자유 오류 문구나 예외 전문은 schema 밖이다. `UNKNOWN` 비율을 관측해 코드 추가를 검토한다. `recovery`는 `NONE`, `OTHER_RETRIEVER`, `RRF_ORDER`, `VERIFIED_BASELINE`, `CLARIFICATION`, `FAILED_CLOSED` 중 하나다. 실제 사용자 결과와 무관한 임의 복구 코드를 agent가 변경할 수 없다.
 
-단계별 `durationMs`는 단조 시계로 측정한다. 병렬 BM25/vector의 duration을 합산해 `retrieval` wall time으로 쓰지 않는다. DB client·provider HTTP의 자동 span은 단계 span의 자식으로 두고, SQL 전문·검색 표현·prompt/응답 본문은 기록하지 않는다. stage artifact에는 정수 후보 수·근거 수·허용/보류 claim 수와 고정 version/hash만 둔다. trace span의 속성 allowlist와 metric label 제한은 [관측 계약](observability-contract.md)을 따른다.
+단계별 `durationMs`는 단조 시계로 측정한다. 병렬 BM25/vector의 duration을 합산해 `retrieval` wall time으로 쓰지 않는다. DB client·provider HTTP의 자동 span은 단계 span의 자식으로 두고, SQL 전문·검색 표현·prompt/응답 본문은 기록하지 않는다. stage artifact에는 정수 후보 수·근거 수·허용/보류 claim 수와 고정 version/hash만 둔다. trace span의 속성 allowlist와 metric label 제한은 [관측 계약](../operations/observability-contract.md)을 따른다.
 
 ## 3. Trace·metric·artifact의 연결
 
@@ -52,7 +52,7 @@ Grafana panel: stage=VECTOR_SEARCH, outcome=FAILED 증가
 | 닫힌 `errorCode`, 누락 없는 단계 결과, 재현 가능한 단일 원인 | 결정적 분류·중복 묶기·`QualityReviewItem` 생성·템플릿 보고서 | 사용자 run의 검색 전략이나 운영 설정을 바꾸지 않는다. |
 | 검색 후보 0/부정 조건 손실/claim 보류 등 품질 신호 | 운영 신호와 gold 재현 결과를 **다른 `evidenceLevel`**로 보관하고 대시보드·주간 요약에 집계 | 운영 신호만으로 정답 오류라고 확정하지 않는다. |
 | 상충·누락된 artifact 또는 다중 원인 | `INSUFFICIENT_EVIDENCE`로 보류하고 필요한 trace/fixture를 제시 | 운영자가 명시적으로 요청한 경우에만 제한된 AI 조사. |
-| 승인된 실험 계획·고정 snapshot | 격리 runner의 전후 평가·regression 계산 | 시작·예산·설정 승격은 기존 [품질 감독 권한 정책](quality-engineering-agent.md)에 따라 사람이 결정한다. |
+| 승인된 실험 계획·고정 snapshot | 격리 runner의 전후 평가·regression 계산 | 시작·예산·설정 승격은 기존 [품질 감독 권한 정책](./quality-engineering-agent.md)에 따라 사람이 결정한다. |
 
 하네스는 관측 사실과 제안된 원인을 구분한다. `StageOutcome`에 실패가 기록됐다는 사실은 확정적이지만, “chunk 크기 때문에 정답이 누락됐다”는 가설은 평가 fixture·반사실적 실험으로 검증해야 한다. 실험 결과가 좋아도 현재 요청을 되돌려 다시 생성하거나 운영 corpus/config를 즉시 수정하지 않는다.
 
