@@ -2,6 +2,10 @@
 
 Lightweight human-readable summary of meaningful repository changes. Newest dates go first.
 
+## 2026-11-17
+
+- Published the canary role-boundary diagnosis as paired Markdown/standalone HTML with the 2026-10-21 target-pipeline briefing in PR #83; organized AI-RAG docs by topic and repaired local links. Documentation only; no runtime code changed.
+
 ## 2026-11-05
 
 - Implemented the W14 privacy-safe progress sink and bounded Spring callback adapter with stable retry ordinals and failure isolation.
