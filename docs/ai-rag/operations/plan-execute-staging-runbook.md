@@ -70,7 +70,7 @@ Gemini API 비용·지연 또는 데이터 정책 때문에 E5를 유지하기�
 
 ## 남은 blocker
 
-- 현재 feature branch는 로컬 미커밋 상태다. 이 runbook과 SQL을 포함한 변경을 PR로 공유하고 review/CI를 통과시켜야 한다.
+- 구현은 [AI Engine PR #84](https://github.com/YRootLab/onmaru-ai-engine/pull/84)에 공유되어 있고 CI는 통과했다. PR은 현재 draft/open 상태이며 review와 merge가 남았다.
 - production active corpus inventory와 embedding profile을 재확인해야 한다. 저장소 handoff에 남은 E5 정보는 이전 inventory 기록이다.
 - curated fact 적재 도구, 실제 fact set, reviewer 승인·감사 절차가 아직 없다.
 - PostgreSQL migration은 여기서 실행하지 않았다. runtime role grant도 실제 role명을 모르는 상태에서 적용하지 않았다.
