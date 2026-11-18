@@ -7,6 +7,7 @@ Lightweight human-readable summary of meaningful repository changes. Newest date
 - Added fail-closed Gemini corpus staging, confirmation-gated corpus activation, and a read-only-by-default reviewed-fact loader with transactional apply. Documented staging operations; no staging/production database or feature flag was changed.
 - SQL_PLUS_RETRIEVAL now resolves Spring place IDs to exact approved corpus facts when retrieval has no evidence; failed plan reservations release capacity, and malformed lexical UUID values are excluded safely.
 - Clarified that AI Engine only binds the opaque Spring query grant to an approved plan; Spring's persisted grant lookup remains the issuance, scope, expiry, and consumption authority.
+- Merged AI Engine PR #84 and backend PR #862 to their respective `develop` branches; staging/production data operations remain pending.
 
 ## 2026-11-17
 

@@ -1,6 +1,6 @@
 # Plan/Execute staging 준비 절차
 
-> 상태: AI Engine feature branch의 코드 기준 운영 handoff 초안. 운영 migration, corpus 재색인, fact 적재 또는 feature flag 변경을 수행했다는 뜻은 아니다.
+> 상태: AI Engine PR #84가 `develop`에 병합됐다. 아래 절차는 staging/운영 handoff이며, PostgreSQL migration, corpus 재색인, fact 적재 또는 feature flag 변경을 이미 수행했다는 뜻은 아니다.
 
 ## 현재 코드가 요구하는 설정
 
@@ -128,7 +128,7 @@ Gemini API 비용·지연 또는 데이터 정책 때문에 E5를 유지하기�
 
 ## 남은 blocker
 
-- 구현과 안전한 corpus/fact 준비 도구는 [AI Engine PR #84](https://github.com/YRootLab/onmaru-ai-engine/pull/84)에 공유되어 있다. PR CI 통과 후 review와 develop merge가 남았다.
+- AI Engine PR #84와 BE PR #862가 각각 develop에 병합됐다. 다음은 staging 배선·재색인·migration·검수 fact 적재와 Spring↔AI live HTTP E2E다.
 - production active corpus inventory와 embedding profile을 재확인해야 한다. 저장소 handoff에 남은 E5 정보는 이전 inventory 기록이다.
 - JSONL parser/loader와 별도 corpus activator는 구현됐지만, 실제 curated fact set·reviewer 승인·감사 절차는 BE/content owner가 준비해야 한다.
 - PostgreSQL migration은 여기서 실행하지 않았다. runtime role grant도 실제 role명을 모르는 상태에서 적용하지 않았다.
