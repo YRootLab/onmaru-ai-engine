@@ -1,9 +1,9 @@
 # 홈 여정 RAG 요청 생명주기와 실패 결정표
 
-> 상태: 구현 전 목표 설계. 공개 필드와 오류 코드는 [API·저장 모델](contracts-and-data.md)에, 제품 화면은 [PRD](prd.md)에 정의한다. 아래 내부 envelope는 구현 시 확정할 경계 계약이며 현재 API에 존재하지 않는다.
+> 상태: 구현 전 목표 설계. 공개 필드와 오류 코드는 [API·저장 모델](../integration/contracts-and-data.md)에, 제품 화면은 [PRD](../product/prd.md)에 정의한다. 아래 내부 envelope는 구현 시 확정할 경계 계약이며 현재 API에 존재하지 않는다.
 
-허용 코드·동의어·부정/복합 판정은 [질문 해석 사전](question-understanding.md), claim별 출처의 허용·보류는 [근거 검증 정책](grounding-and-review.md)을 따른다.
-AI 엔진의 정규화→계획→라우팅, Spring의 계획 승인, 첫 출시의 모든 검색 경로 선택 조건은 [질문 처리 계약](query-processing.md)을 따른다.
+허용 코드·동의어·부정/복합 판정은 [질문 해석 사전](./question-understanding.md), claim별 출처의 허용·보류는 [근거 검증 정책](../quality/grounding-and-review.md)을 따른다.
+AI 엔진의 정규화→계획→라우팅, Spring의 계획 승인, 첫 출시의 모든 검색 경로 선택 조건은 [질문 처리 계약](./query-processing.md)을 따른다.
 
 ## 요청당 불변식
 
@@ -72,7 +72,7 @@ FastAPI execute 응답은 `configHash`, `corpusRevision`, `sourceRevocationSeque
 
 ## SSE·FE 상태 전이
 
-Query Processing Layer의 단계와 사용자 표시 단계는 별개다. `query.preprocessing`, `query.interpretation`, `search.route`는 각각 trace에서 분리하지만 FE에는 하나의 `INTERPRETING` 진행 상태로 보인다. `SQL_ONLY`는 검색이 없으므로 `RETRIEVING`을 건너뛰고 최종 검증·저장으로 간다. `HYBRID`는 Keyword/Semantic Search, RRF, reranker의 실제 실행 span을 남기되 FE에는 `RETRIEVING`으로 묶는다. `LEXICAL_ONLY`/`DENSE_ONLY`에서는 실행하지 않은 검색 경로·RRF의 span이나 진행 문구를 생성하지 않는다. 이 매핑은 [모듈 경계](module-boundaries-and-pipelines.md)와 같은 버전의 fixture로 검증한다.
+Query Processing Layer의 단계와 사용자 표시 단계는 별개다. `query.preprocessing`, `query.interpretation`, `search.route`는 각각 trace에서 분리하지만 FE에는 하나의 `INTERPRETING` 진행 상태로 보인다. `SQL_ONLY`는 검색이 없으므로 `RETRIEVING`을 건너뛰고 최종 검증·저장으로 간다. `HYBRID`는 Keyword/Semantic Search, RRF, reranker의 실제 실행 span을 남기되 FE에는 `RETRIEVING`으로 묶는다. `LEXICAL_ONLY`/`DENSE_ONLY`에서는 실행하지 않은 검색 경로·RRF의 span이나 진행 문구를 생성하지 않는다. 이 매핑은 [모듈 경계](./module-boundaries-and-pipelines.md)와 같은 버전의 fixture로 검증한다.
 
 | 상태 | 들어오는 이벤트·조건 | FE 동작 | 영속 결과 |
 |---|---|---|---|

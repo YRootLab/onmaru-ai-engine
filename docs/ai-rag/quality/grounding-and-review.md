@@ -1,6 +1,6 @@
 # 문장별 근거 검증과 사람 검수 정책
 
-> 상태: 1차 출시 목표 계약. [RAG 저장 스키마](rag-storage-schema.md)의 문서·청크·출처 revision을 사용한다. 자동 검사는 **근거의 존재·연결·현재 자격**을 보증하고, 문장의 의미상 참 여부는 평가셋의 사람 검수로 확인한다.
+> 상태: 1차 출시 목표 계약. [RAG 저장 스키마](../data/rag-storage-schema.md)의 문서·청크·출처 revision을 사용한다. 자동 검사는 **근거의 존재·연결·현재 자격**을 보증하고, 문장의 의미상 참 여부는 평가셋의 사람 검수로 확인한다.
 
 ## 출력 계약과 신뢰 경계
 
@@ -20,7 +20,7 @@ FastAPI의 닫힌 출력은 `places[{placeId,reasonClaims[]}]`, `summaryClaims[]
 
 ## 의미상 지지 간극을 줄이는 단계
 
-첫 구현은 생성기의 문장을 사후 채점하는 대신, **주장 가능한 사실의 범위를 생성 전부터 좁힌다.** 청크에는 원천 문서의 시작·끝 offset과 문단 ID를 보존하고, LLM에는 해당 질문에 선택된 짧은 근거 span과 source revision을 준다. LLM은 복합 문장 대신 한 claim에 하나의 검증 가능한 사실을 작성하고, `evidenceIds`와 인용 span ID, `claimType`(정형 값·관계·해석·취향), 시간 범위, 확실성 표현을 반환한다. span ID는 서버가 만든 allowlist만 허용한다. 출력 schema 변경은 [요청 생명주기](request-lifecycle.md)의 내부 계약 버전과 함께 한다.
+첫 구현은 생성기의 문장을 사후 채점하는 대신, **주장 가능한 사실의 범위를 생성 전부터 좁힌다.** 청크에는 원천 문서의 시작·끝 offset과 문단 ID를 보존하고, LLM에는 해당 질문에 선택된 짧은 근거 span과 source revision을 준다. LLM은 복합 문장 대신 한 claim에 하나의 검증 가능한 사실을 작성하고, `evidenceIds`와 인용 span ID, `claimType`(정형 값·관계·해석·취향), 시간 범위, 확실성 표현을 반환한다. span ID는 서버가 만든 allowlist만 허용한다. 출력 schema 변경은 [요청 생명주기](../architecture/request-lifecycle.md)의 내부 계약 버전과 함께 한다.
 
 검사 순서는 (1) span의 실제 내용·offset·현재 source revision 확인, (2) 장소·작품·인물·날짜·숫자 및 부정·비교 대상의 일치, (3) 관계·시간·인과의 방향과 강도 확인, (4) 주장의 범위가 근거보다 넓지 않은지 판정이다. 1~2는 코드와 canonical 관계로 결정할 수 있는 유형만 자동 통과시킨다. 3~4는 문자열 포함만으로 통과시키지 않는다. 한 claim에 서로 다른 두 사실이 있거나 근거의 시점과 주장의 시점이 다르면 분리·축소하거나 보류한다. `INTERPRETATION`/`PREFERENCE`는 사실 보장처럼 쓰지 않고 조건부 어조와 출처를 표시한다.
 
@@ -45,4 +45,4 @@ FastAPI의 닫힌 출력은 `places[{placeId,reasonClaims[]}]`, `summaryClaims[]
 
 출시 뒤 모든 답변을 사람이 실시간 검수하는 운영은 전제하지 않는다. 다음 경우는 **우선 검수 큐**에 넣고 동시에 사용자에게는 자동 검증된 부분만 보여 준다: 새로운 주제 code·출처 종류, low confidence 검색, 3개 미만 결과, 철회 직후 24시간, 모델/프롬프트/청킹 변경, 안전 필터 경계 사례, 사용자 오류 신고. 검수 큐에는 원문 회원 질의 대신 재현 가능한 익명 fixture와 공개 근거 ID를 사용한다. 실제 대화 원문을 검수에 쓰려면 별도 동의·접근권한·보존 규칙이 먼저 필요하다.
 
-사람 검수는 같은 원천의 내용 오류를 발견하면 Spring 원천 검수 상태를 수정하거나 source를 철회하는 경로로 연결한다. 수정 전까지 같은 근거가 반복 사용되지 않도록 revocation 차단 집합에 반영한다. 주간 보고는 claim 지지율, `PARTIAL/UNSUPPORTED` 유형, 출처별 오류, 자동 보류율, 신고 후 수정 시간을 포함한다. 평가/운영 연결은 [평가·환경 검증](evaluation-and-environment-tests.md)을 따른다.
+사람 검수는 같은 원천의 내용 오류를 발견하면 Spring 원천 검수 상태를 수정하거나 source를 철회하는 경로로 연결한다. 수정 전까지 같은 근거가 반복 사용되지 않도록 revocation 차단 집합에 반영한다. 주간 보고는 claim 지지율, `PARTIAL/UNSUPPORTED` 유형, 출처별 오류, 자동 보류율, 신고 후 수정 시간을 포함한다. 평가/운영 연결은 [평가·환경 검증](./evaluation-and-environment-tests.md)을 따른다.

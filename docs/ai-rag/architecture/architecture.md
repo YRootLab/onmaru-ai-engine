@@ -1,11 +1,11 @@
 # 홈 여정 RAG 데이터·응답 아키텍처
 
-> 상태: 구현 전 설계. [제품 PRD](prd.md)의 사용자 요구를 Spring·FastAPI·PostgreSQL 경계로 옮긴다.
+> 상태: 구현 전 설계. [제품 PRD](../product/prd.md)의 사용자 요구를 Spring·FastAPI·PostgreSQL 경계로 옮긴다.
 
-요청당 판정 순서·내부 envelope·SSE 상태 전이는 [요청 생명주기](request-lifecycle.md)에 정의한다.
-질의별 정규화·계획·라우팅과 단일 검색 경로의 활성화 조건은 [질문 처리 계약](query-processing.md)을 따른다.
-질문 code/동의어는 [질문 해석 사전](question-understanding.md), corpus 키·인덱스·전환은 [RAG 저장 스키마](rag-storage-schema.md), 문장별 근거 검증은 [근거 정책](grounding-and-review.md)이 기준이다.
-세 파이프라인의 **레이어·모듈 소유권·입출력 artifact·실패 경계**를 구현 관점에서 읽으려면 [모듈 경계와 세 파이프라인](module-boundaries-and-pipelines.md)을 먼저 본다. 아래 그림은 그중 온라인 경로의 핵심 실행 순서를 보여 준다.
+요청당 판정 순서·내부 envelope·SSE 상태 전이는 [요청 생명주기](./request-lifecycle.md)에 정의한다.
+질의별 정규화·계획·라우팅과 단일 검색 경로의 활성화 조건은 [질문 처리 계약](./query-processing.md)을 따른다.
+질문 code/동의어는 [질문 해석 사전](./question-understanding.md), corpus 키·인덱스·전환은 [RAG 저장 스키마](../data/rag-storage-schema.md), 문장별 근거 검증은 [근거 정책](../quality/grounding-and-review.md)이 기준이다.
+세 파이프라인의 **레이어·모듈 소유권·입출력 artifact·실패 경계**를 구현 관점에서 읽으려면 [모듈 경계와 세 파이프라인](./module-boundaries-and-pipelines.md)을 먼저 본다. 아래 그림은 그중 온라인 경로의 핵심 실행 순서를 보여 준다.
 
 ## 현재 기준과 변경점
 
@@ -26,7 +26,7 @@ flowchart LR
 
 Spring은 공개 가능한 canonical projection과 불변 manifest를 제공한다. FastAPI는 전용 계정으로 `ai` 스키마만 읽고 쓰며, Spring 업무 스키마에 직접 접근하지 않는다. manifest에는 `revisionId`, 문서 ID·해시, 게시 시각, upsert/tombstone, 출처 이용 조건을 둔다. 중복 pull은 멱등으로 처리하고 전체 문서 수·해시·embedding profile 검증 전에는 active pointer를 바꾸지 않는다. 철회 항목은 새 revision 활성화 전에 검색 대상에서 빠져야 한다. 이전 revision으로 되돌려 철회를 무효화하지 않는다.
 
-긴급 철회는 전체 재색인 완료를 기다리지 않는다. Spring의 현재 공개 자격 조회가 우선이며 새 run의 후보 ID와 최종 snapshot 저장 직전에 철회 여부를 검사한다. FastAPI는 별도 `revoked_source_id`/`revoked_place_id` 차단 집합을 검색 시 적용하고 tombstone 이벤트를 멱등으로 수신한다. 동기화가 지연·실패해 차단 집합의 신선도를 확인할 수 없으면 해당 revision의 RAG 경로를 닫고 Spring 기본 탐색으로 전환한다. 일반 수정은 manifest 배치에 포함하고, 공개 철회·권리 취소는 즉시 차단 이벤트와 재색인을 병행한다. 허용 지연·검증 방법은 [운영 게이트](operations-and-evaluation.md)에 둔다.
+긴급 철회는 전체 재색인 완료를 기다리지 않는다. Spring의 현재 공개 자격 조회가 우선이며 새 run의 후보 ID와 최종 snapshot 저장 직전에 철회 여부를 검사한다. FastAPI는 별도 `revoked_source_id`/`revoked_place_id` 차단 집합을 검색 시 적용하고 tombstone 이벤트를 멱등으로 수신한다. 동기화가 지연·실패해 차단 집합의 신선도를 확인할 수 없으면 해당 revision의 RAG 경로를 닫고 Spring 기본 탐색으로 전환한다. 일반 수정은 manifest 배치에 포함하고, 공개 철회·권리 취소는 즉시 차단 이벤트와 재색인을 병행한다. 허용 지연·검증 방법은 [운영 게이트](../operations/operations-and-evaluation.md)에 둔다.
 
 | 원천 | 1차 포함 조건 | 제외 |
 |---|---|---|
@@ -75,13 +75,13 @@ flowchart TD
   SV --> O[확정 snapshot 원자 저장 · 검증 문장 SSE · 3~5 장소]
 ```
 
-그림의 BM25·Semantic Search 병렬 경로와 RRF는 **HYBRID 계획**을 나타낸다. 내부 route enum `LEXICAL_ONLY`는 vector·RRF을, `DENSE_ONLY`는 BM25·RRF를 실행하지 않는다. `SQL_ONLY`도 FastAPI의 Query Processing Layer 호출을 거치지만 execute·검색·LLM은 거치지 않는다. 두 단일 검색 계획도 첫 출시부터 질문 유형별로 활성화한다. 계획 선택의 정확한 조건, 외부 source 제외 경계, 단계별 artifact는 [질문 처리](query-processing.md)와 [모듈 경계](module-boundaries-and-pipelines.md)를 따른다.
+그림의 BM25·Semantic Search 병렬 경로와 RRF는 **HYBRID 계획**을 나타낸다. 내부 route enum `LEXICAL_ONLY`는 vector·RRF을, `DENSE_ONLY`는 BM25·RRF를 실행하지 않는다. `SQL_ONLY`도 FastAPI의 Query Processing Layer 호출을 거치지만 execute·검색·LLM은 거치지 않는다. 두 단일 검색 계획도 첫 출시부터 질문 유형별로 활성화한다. 계획 선택의 정확한 조건, 외부 source 제외 경계, 단계별 artifact는 [질문 처리](./query-processing.md)와 [모듈 경계](./module-boundaries-and-pipelines.md)를 따른다.
 
 1. Spring이 인증·회원/대화 소유권·입력 길이·idempotency·주/월 한도·동시 run을 검사한다. 원문은 Spring에만 보존하고 LLM 입력에는 전달하지 않는다.
 2. Spring은 최근 확정 구조화 상태에서 지역·테마·동행 조건·고정·제외 장소를 재구성하고 질문의 개인정보를 제거한 `safeQuery`를 AI 엔진에 보낸다. AI 엔진은 질문의 검색 의미를 버전형 주제 사전 code와 canonical 대상 ID, 긍정·부정 `retrievalExpression`, 비식별 `semanticQuery`에 함께 보존한다. `semanticQuery`는 `safeQuery`의 허용된 표현의 수식·어순·부정 범위를 살려 로컬 BM25/embedding/reranker에 쓰되 외부 LLM에는 보내지 않는다. 새 턴의 명시 조건이 이전 요약보다 우선한다. 핵심 의미를 안전하게 보존할 수 없거나 조건이 충돌하면 한 가지 확인 질문을 반환한다.
 3. AI 엔진의 `Query Processing Layer`는 `Query Preprocessing`으로 표기·별칭을 정리하고, `Query Interpretation`으로 의도·대상·조건·부정·대화 맥락을 `QueryFrame`에 구조화한다. 그다음 `Search Router`가 정형 사실과 공개 본문 사실을 분리하고 `SQL_ONLY`, `LEXICAL_ONLY`, `DENSE_ONLY`, `HYBRID`, `SQL_PLUS_RETRIEVAL`, 확인 질문 중 하나를 제안한다. Spring은 제안 경로의 필드·필터·권한을 승인하거나 거부한다. 첫 출시부터 모든 경로를 활성화하되 이름·별칭/정확한 용어 단독은 Keyword Search(BM25), 고유명사·부정 없는 단일 의미 주제는 Semantic Search, 설명·비교·추천의 복합 조건은 `ai` 활성 revision의 hybrid 검색으로 보낸다. 라우팅은 모델의 임의 tool 선택이 아니라 서버의 결정적 규칙이다.
 4. 공개 자격·지역·분류·제외·revision을 두 검색 경로 모두에 hard filter로 적용한다. 키워드 경로는 장소명·검수 별칭의 exact/prefix 식별 신호와 한국어 토큰화 BM25로 공개 제목·본문을 찾는다. 문맥 경로는 같은 범위의 청크를 384차원 exact cosine으로 찾는다. `pg_trgm`/기본 FTS 점수를 BM25로 대체 표기하지 않는다.
-5. 두 경로를 병렬 실행해 필터 통과 청크 각 최대 20개를 받고 ID로 중복 제거한다. `RRF = 1/(60 + bm25Rank) + 1/(60 + vectorRank)`로 합친다. 추천·교체는 각 경로에서 장소당 3개·동일 source revision당 2개로 제한하고, fusion 후 장소당 3개를 유지하면서 가능한 서로 다른 장소 5곳을 확보한 뒤 최대 30개를 다음 단계로 넘긴다. 설명·비교는 명시 대상별 후보를 보존한다. 한 경로가 비면 남은 경로 순위를 사용하고 `degradedReason`을 기록한다. 후보 다양성 규칙은 [요청 계약](request-lifecycle.md)에서 고정한다.
+5. 두 경로를 병렬 실행해 필터 통과 청크 각 최대 20개를 받고 ID로 중복 제거한다. `RRF = 1/(60 + bm25Rank) + 1/(60 + vectorRank)`로 합친다. 추천·교체는 각 경로에서 장소당 3개·동일 source revision당 2개로 제한하고, fusion 후 장소당 3개를 유지하면서 가능한 서로 다른 장소 5곳을 확보한 뒤 최대 30개를 다음 단계로 넘긴다. 설명·비교는 명시 대상별 후보를 보존한다. 한 경로가 비면 남은 경로 순위를 사용하고 `degradedReason`을 기록한다. 후보 다양성 규칙은 [요청 계약](./request-lifecycle.md)에서 고정한다.
 6. 첫 RAG 릴리스부터 reranker가 RRF 상위 최대 30개의 **비식별 semanticQuery·청크 본문** 관련도를 다시 채점한다. 입력 쌍은 `semanticQuery`와 `title + sourceLabel + chunkText`로 만든다. 600토큰 이하 청크를 모두 읽을 수 있는 모델/입력 설정을 우선 선택하고, 불가능하면 겹치는 window로 나눠 청크의 최고 점수를 취하며 절단으로 근거가 빠진 비율을 기록한다. 출처 label은 신뢰 신호나 점수 가산점으로 사용하지 않는다. 출력은 각 기존 청크 ID의 유한 실수 점수이며 동점은 RRF 순위→청크 ID 순서로 정한다. 모델 ID·revision·토크나이저·최대 입력 길이·batch 크기를 `rankerVersion`에 고정한다. 사전 지정한 latency 목표는 두지 않는다. 동일 평가셋에서 후보 수·batch·모델별 근거 품질 향상과 warm/cold latency 분포·최대 RSS·fallback률을 측정하고, 기준선과 운영 자원·사용자 경험을 함께 검토해 timeout과 성능 개선 순서를 정한다. 이후 운영 trace의 tail latency·RRF 복귀율을 기준으로 조정한다. reranker는 새로운 장소·문서·URL을 생성하거나 hard filter를 완화하지 못한다. timeout·오류·버전 불일치·NaN 점수 시 동일 후보의 RRF 순서로 복귀하고 degraded 상태를 기록한다. 이후 장소별 청크 최대 2개와 전체 근거 최대 12개를 선택한다. 카드의 3~5 장소는 서로 다른 canonical ID여야 한다. 다양성 적용 전후의 관련도를 함께 기록한다.
 7. FastAPI는 질문 주제 code·공개 표시명과 후보 ID·허용 근거·출처만 모델에 전달한다. 모델은 장소·URL·출처를 새로 만들거나 필터를 완화하지 못한다. 출력은 구조화된 장소 ID, claim별 근거 ID, 짧은 설명이며 FastAPI와 Spring이 각각 검증한다. 근거가 부족한 주장이나 장소는 버리고, 유효한 수가 3 미만이면 부족 상태를 명시한다. 미검증 생성 텍스트는 SSE로 보내지 않는다.
 8. generation 실패, timeout, 색인 revision 불일치, DB 장애 시 같은 run에서 검증된 canonical lookup 기본 결과를 사용한다. 정형 조회는 Spring `PlaceQueryPort` 뒤의 승인된 private REST adapter를 기본으로 실행하며, MCP는 tool discovery·재사용 요구가 있을 때만 선택한다. 검색 실패 시 검증된 정형 값만 남길 수 있다. 철회된 과거 문서를 근거로 대체하지 않으며, 확인할 수 없는 사실은 답변하지 않는다. fallback 여부와 원인은 사용자에게 이해 가능한 상태로 표시하되 내부 오류 세부 정보는 노출하지 않는다.
@@ -118,4 +118,4 @@ Spring은 `thread → turns → runs → validated snapshots`와 회원별 한�
 
 ## 기존 계약과 필요한 변경
 
-현재 [Journey OpenAPI](https://github.com/YRootLab/OnMaru-backend/blob/develop/docs/contracts/openapi/journey.openapi.yaml)는 `explorations`, `turns`, `runs`, SSE, `saved-journeys`를 정의하고, [SSE schema](https://github.com/YRootLab/OnMaru-backend/blob/develop/docs/contracts/schemas/journey-sse-event.schema.json)는 `run.stage`와 `run.text.delta`도 정의한다. 구현 단계에서 [계약·데이터 설계](contracts-and-data.md)의 대화 목록·삭제·북마크·한도와 3~5개 장소를 **버전·fixture와 함께** 확장한다. 기존 `proposal-validation.md`의 최대 3개 및 `journey-guardrails.md`의 일일 게스트/회원 한도는 현행 구현 설명으로 남기고, 새 계약이 배포되기 전까지는 현재 코드의 제한이 적용된다.
+현재 [Journey OpenAPI](https://github.com/YRootLab/OnMaru-backend/blob/develop/docs/contracts/openapi/journey.openapi.yaml)는 `explorations`, `turns`, `runs`, SSE, `saved-journeys`를 정의하고, [SSE schema](https://github.com/YRootLab/OnMaru-backend/blob/develop/docs/contracts/schemas/journey-sse-event.schema.json)는 `run.stage`와 `run.text.delta`도 정의한다. 구현 단계에서 [계약·데이터 설계](../integration/contracts-and-data.md)의 대화 목록·삭제·북마크·한도와 3~5개 장소를 **버전·fixture와 함께** 확장한다. 기존 `proposal-validation.md`의 최대 3개 및 `journey-guardrails.md`의 일일 게스트/회원 한도는 현행 구현 설명으로 남기고, 새 계약이 배포되기 전까지는 현재 코드의 제한이 적용된다.

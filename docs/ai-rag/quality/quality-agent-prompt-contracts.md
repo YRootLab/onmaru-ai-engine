@@ -72,7 +72,7 @@ LLM 사용 시 Root Cause 조사 job은 모델 호출 1회·MCP tool call 최대
 
 ## 관련 문서
 
-- [품질 감독 workflow](quality-engineering-agent.md)
+- [품질 감독 workflow](./quality-engineering-agent.md)
 - [Spring Quality MCP 계약](https://github.com/YRootLab/OnMaru-backend/blob/develop/docs/ai-rag-spring/quality-tools-mcp.md)
 - [MCP tool catalog](https://github.com/YRootLab/OnMaru-backend/blob/develop/docs/contracts/mcp/quality-tools.v1.json)
-- [PRD](prd.md)
+- [PRD](../product/prd.md)

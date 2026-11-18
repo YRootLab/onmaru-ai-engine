@@ -1,5 +1,11 @@
 # Handoff
 
+Current follow-up (BE canary role-boundary correction, 2026-11-17):
+- Share the paired target design and implementation diagnosis with BE: 2026-10-21 system briefing and 2026-11-17 canary role-boundary report. Both are listed in `docs/ai-rag/reports/README.md` and the AI-RAG index.
+- Documentation handoff is published for review in [PR #83](https://github.com/YRootLab/onmaru-ai-engine/pull/83), branch `feature/ai-rag-canary-role-boundary-handoff`.
+- Remaining implementation work is outside this documentation PR: BE should track removal of Spring's arbitrary top-12 shortlist for general recommendations while preserving explicit targets and authority bounds. AI plan/execute production corpus wiring remains tracked by [#76](https://github.com/YRootLab/onmaru-ai-engine/issues/76); this PR does not close it.
+- No runtime code or production configuration changed. Keep the 2026-10-21 briefing available as a temporary target-pipeline reference; the user plans to remove it in a later cleanup.
+
 Current ad hoc request (journey RAG activation evaluation implementation):
 - Issue: implementation follow-up [#76](https://github.com/YRootLab/onmaru-ai-engine/issues/76); existing PRD work was recorded above and remains linked from `docs/ai-rag/README.md`.
 - Changes: AI request accepts optional `candidatePolicy` (omitted means `v1`; unsupported values return 422), caps candidate refs at 12, and handles `useRag=true` without requiring a caller-supplied corpus revision. The server selects the active revision, returns it when retrieval is attempted, and records policy/revision provenance in logs and eval reports. Eval comparisons reject policy or corpus mismatches. `/ready` returns 503 if RAG is enabled without a durable activation log and retriever. Empty `candidateRefs` now returns `NO_RESULTS`/`NO_CANDIDATES` even when `candidateCount` is stale and positive; request schema assertions pin the backend-facing field limits/defaults. The v0.1.2 integration guide now documents the request/response contract and deployment ordering.
@@ -33,7 +39,7 @@ Previous work:
 Touched files:
 - `src/onmaru_ai/progress/`: explicit major-stage sink protocol, deterministic in-memory fake, and bounded best-effort Spring callback adapter.
 - `tests/progress/`: skipped-stage behavior, stable retry ordinal/payload, correlation validation, timeout/retry caps, client rejection, and delivery-failure isolation.
-- `docs/ai-rag/progress-event-contract.md`: W14 implementation boundary and W13 integration handoff.
+- `docs/ai-rag/integration/progress-event-contract.md`: W14 implementation boundary and W13 integration handoff.
 
 Verification:
 - TDD RED: focused test collection initially failed because `onmaru_ai.progress` did not exist.

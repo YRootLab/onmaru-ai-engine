@@ -1,6 +1,6 @@
 # AI RAG corpus 보존·GC 정책
 
-> 상태: 저장소 수명주기 기준선 구현. 기간은 목표 2GB 운영 환경에서 검증할 초기값이며, 출시 전 권리 조건·복원 실험·실측 저장량으로 확정한다. 2GB 인스턴스 이전은 2026-10-23 오후로 예정됐던 기록이 있으나 완료 결과는 AI 저장소에서 확인되지 않았다. 현재 인프라 상태는 [운영 준비 검토](production-readiness-gaps.md)를 따른다. 이 문서는 공개 검색 corpus에 적용한다. 회원 대화의 보존 기간은 [안전 정책](security-and-abuse.md)을 따른다.
+> 상태: 저장소 수명주기 기준선 구현. 기간은 목표 2GB 운영 환경에서 검증할 초기값이며, 출시 전 권리 조건·복원 실험·실측 저장량으로 확정한다. 2GB 인스턴스 이전은 2026-10-23 오후로 예정됐던 기록이 있으나 완료 결과는 AI 저장소에서 확인되지 않았다. 현재 인프라 상태는 [운영 준비 검토](../operations/production-readiness-gaps.md)를 따른다. 이 문서는 공개 검색 corpus에 적용한다. 회원 대화의 보존 기간은 [안전 정책](../operations/security-and-abuse.md)을 따른다.
 
 > 구현 위치: `src/onmaru_ai/corpus/revocation.py`가 순서 원장, 60초 heartbeat,
 > 복원 재적용과 철회 본문 purge를 담당한다. `src/onmaru_ai/corpus/gc.py`가 active,
@@ -38,7 +38,7 @@
 4. 삭제 건수·바이트·revision/hash·작업자·시각·재시도·hold를 감사 기록에 남긴다. 청크/embedding 고아 행 0건과 검색 결과 철회 ID 0건을 확인한다. `ANALYZE`/autovacuum 상태와 heap·index·WAL 증가를 관측한다. 운영 공유 DB에서 `VACUUM FULL`을 자동 실행하지 않는다.
 5. 2회 연속 GC 실패, 만료 기한 초과, 롤백 후보 0개, 활성 revision 삭제 시도, 감사 기록 누락은 경보를 낸다. 마지막 두 경우에는 자동 삭제를 중지한다.
 
-DB migration에는 revision별 GC 상태와 만료 시각, 조사 hold의 승인/만료, GC run/checkpoint/audit 테이블이 필요하다. 실제 DDL은 [저장 스키마](rag-storage-schema.md)와 `docs/database/modules/ai.dbml`을 함께 갱신한다. 출시 전 시계 이동·중복 실행·active 전환과 GC 경합·철회 후 롤백·7일 백업 복원·hold 만료를 staging에서 검증한다.
+DB migration에는 revision별 GC 상태와 만료 시각, 조사 hold의 승인/만료, GC run/checkpoint/audit 테이블이 필요하다. 실제 DDL은 [저장 스키마](./rag-storage-schema.md)와 `docs/database/modules/ai.dbml`을 함께 갱신한다. 출시 전 시계 이동·중복 실행·active 전환과 GC 경합·철회 후 롤백·7일 백업 복원·hold 만료를 staging에서 검증한다.
 
 ## 384차원 색인 개선 조건
 

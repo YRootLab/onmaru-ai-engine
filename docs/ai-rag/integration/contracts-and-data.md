@@ -2,8 +2,8 @@
 
 > 상태: **목표 계약**. 아직 공개 OpenAPI·migration·코드에 적용되지 않았다. 구현 변경은 [Journey OpenAPI](https://github.com/YRootLab/OnMaru-backend/blob/develop/docs/contracts/openapi/journey.openapi.yaml), SSE schema, fixture와 [DB 설계](https://github.com/YRootLab/OnMaru-backend/blob/develop/docs/database/README.md)를 같은 PR에서 갱신한다.
 
-기존 공개 계약을 확장하기 전 요청 처리 순서·Spring↔FastAPI envelope·실패 시 사용량 판정은 [요청 생명주기](request-lifecycle.md)와 맞춘다.
-AI corpus의 revision·문서·청크·임베딩 테이블은 [RAG 저장 스키마](rag-storage-schema.md)와 [AI DBML](https://github.com/YRootLab/OnMaru-backend/blob/develop/docs/database/modules/ai.dbml)에 정의한다.
+기존 공개 계약을 확장하기 전 요청 처리 순서·Spring↔FastAPI envelope·실패 시 사용량 판정은 [요청 생명주기](../architecture/request-lifecycle.md)와 맞춘다.
+AI corpus의 revision·문서·청크·임베딩 테이블은 [RAG 저장 스키마](../data/rag-storage-schema.md)와 [AI DBML](https://github.com/YRootLab/OnMaru-backend/blob/develop/docs/database/modules/ai.dbml)에 정의한다.
 
 ## 기존 자산과 식별자
 
@@ -34,7 +34,7 @@ AI corpus의 revision·문서·청크·임베딩 테이블은 [RAG 저장 스키
 
 `messages[]`의 각 항목은 `{turnId, role: USER|ASSISTANT, text, createdAt, runId?, status: PENDING|COMPLETED|FAILED, places?, claims?, citations?}`이다. `places`는 현재 공개 자격을 다시 검사한 canonical ID·표시 정보만 담는다. `claims`는 `{text,evidenceIds[]}` 형태의 검증된 사실 문장만 담고, `citations`는 `{evidenceId, sourceType, sourceId, sourceRevision, title, publishedAt?}`이며 모델이 만든 URL을 포함하지 않는다. evidence ID는 저장 당시의 청크·문서 offset·source revision에 연결하고, 출처가 철회되면 해당 citation의 이용 불가 상태를 표시한다. 대화 화면은 옛 답변의 확정 당시 텍스트와 현재 장소의 이용 가능 상태를 구분해 보여 준다. 공개 철회 장소는 해당 카드의 이용 불가 상태로 표시하고 새 추천에 넣지 않는다.
 
-SSE `run.stage`는 `INTERPRETING → RETRIEVING → SELECTING_EVIDENCE → GENERATING → VALIDATING → PERSISTING` 중 실제 도달한 단계만 보낸다. AI 내부 단계와 공개 SSE 단계의 매핑·소유권은 [진행 이벤트 계약 초안](progress-event-contract.md)에 정의한다. `run.text.delta`는 **검증·영속화한 확정 narration을 화면에 나누어 표시하는 선택적 이벤트**이며 기존 계약의 delta당 512자·run당 4,000자 상한을 지킨다. 모델 토큰의 직접 중계는 허용하지 않는다. 같은 `runId`의 단조 증가 `sequence`로 재연결한다. terminal/reset/재접속 뒤 GET run과 exploration snapshot을 읽어 표시 중인 텍스트를 확정 snapshot과 동기화한다. delta 없이 stage와 terminal만으로 완료해도 된다.
+SSE `run.stage`는 `INTERPRETING → RETRIEVING → SELECTING_EVIDENCE → GENERATING → VALIDATING → PERSISTING` 중 실제 도달한 단계만 보낸다. AI 내부 단계와 공개 SSE 단계의 매핑·소유권은 [진행 이벤트 계약 초안](./progress-event-contract.md)에 정의한다. `run.text.delta`는 **검증·영속화한 확정 narration을 화면에 나누어 표시하는 선택적 이벤트**이며 기존 계약의 delta당 512자·run당 4,000자 상한을 지킨다. 모델 토큰의 직접 중계는 허용하지 않는다. 같은 `runId`의 단조 증가 `sequence`로 재연결한다. terminal/reset/재접속 뒤 GET run과 exploration snapshot을 읽어 표시 중인 텍스트를 확정 snapshot과 동기화한다. delta 없이 stage와 terminal만으로 완료해도 된다.
 
 오류 코드는 기존 `AUTH_REQUIRED`, `NOT_FOUND`, `CSRF_INVALID`, `VERSION_CONFLICT`, `RATE_LIMITED`를 재사용한다. 주·월 한도에 걸린 여정 요청은 provider를 호출하지 않고 **같은 run의 기본 탐색**으로 완료하며 `degradedReason=AI_WEEKLY_QUOTA_EXCEEDED|AI_MONTHLY_QUOTA_EXCEEDED`와 두 창의 `resetsAt`을 snapshot에 포함한다. 둘 다 초과했으면 재설정이 더 늦는 월간 한도를 우선 표시한다. 그 외 provider/검색 실패도 별도 유료 재시도 없이 같은 run의 `engine=BASELINE`과 `degradedReason`으로 종료하며, 기본 탐색도 불가능하면 명시적 terminal 실패로 남긴다.
 
@@ -52,7 +52,7 @@ SSE `run.stage`는 `INTERPRETING → RETRIEVING → SELECTING_EVIDENCE → GENER
 
 ledger의 `week_start_kst`·`month_start_kst`는 예약 시점이 아니라 `DISPATCH_COMMITTED` 시점의 KST 창으로 확정한다. 창이 바뀌면 같은 회원 잠금 아래 한도를 다시 검사한다. `DISPATCH_COMMITTED`와 transport 사이의 중단은 외부 수신 여부를 알 수 없으므로 자동 재호출도 자동 환불도 하지 않는다. 운영자는 request ID·전송 기록을 근거로 수동 보정할 수 있으며 보정 내역은 감사 로그에 남긴다. 이 정책은 정확한 외부 호출 횟수 보장이 아닌 **중복 호출 방지와 보수적 비용 회계**다.
 
-`discovery_thread_context`는 회원 전체 프로필이나 개인 벡터 DB가 아니다. 최근 확정 의도와 사용자가 명시한 조건을 짧게 담고, 충돌 시 원본 턴·현재 canonical 상태를 재계산한다. 보존·삭제는 [안전·오남용 정책](security-and-abuse.md)을 따른다.
+`discovery_thread_context`는 회원 전체 프로필이나 개인 벡터 DB가 아니다. 최근 확정 의도와 사용자가 명시한 조건을 짧게 담고, 충돌 시 원본 턴·현재 canonical 상태를 재계산한다. 보존·삭제는 [안전·오남용 정책](../operations/security-and-abuse.md)을 따른다.
 
 ## 계약 검증
 

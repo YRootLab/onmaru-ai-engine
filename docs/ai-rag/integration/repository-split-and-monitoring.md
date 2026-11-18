@@ -62,7 +62,7 @@ Git 저장소와 실행 인스턴스는 별개의 경계다. FastAPI 코드를 `
 
 Spring HTTP client가 **현재 활성 span context**를 W3C `traceparent`로 주입하고 FastAPI가 원격 parent context를 추출해 자식 server span을 시작해야 한다. `traceId` 문자열만 같거나 수동으로 올제로 `parent-id`를 만드는 것은 연결된 trace가 아니다. 현재 `InternalAiRequestHeadersFactory`의 `0000000000000000` parent ID와 FastAPI `correlation.py`의 문자열 추출은 수정·통합 검증 대상이다. Spring async executor·SSE 재연결은 업무 `runId`로 상관관계를 유지하되, 재연결을 원래 HTTP 요청의 무한 연장 span으로 만들지 않는다. 비동기 corpus sync와 품질 실험은 각자 새 root trace로 기록하고 원래 요청과는 artifact의 `runId`/trace reference로 연결한다.
 
-초기 pilot에서는 AI run의 span을 100% 전송해 연결·누락을 확인하되, **영구 수집률이나 무료 보장을 약속하지 않는다.** 전송량·Grafana Cloud 사용량·무료 한도·2GB RSS/지연을 실측하고 표본 비율을 조정한다. trace가 표본에서 빠져도 run 총수·실패수·지연 histogram과 영속 평가 artifact가 남아야 한다. 원문 질문, 회원 ID, 대화 요약, prompt/LLM 출력 전문, 청크 본문, token·비밀값은 trace/log에 넣지 않는다. 고카디널리티 ID는 metric label에서 금지한다. 속성 allowlist·stage metric·대시보드·경보의 상세 계약은 [관측 계약](observability-contract.md)을 따른다.
+초기 pilot에서는 AI run의 span을 100% 전송해 연결·누락을 확인하되, **영구 수집률이나 무료 보장을 약속하지 않는다.** 전송량·Grafana Cloud 사용량·무료 한도·2GB RSS/지연을 실측하고 표본 비율을 조정한다. trace가 표본에서 빠져도 run 총수·실패수·지연 histogram과 영속 평가 artifact가 남아야 한다. 원문 질문, 회원 ID, 대화 요약, prompt/LLM 출력 전문, 청크 본문, token·비밀값은 trace/log에 넣지 않는다. 고카디널리티 ID는 metric label에서 금지한다. 속성 allowlist·stage metric·대시보드·경보의 상세 계약은 [관측 계약](../operations/observability-contract.md)을 따른다.
 
 ## 4. 검증과 이후 도입 조건
 
