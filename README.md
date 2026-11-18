@@ -12,7 +12,7 @@ AI-RAG 설계 문서·다이어그램·HTML 보고서는 2026-10-22 이 저장�
 
 AI 저장소는 검증된 FastAPI container image를 발행합니다. AWS credential, 운영 `.env`, PostgreSQL volume, Nginx, Lightsail host는 소유하지 않습니다. 기존 백엔드 저장소가 Lightsail Compose와 제한 배포 workflow를 소유합니다. 목표는 기존 Lightsail을 2GB로 확장한 뒤 Spring Boot, PostgreSQL, Nginx, FastAPI를 같은 인스턴스에서 실행하는 것이며 두 번째 인스턴스는 계획하지 않았습니다.
 
-현재 이동 중인 FastAPI 코드는 기존 16차원 결정적 임베딩·메모리 검색 baseline입니다. 이 코드를 384차원 pgvector, BM25, hybrid ranking이 구현된 것으로 간주하지 않습니다. 실제 운영 배포 전에는 코드·DB migration·독립 CI·digest 기반 배포 및 공존 검증이 필요합니다. 자세한 목표는 [배포/릴리스 설계](docs/ai-rag/deployment-and-release-model.md)를 참고하세요.
+현재 이동 중인 FastAPI 코드는 기존 16차원 결정적 임베딩·메모리 검색 baseline입니다. 이 코드를 384차원 pgvector, BM25, hybrid ranking이 구현된 것으로 간주하지 않습니다. 실제 운영 배포 전에는 코드·DB migration·독립 CI·digest 기반 배포 및 공존 검증이 필요합니다. 자세한 목표는 [배포/릴리스 설계](docs/ai-rag/operations/deployment-and-release-model.md)를 참고하세요.
 
 The private two-step plan/execute boundary is documented in
 [`src/onmaru_ai/api/README.md`](src/onmaru_ai/api/README.md). It uses the W0

@@ -17,12 +17,12 @@ The browser never calls FastAPI. The command remains REST, progress remains `run
 
 ## Private AI progress callback
 
-The implemented [`ProgressEvent` model](../../src/onmaru_ai/contracts/models.py),
-[closed JSON Schema](../../src/onmaru_ai/contracts/schemas/ProgressEvent.schema.json),
-and [shared accepted/rejected fixtures](../../tests/contracts/fixtures/) fix the private
-payload. [W0 contract notes](../../src/onmaru_ai/contracts/README.md) define hash
+The implemented [`ProgressEvent` model](../../../src/onmaru_ai/contracts/models.py),
+[closed JSON Schema](../../../src/onmaru_ai/contracts/schemas/ProgressEvent.schema.json),
+and [shared accepted/rejected fixtures](../../../tests/contracts/fixtures) fix the private
+payload. [W0 contract notes](../../../src/onmaru_ai/contracts/README.md) define hash
 serialization and the separate contextual validation rules. The
-[`ProgressSink` adapter](../../src/onmaru_ai/progress/__init__.py) reports a stage
+[`ProgressSink` adapter](../../../src/onmaru_ai/progress/__init__.py) reports a stage
 only when its caller explicitly enters it. W13 orchestration will own those calls.
 Body:
 

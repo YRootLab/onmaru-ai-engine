@@ -1,14 +1,14 @@
 # RAG gold 평가셋의 provenance와 봉인 접근 규칙
 
 W16 / [Issue #11](https://github.com/YRootLab/onmaru-ai-engine/issues/11)은
-[평가 설계](evaluation-and-environment-tests.md)의 데이터 계약과 검수 도구를
+[평가 설계](./evaluation-and-environment-tests.md)의 데이터 계약과 검수 도구를
 제공한다. 실제 개발 200·봉인 100문항 작성은 W22, replay·품질 gate 실행은 W17의
 작업이다. 저장소의 소규모 fixture와 그 안의 검수자는 합성 예시이며 실제 이중 검수
 완료나 출시 품질을 의미하지 않는다.
 
 ## 버전과 기록 형식
 
-정본은 [`gold-dataset.schema.json`](../../evals/rag-schema/gold-dataset.schema.json)의
+정본은 [`gold-dataset.schema.json`](../../../evals/rag-schema/gold-dataset.schema.json)의
 JSON Schema 2020-12 계약이다. dataset envelope는 `schemaVersion`, `datasetVersion`,
 `cases`를 가지며 모든 case는 같은 `datasetVersion`을 명시한다. 서로 다른 버전은 한
 lint 호출에 섞지 않는다. v1은 모든 object의 미등록 필드를 거절한다. 필드·enum·질문

@@ -39,7 +39,7 @@ DBML은 기존 저장소의 `ai_*` 논리 테이블명을 사용하지만 실행
 2. 공개 문서 정규화 → 단락 chunk → metadata/offset → 같은 profile의 passage 임베딩 → BM25/vector 인덱스를 **비활성 revision**에 기록한다. 청크 수·embedding 수·dimension·NaN/빈 벡터·출처/장소 불일치·문서 hash를 검사한다.
 3. 제한된 질의 smoke와 revocation 적용 결과를 확인해 `VALIDATED`로 만든다. 같은 transaction에서 이전 pointer와 manifest version을 비교하고 `ai_active_corpus.revision_id`를 갱신한다. 실패한 revision은 검색에 보이지 않는다.
 4. 철회 이벤트는 `ai_revocation_events.sequence`로 멱등 수신하고 scope에 따라 source revision 또는 장소 차단 집합에 반영한다. 이미 처리한 sequence 재전송은 무시하고, 중간 sequence가 빠졌으면 watermark를 올리지 않는다. Spring의 heartbeat에 현재 sequence와 발행 시각을 담아 이벤트가 없는 정상 상태와 전파 중단을 구별한다. 검색 시 active revision과 두 차단 집합을 함께 조회한다. 이벤트가 역전·누락되거나 watermark가 60초 이상 뒤처지면 RAG를 차단한다. 같은 출처가 재승인되면 새 `source_revision`을 만들고 이전 철회 revision은 계속 차단한다. Spring의 최종 공개 자격 검사는 독립적으로 유지한다.
-5. rollback은 이전 **검증된** revision으로만 하며 현재 차단 집합은 유지한다. 오래된 revision이 철회 자료를 다시 노출할 수 있으면 rollback하지 않는다. 활성 1개와 롤백 최대 2개, 중단본·철회 자료의 우선 삭제, 조사 hold와 감사 보존, GC 경합 제어는 [corpus 보존·GC 정책](corpus-lifecycle-and-gc.md)을 따른다. migration에는 revision별 GC 상태/만료, hold, GC run/checkpoint/audit 구조를 추가한다.
+5. rollback은 이전 **검증된** revision으로만 하며 현재 차단 집합은 유지한다. 오래된 revision이 철회 자료를 다시 노출할 수 있으면 rollback하지 않는다. 활성 1개와 롤백 최대 2개, 중단본·철회 자료의 우선 삭제, 조사 hold와 감사 보존, GC 경합 제어는 [corpus 보존·GC 정책](./corpus-lifecycle-and-gc.md)을 따른다. migration에는 revision별 GC 상태/만료, hold, GC run/checkpoint/audit 구조를 추가한다.
 
 `ai_active_corpus`와 revision state 변경은 하나의 migration owner/운영 절차로 관리한다. FastAPI runtime은 활성 포인터를 임의로 바꾸지 못하도록 별도 sync role을 쓴다. DB 복원 시 pointer·revocation watermark·현재 Spring 공개 자격을 재검사하고 불일치하면 RAG를 닫는다.
 
@@ -47,4 +47,4 @@ DBML은 기존 저장소의 `ai_*` 논리 테이블명을 사용하지만 실행
 
 사전 용량 추정은 `문서 수 × 평균 청크 수 × (384×4 바이트 벡터 + 청크 본문/metadata + 행·인덱스 오버헤드) × 동시 보존 revision 수`로 계산한다. 실제 heap/index/TOAST/WAL 크기는 샘플 적재 후 DB에서 측정한다. 예정된 2GB 호스트에서 색인 배치와 API의 부하가 기준을 넘으면 배치 직렬화·청크/인덱스·pool을 조정해 재측정하고, 미통과 시 RAG 출시는 보류한다.
 
-실행 migration은 PostGIS·pgvector·BM25 확장을 포함한 PostgreSQL 17 이미지에서 extension 생성, 차원 제약, FK/UNIQUE/CHECK, BM25/B-tree, 권한, 중복 적재, 철회·rollback, 백업 복원을 검증한다. DBML의 `vector(384)`는 목표 논리 계약이며 현재 운영 extension이 설치됐다는 뜻이 아니다. 테스트 순서는 [평가·환경 검증](evaluation-and-environment-tests.md)을 따른다.
+실행 migration은 PostGIS·pgvector·BM25 확장을 포함한 PostgreSQL 17 이미지에서 extension 생성, 차원 제약, FK/UNIQUE/CHECK, BM25/B-tree, 권한, 중복 적재, 철회·rollback, 백업 복원을 검증한다. DBML의 `vector(384)`는 목표 논리 계약이며 현재 운영 extension이 설치됐다는 뜻이 아니다. 테스트 순서는 [평가·환경 검증](../quality/evaluation-and-environment-tests.md)을 따른다.

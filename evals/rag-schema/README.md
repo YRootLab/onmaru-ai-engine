@@ -39,5 +39,5 @@ The checked-in fixture is synthetic, including its source/corpus hash placeholde
 and reviewer records. It is a contract example, not a labeled evaluation dataset.
 The invalid fixtures intentionally fail and must not be passed as release inputs.
 
-See [provenance and sealed access rules](../../docs/ai-rag/evaluation-dataset-provenance.md)
+See [provenance and sealed access rules](../../docs/ai-rag/quality/evaluation-dataset-provenance.md)
 for hash algorithms, reviewer workflow, split grouping and release manifests.

@@ -31,16 +31,16 @@
       "id": "W0",
       "title": "AI↔Spring 버전형 plan/execute·progress 계약과 공유 fixture 고정",
       "objective": "AI 소유 DTO/JSON Schema와 Spring 교차 계약 fixture를 고정한다.",
-      "context": "현재 baseline internal API와 docs/ai-rag/request-lifecycle.md·progress-event-contract.md 사이에 목표 계약 간극이 있다.",
+      "context": "현재 baseline internal API와 docs/ai-rag/architecture/request-lifecycle.md·docs/ai-rag/integration/progress-event-contract.md 사이에 목표 계약 간극이 있다.",
       "scope": "SafeQueryRequest, PlanProposal, ApprovedQueryPlan, CandidateSet, EvidenceSet, ValidatedProposal, progress event의 version/hash/필수 필드와 정상·거부 fixture.",
       "out_of_scope": "Spring 공개 OpenAPI·SSE serializer 구현.",
       "implementation_notes": "BE docs/776-ai-rag-prd의 정본과 대조하고 planHash/ID/필터 상한·민감정보 금지 규칙을 명시한다.",
-      "related_code": "docs/ai-rag/request-lifecycle.md; src/onmaru_ai/security/internal_auth.py; tests/contracts/",
+      "related_code": "docs/ai-rag/architecture/request-lifecycle.md; src/onmaru_ai/security/internal_auth.py; tests/contracts/",
       "dependencies": [],
       "expected_touch_points": [
         "src/onmaru_ai/contracts/",
         "tests/contracts/",
-        "docs/ai-rag/progress-event-contract.md"
+        "docs/ai-rag/integration/progress-event-contract.md"
       ],
       "parallel_notes": "같은 Wave 작업과 예상 수정 경로가 분리된다. 공통 계약 변경은 W0의 버전형 fixture를 통해 조율한다.",
       "acceptance_criteria": [
@@ -473,11 +473,11 @@
       "id": "W14",
       "title": "AI 실행 단계 ProgressSink와 Spring callback adapter",
       "objective": "실제 실행한 큰 단계만 Spring으로 전달할 수 있게 한다.",
-      "context": "docs/ai-rag/progress-event-contract.md의 AI 소유 범위다.",
+      "context": "docs/ai-rag/integration/progress-event-contract.md의 AI 소유 범위다.",
       "scope": "PREPARING_INPUT/RETRIEVING/SELECTING_EVIDENCE/GENERATING/CHECKING_OUTPUT, ordinal, planHash/run 검증, bounded callback/retry.",
       "out_of_scope": "Spring SSE와 FE UI 구현.",
       "implementation_notes": "민감 본문·문서명·모델 초안 없이 진행 상태만 내며 전송 실패가 결과를 바꾸지 않는다.",
-      "related_code": "docs/ai-rag/progress-event-contract.md",
+      "related_code": "docs/ai-rag/integration/progress-event-contract.md",
       "dependencies": [
         "W0",
         "W8"
@@ -545,7 +545,7 @@
       "expected_touch_points": [
         "evals/rag-schema/",
         "scripts/lint-rag-gold",
-        "docs/ai-rag/evaluation-dataset-provenance.md"
+        "docs/ai-rag/quality/evaluation-dataset-provenance.md"
       ],
       "parallel_notes": "같은 Wave 작업과 예상 수정 경로가 분리된다. 공통 계약 변경은 W0의 버전형 fixture를 통해 조율한다.",
       "acceptance_criteria": [
@@ -600,7 +600,7 @@
       "scope": "StageOutcome/RunObservation 입력, 실패 taxonomy, 중복 묶기, 접근 제한 artifact, 3개월 만료/GC, 운영자 상태 전이.",
       "out_of_scope": "자동 수정·설정 승격.",
       "implementation_notes": "Spring read tool은 별도 scope이며 일반 품질 조사 실패가 사용자 run을 막지 않는다.",
-      "related_code": "docs/ai-rag/telemetry-and-harness-schema.md; docs/ai-rag/quality-engineering-agent.md",
+      "related_code": "docs/ai-rag/quality/telemetry-and-harness-schema.md; docs/ai-rag/quality/quality-engineering-agent.md",
       "dependencies": [
         "W15",
         "W17"
@@ -661,7 +661,7 @@
       "scope": "규칙 우선 조사, 단일 변수 ExperimentSpec, 운영 외 snapshot runner, 비용·시간·egress cap, 승인/거절·rollback artifact.",
       "out_of_scope": "자동 CLI 실행·운영 자동 승격.",
       "implementation_notes": "복합 LLM 조사는 선택적 수동 단계로 두고 봉인셋·config hash 승격 gate를 기록한다.",
-      "related_code": "docs/ai-rag/quality-engineering-agent.md",
+      "related_code": "docs/ai-rag/quality/quality-engineering-agent.md",
       "dependencies": [
         "W18",
         "W17"
@@ -692,7 +692,7 @@
       "scope": "immutable image digest, startup/readiness, local extension coexistence, staging 1/2/5 run·10/50/100 SSE 참고 부하, RSS/latency report, BE handoff.",
       "out_of_scope": "BE의 운영 배포·PostgreSQL image 교체·FE 성능 구현.",
       "implementation_notes": "기준선 미달 또는 BE 환경 미준비면 출시 보류를 명시한다.",
-      "related_code": "Dockerfile; .github/workflows/ci.yml; docs/ai-rag/deployment-and-release-model.md",
+      "related_code": "Dockerfile; .github/workflows/ci.yml; docs/ai-rag/operations/deployment-and-release-model.md",
       "dependencies": [
         "W13",
         "W15",
@@ -727,7 +727,7 @@
       "scope": "SQL_ONLY 35/15, LEXICAL_ONLY 35/15, DENSE_ONLY 35/15, HYBRID 60/30, SQL_PLUS_RETRIEVAL 35/25; 부정·동명이인·다턴·철회·주입 tag; 사람 두 명의 독립 라벨과 불일치 조정.",
       "out_of_scope": "평가 runner 구현과 회원 대화 자동 복제.",
       "implementation_notes": "공개 자격 확인된 source revision의 근거를 먼저 고르고 질문을 작성한다. 장소/source revision 변형은 한 split에만 둔다.",
-      "related_code": "docs/ai-rag/evaluation-and-environment-tests.md; evals/rag-gold/",
+      "related_code": "docs/ai-rag/quality/evaluation-and-environment-tests.md; evals/rag-gold/",
       "dependencies": [
         "W16"
       ],

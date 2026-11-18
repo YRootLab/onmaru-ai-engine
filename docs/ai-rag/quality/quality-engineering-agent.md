@@ -1,6 +1,6 @@
 # RAG Quality Engineering 감독형 workflow 설계
 
-> 상태: 구현 전 목표 계약. [사용자 응답 파이프라인](architecture.md)과 별도인 비동기 품질 개선 시스템이다. `evaluation analyzer → root cause → experiment planner → deterministic runner → review gate`는 **다섯 책임**이지 상시 대화하는 다섯 LLM이 아니다. 온라인 검색 전략·corpus·모델을 요청마다 agent가 바꾸지 않는다.
+> 상태: 구현 전 목표 계약. [사용자 응답 파이프라인](../architecture/architecture.md)과 별도인 비동기 품질 개선 시스템이다. `evaluation analyzer → root cause → experiment planner → deterministic runner → review gate`는 **다섯 책임**이지 상시 대화하는 다섯 LLM이 아니다. 온라인 검색 전략·corpus·모델을 요청마다 agent가 바꾸지 않는다.
 
 이 책임들의 구현 이름은 생성된 `onmaru-ai-engine` 저장소 내부의 **`onmaru_ai.quality_harness`**로 한다. `Engine`은 사용자 요청에 응답하는 제품 런타임, `quality_harness`는 관측 신호를 재현 가능한 평가·실험·사람 승인 자료로 바꾸는 비동기 도구 모음이다. 감독 작업을 별도 Git 저장소나 상시 LLM 서비스로 분리하지 않는다. 현재 `ai/src/onmaru_ai/evals/`는 기존 오프라인 평가 코드이며 새 이름으로 이동한 상태가 아니다.
 
@@ -44,13 +44,13 @@ Grafana RAG 품질 대시보드는 `OPEN/ACKNOWLEDGED` 건수·연령, 실패 �
 
 ## 2. Trace와 평가 artifact
 
-FastAPI의 단계별 실행 사실은 [RunObservation.v1 계약](telemetry-and-harness-schema.md)으로 정규화한다. Supervisor는 trace가 표본에서 빠졌거나 전송에 실패한 경우를 구분하고, 영속 실행 결과와 gold/재현 artifact 없이 trace 하나만으로 원인을 확정하지 않는다.
+FastAPI의 단계별 실행 사실은 [RunObservation.v1 계약](./telemetry-and-harness-schema.md)으로 정규화한다. Supervisor는 trace가 표본에서 빠졌거나 전송에 실패한 경우를 구분하고, 영속 실행 결과와 gold/재현 artifact 없이 trace 하나만으로 원인을 확정하지 않는다.
 
 각 온라인 run의 `traceId`는 Spring `runId`와 연결하되 회원 ID·원문 질문·대화 텍스트를 일반 trace에 싣지 않는다. `span`은 AI plan의 `query.preprocessing`, `query.interpretation`, `search.route`, Spring의 `plan_authorization`, 정형 lookup transport에 따른 child span(REST 기본; MCP 선택 시 `mcp.journey_execute_approved_lookup`), 내부 `canonical.sql`, AI 내부 `bm25`/`semantic_search`/`rrf`/`rerank`, `grounding`, `generation`, `final_validation`, `persist`, `sse`로 나눈다. MCP child span에는 tool/schema version·outcome·latency·output bytes·오류 코드만 기록한다. 검색 span은 `corpusRevision`, `sourceRevocationSequence`, dictionary/chunker/embedding/BM25/reranker/prompt/model version, hard-filter 해시, 후보 `documentId/chunkId/placeId/sourceRevision`와 **순위·점수·제외 이유 코드**, 단계별 후보 수·고유 장소 수·지연을 남긴다. 점수만으로 원문을 복원할 수 없는지 검토하고, 공개 문서 본문/사용자 원문은 trace에서 제외한다. 일반 운영 trace는 짧은 기간과 표본화로 제한하고, 재현용 평가 artifact는 별도 접근 제어 저장소에 고정한다. 품질 조사 MCP 호출은 `quality.investigation` trace에 별도 기록하며 온라인 MCP 호출과 합치지 않는다.
 
 `EvaluationCase`는 승인된 `queryId`, 합성 질문 frame, gold place/source/chunk/claim, 기대 경로와 허용·금지 조건, corpus snapshot hash를 가진다. `RetrievalTrace`는 각 단계의 top-k ID·rank·score·filter reason과 version을 가진다. `EvaluationResult`는 `caseId`, 단계별 recall/precision/MRR/nDCG, groundedness/인용·보류 판정, 비용·지연, 실패 유형, artifact hash를 가진다. 세 artifact는 schema version과 생성 시각을 필수로 하며 immutable로 보존한다. 같은 case/corpus/config에서는 결정적 검색 결과가 재현돼야 한다. LLM 생성 평가는 비결정성을 감안해 동일 조건 반복과 사람 판정이 필요하다.
 
-Trace sink의 1차 구현은 저장소의 Spring OpenTelemetry 연동을 확장하고 기존 Grafana/Prometheus 운영 경계와 제한된 PostgreSQL 평가 메타데이터/압축 artifact를 사용한다. RAG 계측·dashboard·alert는 [OpenTelemetry 관측 계약](observability-contract.md)을 따른다. Collector·trace backend가 AI run에 필요한 기간·용량으로 **이미 운영 중인지**는 배포 구성에서 별도 확인한다. Langfuse는 LLM generation/점수·dataset/실험·사람 annotation 화면의 선택지로 **별도 벤치마크**한다. Langfuse OSS 사용료는 무료여도 [공식 self-host 구성](https://langfuse.com/self-hosting/deployment/docker-compose)은 권장 4 core/16GiB와 여러 저장 서비스가 필요하므로 2GB DB 호스트에 같이 올리지 않는다. Cloud를 택하려면 현재 요금·보존 기간, 데이터 반출, 개인정보 비수집, 비용 상한을 먼저 확인한다. OpenTelemetry `traceId`와 아래 artifact schema를 정본으로 유지해 도구를 바꿀 수 있게 한다.
+Trace sink의 1차 구현은 저장소의 Spring OpenTelemetry 연동을 확장하고 기존 Grafana/Prometheus 운영 경계와 제한된 PostgreSQL 평가 메타데이터/압축 artifact를 사용한다. RAG 계측·dashboard·alert는 [OpenTelemetry 관측 계약](../operations/observability-contract.md)을 따른다. Collector·trace backend가 AI run에 필요한 기간·용량으로 **이미 운영 중인지**는 배포 구성에서 별도 확인한다. Langfuse는 LLM generation/점수·dataset/실험·사람 annotation 화면의 선택지로 **별도 벤치마크**한다. Langfuse OSS 사용료는 무료여도 [공식 self-host 구성](https://langfuse.com/self-hosting/deployment/docker-compose)은 권장 4 core/16GiB와 여러 저장 서비스가 필요하므로 2GB DB 호스트에 같이 올리지 않는다. Cloud를 택하려면 현재 요금·보존 기간, 데이터 반출, 개인정보 비수집, 비용 상한을 먼저 확인한다. OpenTelemetry `traceId`와 아래 artifact schema를 정본으로 유지해 도구를 바꿀 수 있게 한다.
 
 ### 관측 도구 배치와 검증
 
@@ -60,7 +60,7 @@ Grafana 계열 운영 대시보드는 API/DB/SSE 지연·오류·RSS·OOM·trace
 
 도입 검증은 동일한 `runId/traceId` 연결률, 단계 누락률, 실패 유형별 수집률·drop률, exporter 지연/큐 포화, SDK 비동기 버퍼 종료 시 유실, 저장 바이트/일, 대시보드에서 원인 식별까지 걸린 시간, 권한 없는 trace 열람 차단, 실제 청구액을 측정한다. 사용자별 식별자를 메트릭 label로 쓰지 않고 낮은 빈도의 실패 코드·버전만 집계한다. Langfuse sampling에서 제외된 trace에는 관측/점수도 전달되지 않으므로 봉인 평가 run은 표본화하지 않고 운영 성공 trace만 제한한다. [Langfuse sampling 안내](https://langfuse.com/docs/observability/features/sampling).
 
-Trace export는 온라인 run의 확정 저장 이후 유한 크기 outbox/collector 버퍼에서 비동기로 전송한다. 버퍼가 가득 차면 요청을 막지 않고 trace를 버리되 `trace_dropped_total`을 증가시키고 조사 가능한 표본 비율을 경보로 표시한다. 필수 보안·사용량 감사 원장은 이 버퍼와 분리해 기존 트랜잭션에 남긴다. 초기 보존 제안은 운영 trace 메타데이터 14일, 일별 집계 90일, 본문 없는 평가 보고서/승인 기록 180일이다. 재현용 공개 corpus 본문은 [corpus 보존 정책](corpus-lifecycle-and-gc.md)의 기한을 초과해 복제하지 않는다. 철회 자료의 본문·벡터는 trace/평가 저장소에도 남기지 않는다. 출시 전 실제 저장량과 개인정보 정책을 검토해 이 기간을 확정한다.
+Trace export는 온라인 run의 확정 저장 이후 유한 크기 outbox/collector 버퍼에서 비동기로 전송한다. 버퍼가 가득 차면 요청을 막지 않고 trace를 버리되 `trace_dropped_total`을 증가시키고 조사 가능한 표본 비율을 경보로 표시한다. 필수 보안·사용량 감사 원장은 이 버퍼와 분리해 기존 트랜잭션에 남긴다. 초기 보존 제안은 운영 trace 메타데이터 14일, 일별 집계 90일, 본문 없는 평가 보고서/승인 기록 180일이다. 재현용 공개 corpus 본문은 [corpus 보존 정책](../data/corpus-lifecycle-and-gc.md)의 기한을 초과해 복제하지 않는다. 철회 자료의 본문·벡터는 trace/평가 저장소에도 남기지 않는다. 출시 전 실제 저장량과 개인정보 정책을 검토해 이 기간을 확정한다.
 
 운영 감지는 `trace_sampled_total{failureStage}`와 `trace_dropped_total{failureStage}`의 비율을 함께 기록한다. 실패·fallback·철회 관련 이벤트는 정상 성공보다 높은 수집 우선순위를 갖되, 필수 감사 원장은 표본화하지 않는다. drop된 run은 자동 품질 판정 분모에서 별도 표시하고, 단계별 후보 ID가 없는 case는 원인 확정·승격 근거로 쓰지 않는다. 180일 보고서만으로 30일 후 corpus 본문을 재생할 수 있다고 주장하지 않는다. 재현 기간이 끝난 보고서는 집계·승인 감사 기록으로만 보존한다.
 

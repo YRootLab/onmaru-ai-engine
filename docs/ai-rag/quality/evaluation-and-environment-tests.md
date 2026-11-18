@@ -1,6 +1,6 @@
 # RAG 품질 평가와 환경 검증 계획
 
-> 상태: 출시 전 실행 계약. 현재 수치는 설계 게이트이며 실측 결과가 아니다. [운영·평가](operations-and-evaluation.md)의 관측·비용 기준과 함께 적용한다.
+> 상태: 출시 전 실행 계약. 현재 수치는 설계 게이트이며 실측 결과가 아니다. [운영·평가](../operations/operations-and-evaluation.md)의 관측·비용 기준과 함께 적용한다.
 
 ## 평가셋 확대와 누설 방지
 
@@ -23,7 +23,7 @@
 3. 두 검수자가 원문 source offset과 장소 ID를 독립 확인하고 0/1/2 관련도를 부여한다. 불일치 조정 전 질문은 평가 job에 넣지 않는다. 같은 source의 문장만 바꾼 유사 질문은 같은 split에 묶고, 생성 모델이 본 문서·질문·해설이 봉인셋으로 새지 않았는지 provenance를 기록한다.
 4. 각 case의 `datasetVersion`·source/corpus hash·gold 라벨·route·질문 사전 version을 고정한다. 개발셋은 실험에 사용하고 봉인셋은 승격 판정에만 사용한다. 운영 신호에서 합성 재현 질문을 만들 때도 공개 자료로 다시 검수하고 **다음 dataset version**에 넣는다.
 
-이렇게 만든 합성 질의는 [품질 하네스](quality-engineering-agent.md)의 주간 replay와 config/corpus 변경 평가 입력이다. BM25·vector·RRF·reranker의 top-k를 같은 gold와 대조해 `Recall@K`, `MRR`, `nDCG` 등의 차이와 정답 근거가 처음 사라진 단계를 기록한다. Grafana의 운영 metric에는 gold가 없으므로 그 수치를 실시간 사용자 정답률로 표시하지 않는다.
+이렇게 만든 합성 질의는 [품질 하네스](./quality-engineering-agent.md)의 주간 replay와 config/corpus 변경 평가 입력이다. BM25·vector·RRF·reranker의 top-k를 같은 gold와 대조해 `Recall@K`, `MRR`, `nDCG` 등의 차이와 정답 근거가 처음 사라진 단계를 기록한다. Grafana의 운영 metric에는 gold가 없으므로 그 수치를 실시간 사용자 정답률로 표시하지 않는다.
 
 ## 단계별 지표·실패 원인
 
@@ -35,11 +35,11 @@
 | 청크 검색·재정렬 | gold 청크·source `recall@5/10/20/30`, `precision@5`, `MRR`, 후보 장소 수 | Keyword Search(BM25)/Semantic Search(vector) 각 20, 합집합·Hybrid Fusion(RRF) 30, reranker 12를 구분. gold 근거가 후보에는 있었으나 최종에서 사라진 비율과 추천의 서로 다른 장소 수를 기록 |
 | 장소 선택 | 장소 `recall@5`, `nDCG@5`, 조건 위반 | 답 가능한 질문 기준 초기 gate recall≥0.85, nDCG≥0.75; hard filter 위반 0 |
 | 생성 | claim 지지율, 인용 정확도, 답 불가 보류율, 누락된 필수 내용 | 사람 검수로 지지율 1.00, 보류율≥0.95. 분자/분모와 유형별 결과 동시 보고 |
-| 전달/운영 | 확정 p95, 검색 p95, fallback·재접속·비용 | [운영 게이트](operations-and-evaluation.md)의 실험 부하와 동일한 조건 |
+| 전달/운영 | 확정 p95, 검색 p95, fallback·재접속·비용 | [운영 게이트](../operations/operations-and-evaluation.md)의 실험 부하와 동일한 조건 |
 
 `precision@k`는 반환 청크 중 grade≥1 비율, `recall@k`는 gold 청크 중 반환된 비율, `MRR`은 첫 관련 청크의 역순위 평균이다. `nDCG@5`는 0/1/2 grade의 장소 순위를 평가한다. 답 불가 질문은 검색 점수 분모에서 제외하고 `적절한 보류` 분모로 옮긴다. 청크가 여러 개로 분할돼 동일 원천 단락을 가리키면 gold 문서 offset 기준으로 동치 처리해 청킹 변경을 공정하게 비교한다. 지표마다 질의 수와 정답 수를 같이 보고하며, 유형별 표본이 작으면 수치를 품질 보증으로 해석하지 않는다.
 
-출시 전 추가 gate: 답 가능한 설명·추천 질문에서 gold 근거가 BM25/vector 합집합 40개 안에 있는 질의 비율 ≥0.90, RRF·다양성 후 reranker 입력 30개 안에 있는 비율 ≥0.90을 **각각** 충족한다. reranker 이후 최종 근거 12개의 장소 `recall@5`와 `nDCG@5`는 [운영 게이트](operations-and-evaluation.md)를 충족하고 RRF 기준선보다 어느 유형에서도 두 건 이상 악화되면 전수 검토한다. 추천 gold가 5곳 이상이며 hard filter가 허용할 때 reranker 입력에 서로 다른 장소 5곳 이상을 포함한다. 부정·동명이인·복합 질문은 별도 분모로 보고한다. 이 수치는 초기 가설이므로 개발셋에서 조정 가능하나 봉인셋 결과를 보고 사후 변경하지 않는다.
+출시 전 추가 gate: 답 가능한 설명·추천 질문에서 gold 근거가 BM25/vector 합집합 40개 안에 있는 질의 비율 ≥0.90, RRF·다양성 후 reranker 입력 30개 안에 있는 비율 ≥0.90을 **각각** 충족한다. reranker 이후 최종 근거 12개의 장소 `recall@5`와 `nDCG@5`는 [운영 게이트](../operations/operations-and-evaluation.md)를 충족하고 RRF 기준선보다 어느 유형에서도 두 건 이상 악화되면 전수 검토한다. 추천 gold가 5곳 이상이며 hard filter가 허용할 때 reranker 입력에 서로 다른 장소 5곳 이상을 포함한다. 부정·동명이인·복합 질문은 별도 분모로 보고한다. 이 수치는 초기 가설이므로 개발셋에서 조정 가능하나 봉인셋 결과를 보고 사후 변경하지 않는다.
 
 ## 실험과 승격
 

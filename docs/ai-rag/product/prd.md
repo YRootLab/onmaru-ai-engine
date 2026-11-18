@@ -1,17 +1,19 @@
 # 홈 여정 대화형 AI RAG 제품 PRD
 
-> 상태: 구현 전 제안. 기존 `explorations`/SSE 계약을 확장하는 목표 설계다. 상위 구조 결정은 [ADR-0017](https://github.com/YRootLab/OnMaru-backend/blob/develop/docs/decisions/0017-home-journey-hybrid-rag.md), 기술 흐름은 [아키텍처](architecture.md)를 따른다.
+> 상태: 구현 전 제안. 기존 `explorations`/SSE 계약을 확장하는 목표 설계다. 상위 구조 결정은 [ADR-0017](https://github.com/YRootLab/OnMaru-backend/blob/develop/docs/decisions/0017-home-journey-hybrid-rag.md), 기술 흐름은 [아키텍처](../architecture/architecture.md)를 따른다.
 
-구현 시 라우팅 우선순위와 SSE·fallback 상태 결정은 [요청 생명주기](request-lifecycle.md)를 따른다.
-AI 엔진의 Query Processing Layer가 제안하고 Spring이 승인하는 질문별 SQL·Keyword Search(BM25)·Semantic Search(Vector)·hybrid 계획과 외부 자료의 도입 경계는 [질문 처리 설계](query-processing.md)를 따른다. 첫 출시부터 정형 SQL·BM25 단독·Semantic Search 단독·hybrid·SQL+검색 복합 경로를 모두 사용하며, route별 gold 평가와 2GB 부하 검증을 출시 게이트로 둔다.
+> 문서 범위: 이 PRD는 제품 목표와 사용자 인수 조건의 기준입니다. 현재 AI Engine과 Spring의 책임 경계, 카나리 구현 진단 및 출시 전 수정 우선순위는 [2026-11-17 진단 보고서](../reports/2026-11-17-canary-role-boundary-review.md)를 기준으로 합니다. 아래 “여정 RAG 활성화 평가 부록”은 과거 `candidatePolicy` 및 Spring 제공 후보 목록을 전제로 작성된 레거시 평가 기록이며 현재 목표 아키텍처 계약이 아닙니다.
+
+구현 시 라우팅 우선순위와 SSE·fallback 상태 결정은 [요청 생명주기](../architecture/request-lifecycle.md)를 따른다.
+AI 엔진의 Query Processing Layer가 제안하고 Spring이 승인하는 질문별 SQL·Keyword Search(BM25)·Semantic Search(Vector)·hybrid 계획과 외부 자료의 도입 경계는 [질문 처리 설계](../architecture/query-processing.md)를 따른다. 첫 출시부터 정형 SQL·BM25 단독·Semantic Search 단독·hybrid·SQL+검색 복합 경로를 모두 사용하며, route별 gold 평가와 2GB 부하 검증을 출시 게이트로 둔다.
 
 ## 목적과 성공 조건
 
 홈 검색에서 사용자가 지역·취향·동행 조건을 자연어로 말하면, 온마루가 **공개 근거가 있는 장소 3~5곳**과 이유·출처를 친근한 한국어로 안내한다. 사용자는 같은 대화에서 조건을 바꾸고, 이전 대화를 다시 열고, 마음에 든 대화를 찜할 수 있다. 장소가 적으면 억지로 다섯 곳을 채우지 않는다.
 
-조건이 충분하면 즉시 답한다. 취향·대상·부정 범위가 결과를 바꾸는데 모호할 때만 한 가지를 짧게 묻고, 사용자가 답하면 같은 대화에서 이어간다. 답변은 한 줄 요약과 장소별 추천 이유·검증된 문화 해설을 기본으로 하며, 상세 설명·출처·후속 질문을 사용자가 펼치거나 선택할 수 있게 한다. 대화 분기, 템플릿, 카드·이미지·SSE 화면 계약은 [대화형 큐레이션·프롬프트 설계](conversation-and-prompt-design.md)에 고정한다.
+조건이 충분하면 즉시 답한다. 취향·대상·부정 범위가 결과를 바꾸는데 모호할 때만 한 가지를 짧게 묻고, 사용자가 답하면 같은 대화에서 이어간다. 답변은 한 줄 요약과 장소별 추천 이유·검증된 문화 해설을 기본으로 하며, 상세 설명·출처·후속 질문을 사용자가 펼치거나 선택할 수 있게 한다. 대화 분기, 템플릿, 카드·이미지·SSE 화면 계약은 [대화형 큐레이션·프롬프트 설계](./conversation-and-prompt-design.md)에 고정한다.
 
-성공 여부는 (1) 유효한 장소·출처만 노출되고 문장의 핵심 사실이 그 근거로 지지되는지, (2) 후속 질문에서 명시한 지역·제외·고정 조건이 유지되는지, (3) 저장·재개·SSE 재접속이 중복 생성 없이 동작하는지, (4) 현재 API 지연과 운영 안정성을 해치지 않는지로 판단한다. 청킹·reranker의 수치 최적화는 후속 실험으로 이어가지만 출시 전 [300문항 평가·환경 검증](evaluation-and-environment-tests.md)의 안전·정합성 게이트는 필수다. 근거가 불확실하면 확인된 내용만 짧게 답하고 나머지는 보류한다.
+성공 여부는 (1) 유효한 장소·출처만 노출되고 문장의 핵심 사실이 그 근거로 지지되는지, (2) 후속 질문에서 명시한 지역·제외·고정 조건이 유지되는지, (3) 저장·재개·SSE 재접속이 중복 생성 없이 동작하는지, (4) 현재 API 지연과 운영 안정성을 해치지 않는지로 판단한다. 청킹·reranker의 수치 최적화는 후속 실험으로 이어가지만 출시 전 [300문항 평가·환경 검증](../quality/evaluation-and-environment-tests.md)의 안전·정합성 게이트는 필수다. 근거가 불확실하면 확인된 내용만 짧게 답하고 나머지는 보류한다.
 
 ## 대상과 범위
 
@@ -66,7 +68,7 @@ FastAPI는 실제 실행 중인 큰 단계만 구조화된 진행 이벤트로 S
 ## 대화와 사용량 정책
 
 - 회원당 **LLM 전송 시도 최대 주 5회 및 월 15회**를 동시에 적용한다. 주간 창은 월요일 00:00 KST, 월간 창은 매월 1일 00:00 KST에 시작한다. 한도 화면은 두 창의 잔여 횟수와 다음 초기화 시각을 표시한다.
-- 동일 idempotency key 재전송, SSE 재연결, 저장된 대화 열람, 장소 카드 조작 중 모델 호출이 없는 요청은 횟수를 더하지 않는다. 전송 직전 영속화한 `DISPATCH_COMMITTED`부터 한 번으로 세고, 이후 실패해도 유지한다. 외부 수신 여부가 불명확한 사고에는 자동 재호출·자동 환불을 하지 않는다. 자세한 복구 규칙은 [계약·데이터 설계](contracts-and-data.md)를 따른다.
+- 동일 idempotency key 재전송, SSE 재연결, 저장된 대화 열람, 장소 카드 조작 중 모델 호출이 없는 요청은 횟수를 더하지 않는다. 전송 직전 영속화한 `DISPATCH_COMMITTED`부터 한 번으로 세고, 이후 실패해도 유지한다. 외부 수신 여부가 불명확한 사고에는 자동 재호출·자동 환불을 하지 않는다. 자세한 복구 규칙은 [계약·데이터 설계](../integration/contracts-and-data.md)를 따른다.
 - Spring이 회원별 턴, 명시 조건, 선택·고정·제외 장소, 이전 답변의 확정 ID와 짧은 **구조화 요약**을 보관한다. 다음 턴은 이 상태를 재구성해 질의를 해석한다. 같은 thread의 맥락은 보관 기간 동안 유지하지만, provider에 보내는 상태는 길이를 제한한다. 회원 전체를 임베딩하거나 개인 대화를 RAG 코퍼스에 넣지 않는다.
 - provider에는 사용자 원문·전체 대화 이력·회원 식별자를 보내지 않는다. 검증된 구조화 의도, 제한된 공개 후보·근거, 필요한 직전 턴의 구조화 상태만 보낸다. 원문은 대화 화면·재개를 위해 Spring에 저장하되 로그에는 남기지 않는다.
 - 회원 답변 생성 provider는 Google AI Studio에서 발급·관리하는 **Gemini API 무료 tier**다. 정확한 모델 ID·무료 할당량·지역별 제공 조건은 운영 전 확인해 고정한다. 무료 할당량 소진·429 시 유료 tier나 Antigravity CLI로 자동 전환하지 않고 검증된 기본 탐색으로 마친다. Antigravity CLI는 운영 회원 요청 경로에 포함하지 않는다.
@@ -74,9 +76,9 @@ FastAPI는 실제 실행 중인 큰 단계만 구조화된 진행 이벤트로 S
 
 ## 공개 계약 변경안
 
-기존 `/api/v1/explorations`, `/{explorationId}/turns`, `/{explorationId}/runs/{runId}/events`, `/saved-journeys`를 유지한다. 회원용 `/api/v1/journey-threads` 목록·상세·삭제·북마크와 `/api/v1/me/ai-quota` 조회를 추가한다. 첫 구현에서는 `threadId = explorationId`로 정의해 기존 탐색의 이어지는 턴을 하나의 대화로 사용한다. FE `/c/{threadId}`는 이 상세 API를 읽는다. 기존 `saved-journeys`는 시점 스냅샷 기능으로 유지하고 대화 찜과 혼합하지 않는다. [계약·데이터 설계](contracts-and-data.md)에 정확한 경로와 상태를 정의한다.
+기존 `/api/v1/explorations`, `/{explorationId}/turns`, `/{explorationId}/runs/{runId}/events`, `/saved-journeys`를 유지한다. 회원용 `/api/v1/journey-threads` 목록·상세·삭제·북마크와 `/api/v1/me/ai-quota` 조회를 추가한다. 첫 구현에서는 `threadId = explorationId`로 정의해 기존 탐색의 이어지는 턴을 하나의 대화로 사용한다. FE `/c/{threadId}`는 이 상세 API를 읽는다. 기존 `saved-journeys`는 시점 스냅샷 기능으로 유지하고 대화 찜과 혼합하지 않는다. [계약·데이터 설계](../integration/contracts-and-data.md)에 정확한 경로와 상태를 정의한다.
 
-새 필드·오류 코드와 저장 모델은 [계약·데이터 설계](contracts-and-data.md)를 따른다. 구현 시 기존 [OpenAPI](https://github.com/YRootLab/OnMaru-backend/blob/develop/docs/contracts/openapi/journey.openapi.yaml)와 [SSE schema](https://github.com/YRootLab/OnMaru-backend/blob/develop/docs/contracts/schemas/journey-sse-event.schema.json), fixture를 같은 변경에서 갱신한다. 기존 클라이언트는 미지원 응답 필드를 무시하고 새 클라이언트는 snapshot을 최종 진실로 사용하도록 버전 전환을 설계한다.
+새 필드·오류 코드와 저장 모델은 [계약·데이터 설계](../integration/contracts-and-data.md)를 따른다. 구현 시 기존 [OpenAPI](https://github.com/YRootLab/OnMaru-backend/blob/develop/docs/contracts/openapi/journey.openapi.yaml)와 [SSE schema](https://github.com/YRootLab/OnMaru-backend/blob/develop/docs/contracts/schemas/journey-sse-event.schema.json), fixture를 같은 변경에서 갱신한다. 기존 클라이언트는 미지원 응답 필드를 무시하고 새 클라이언트는 snapshot을 최종 진실로 사용하도록 버전 전환을 설계한다.
 
 ## 인수 기준
 
@@ -88,10 +90,12 @@ FastAPI는 실제 실행 중인 큰 단계만 구조화된 진행 이벤트로 S
 6. 운영자는 기존 Grafana·Prometheus·OpenTelemetry 경로에서 run의 수집→검색→재정렬→생성→확정 단계와 실패 원인, 유실률, 비용을 구분해 볼 수 있다. 회원 원문·대화 요약·근거 본문은 일반 trace/metric에 나타나지 않는다.
 7. 조건이 충분한 질문에는 불필요한 확인 질문이 없고, 필수 조건이 모호하면 한 턴에 한 가지만 묻는다. 근거가 풍부한 답변은 장소별 설명·검증된 이미지·출처 상세·후속 질문을 제공하되 부족한 근거를 문장으로 채우지 않는다. 원문에서 허용된 수식·부정 의미가 검색 전에 소실되거나 provider로 원문이 넘어가지 않는다.
 8. 품질 조사 도구는 AI 내부 평가자료와 Spring 소유 실행/공개 상태를 소유 경계별로 읽는다. AI는 Spring 업무 DB에 직접 접속하지 않고, Spring MCP가 채택되면 허용된 비식별 run observation 및 원천 공개/철회 조회만 private authenticated endpoint에서 제공한다. 모든 Spring MCP 도구는 read-only이며 품질 도구 장애가 사용자 요청·SSE를 차단하지 않는다. tool schema·scope·실행 제한은 [Spring 품질 MCP 계약](https://github.com/YRootLab/OnMaru-backend/blob/develop/docs/ai-rag-spring/quality-tools-mcp.md)과 [ADR-0018 제안](https://github.com/YRootLab/OnMaru-backend/blob/develop/docs/decisions/0018-quality-harness-spring-mcp-tools.md)을 따른다.
-9. Root Cause/Experiment Planner의 system prompt는 버전·hash를 고정하고, 입력은 공개/합성 artifact로 제한하며, prompt injection·artifact ID 위조·schema drift를 검증한다. 별도 대화 memory는 두지 않고 typed investigation state/artifact로 재개한다. 실험 runner는 운영 2GB 호스트 밖에서 rootless 격리·무네트워크·read-only snapshot으로 실행하며 초기 상한은 CPU 1 core, RAM 1 GiB, 10분, PID 64, scratch 2 GiB, 동시 1 job이다. 이 제한·prompt·검증 계약은 [품질 system prompt](quality-agent-prompt-contracts.md)와 [품질 감독 상세](quality-engineering-agent.md)를 따른다.
+9. Root Cause/Experiment Planner의 system prompt는 버전·hash를 고정하고, 입력은 공개/합성 artifact로 제한하며, prompt injection·artifact ID 위조·schema drift를 검증한다. 별도 대화 memory는 두지 않고 typed investigation state/artifact로 재개한다. 실험 runner는 운영 2GB 호스트 밖에서 rootless 격리·무네트워크·read-only snapshot으로 실행하며 초기 상한은 CPU 1 core, RAM 1 GiB, 10분, PID 64, scratch 2 GiB, 동시 1 job이다. 이 제한·prompt·검증 계약은 [품질 system prompt](../quality/quality-agent-prompt-contracts.md)와 [품질 감독 상세](../quality/quality-engineering-agent.md)를 따른다.
 10. Spring↔FastAPI plan/execute 통신은 private REST를 운영 기준선으로 둔다. trace에서 이 hop이 실제 병목으로 확인되면 동일한 typed contract의 gRPC unary를 성능 비교하고, 이득이 개발·운영 비용을 상쇄할 때만 채택한다. 이는 bidirectional streaming 도입을 뜻하지 않는다. `SQL_ONLY` 및 정형 조회를 포함한 `SQL_PLUS_RETRIEVAL`은 Spring이 검증한 query grant에 대해서만 FastAPI가 `PlaceQueryPort`의 제한된 private adapter를 호출한다. MCP는 tool discovery용으로 한정한다. 어느 방식도 임의 SQL·자유 filter·회원 ID를 입력받지 않고 run당 최대 1회로 제한한다. `SQL_ONLY`는 LLM/embedding/retrieval 호출 0회다. Spring 품질 도구는 별도 principal/scope 및 read-only application port를 사용한다. 경계·grant·전송 비교 계약은 [Online Query 설계](https://github.com/YRootLab/OnMaru-backend/blob/develop/docs/ai-rag-spring/journey-query-mcp.md)와 [ADR-0019 제안](https://github.com/YRootLab/OnMaru-backend/blob/develop/docs/decisions/0019-journey-query-mcp-tools.md)을 따른다.
 
 ## 여정 RAG 활성화 평가 부록
+
+> **레거시 평가 기록 — 현재 목표 아키텍처의 규범 문서가 아닙니다.** 이 부록은 당시 후보 상한 12와 `candidatePolicy` 호환성을 전제로 한 운영·평가 절차를 보존합니다. Spring이 질의 관련성을 평가하기 전에 후보를 선별해 AI Engine에 전달하는 경로는 현재 역할 경계와 맞지 않습니다. 현행 분석과 수정 게이트는 [2026-11-17 진단 보고서](../reports/2026-11-17-canary-role-boundary-review.md), 목표 query pipeline은 [질문 처리 설계](../architecture/query-processing.md)를 참조하세요.
 
 이 절은 기존 여정 RAG PRD의 제품 범위를 바꾸지 않고, 이미 동작 중인 여정 요청에 RAG 검색을 켤지 판단하기 위한 한정 평가 절차를 추가한다. 백엔드 작업 추적은 [Issue #76](https://github.com/YRootLab/onmaru-ai-engine/issues/76)과 연결한다. 현재 AI v0.1.3의 request model은 `extra="forbid"`이며 `candidatePolicy`를 정의하지 않는다. 이 부록은 새 필드가 수용된 버전의 배포와 평가가 끝나기 전 운영 활성화를 허가하지 않는다.
 
@@ -100,7 +104,7 @@ FastAPI는 실제 실행 중인 큰 단계만 구조화된 진행 이벤트로 S
 - AI팀은 약 100개 고정 질의의 gold dataset을 작성·이중 검수·동결하고, 비RAG 기준선을 직접 정의·실행하며, 동일 질의의 RAG 실행, `evals CLI --compare`, 메모리 측정 및 결과 문서화를 소유한다.
 - 백엔드팀은 후보 생성 규칙·지역 코드·입력 계약을 소유한다. `candidatePolicy`를 전송하고, 운영 이미지·운영 DB 결과·배포 smoke를 확인한다. 백엔드는 비RAG 기준선을 정의하거나 실행하지 않는다.
 - 평가 중 질의 목록, gold label, 후보 상한 12, corpus revision은 고정한다. 불가피한 수정은 현재 데이터셋을 수정하지 않고 새 dataset version/hash로 시작한다.
-- 이 약 100건 평가는 이번 후보 정책/RAG 활성화 의사결정의 제한된 비교 실험이다. PRD와 [평가·환경 검증](evaluation-and-environment-tests.md)에 정의된 개발 200 + 봉인 100, 총 300문항 게이트를 대체하거나 그보다 넓은 제품 범위의 출시를 승인하지 않는다.
+- 이 약 100건 평가는 이번 후보 정책/RAG 활성화 의사결정의 제한된 비교 실험이다. PRD와 [평가·환경 검증](../quality/evaluation-and-environment-tests.md)에 정의된 개발 200 + 봉인 100, 총 300문항 게이트를 대체하거나 그보다 넓은 제품 범위의 출시를 승인하지 않는다.
 
 ### 버전 호환성과 필드 계약
 
@@ -173,14 +177,14 @@ AI팀이 확인한 로컬 Docker 이미지 `onmaru-ai-engine:0.1.3-fixed` digest
 
 ## 관련 설계 문서
 
-이 PRD는 사용자 경험과 인수 기준을 정의한다. 구현 시에는 아래 기술 계약을 함께 적용한다. 전체 문서의 읽는 순서와 현재 구현/목표 구분은 [AI RAG README](README.md)가 정본이다.
+이 PRD는 사용자 경험과 인수 기준을 정의한다. 구현 시에는 아래 기술 계약을 함께 적용한다. 전체 문서의 읽는 순서와 현재 구현/목표 구분은 [AI RAG README](../README.md)가 정본이다.
 
 | 관심사 | 상세 계약 |
 |---|---|
-| 온라인 검색·대화 상태·SSE | [아키텍처](architecture.md), [질문 해석](question-understanding.md), [대화형 큐레이션·프롬프트·UI](conversation-and-prompt-design.md), [요청 생명주기](request-lifecycle.md), [API·저장 모델](contracts-and-data.md) |
-| 근거·안전·데이터 보존 | [근거 검증](grounding-and-review.md), [오남용 정책](security-and-abuse.md), [RAG 저장 스키마](rag-storage-schema.md), [Corpus 보존·GC](corpus-lifecycle-and-gc.md) |
-| 출시 평가·운영 준비 | [평가·환경 검증](evaluation-and-environment-tests.md), [운영·평가](operations-and-evaluation.md), [운영 준비 검토](production-readiness-gaps.md) |
-| 관측·비동기 품질 개선 | [OpenTelemetry 관측](observability-contract.md), [모듈 경계](module-boundaries-and-pipelines.md), [품질 감독 상세 설계](quality-engineering-agent.md) |
-| 품질 agent prompt·guardrails·격리 실행 | [system prompt 계약](quality-agent-prompt-contracts.md), [Spring MCP 도구 설계](https://github.com/YRootLab/OnMaru-backend/blob/develop/docs/ai-rag-spring/quality-tools-mcp.md) |
+| 온라인 검색·대화 상태·SSE | [아키텍처](../architecture/architecture.md), [질문 해석](../architecture/question-understanding.md), [대화형 큐레이션·프롬프트·UI](./conversation-and-prompt-design.md), [요청 생명주기](../architecture/request-lifecycle.md), [API·저장 모델](../integration/contracts-and-data.md) |
+| 근거·안전·데이터 보존 | [근거 검증](../quality/grounding-and-review.md), [오남용 정책](../operations/security-and-abuse.md), [RAG 저장 스키마](../data/rag-storage-schema.md), [Corpus 보존·GC](../data/corpus-lifecycle-and-gc.md) |
+| 출시 평가·운영 준비 | [평가·환경 검증](../quality/evaluation-and-environment-tests.md), [운영·평가](../operations/operations-and-evaluation.md), [운영 준비 검토](../operations/production-readiness-gaps.md) |
+| 관측·비동기 품질 개선 | [OpenTelemetry 관측](../operations/observability-contract.md), [모듈 경계](../architecture/module-boundaries-and-pipelines.md), [품질 감독 상세 설계](../quality/quality-engineering-agent.md) |
+| 품질 agent prompt·guardrails·격리 실행 | [system prompt 계약](../quality/quality-agent-prompt-contracts.md), [Spring MCP 도구 설계](https://github.com/YRootLab/OnMaru-backend/blob/develop/docs/ai-rag-spring/quality-tools-mcp.md) |
 | Spring query/quality port·인증·tool transport contract | [Spring AI-RAG 통합](https://github.com/YRootLab/OnMaru-backend/blob/develop/docs/ai-rag-spring/README.md), [Online query 경계 및 MCP/REST 선택](https://github.com/YRootLab/OnMaru-backend/blob/develop/docs/ai-rag-spring/journey-query-mcp.md), [Quality tools](https://github.com/YRootLab/OnMaru-backend/blob/develop/docs/ai-rag-spring/quality-tools-mcp.md), [MCP catalog 후보](https://github.com/YRootLab/OnMaru-backend/blob/develop/docs/contracts/mcp) |
 | 장기 구조 결정 | [ADR-0017](https://github.com/YRootLab/OnMaru-backend/blob/develop/docs/decisions/0017-home-journey-hybrid-rag.md) |

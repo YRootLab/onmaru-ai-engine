@@ -22,7 +22,7 @@ have no fields. `safeQuery` and `semanticQuery` are sanitized, transient inputs;
 the DTOs do not perform Spring's redaction, or permit logging these values.
 Evidence carries source revision and offsets, never source body. Claim text is a
 proposal requiring later grounding and Spring final validation. The authoritative
-[grounding contract](../../../docs/ai-rag/grounding-and-review.md) fixes `Claim.kind`
+[grounding contract](../../../docs/ai-rag/quality/grounding-and-review.md) fixes `Claim.kind`
 to `FACT`, `INTERPRETATION`, `PREFERENCE`, or `CONNECTOR`. Every reason/summary
 claim references one to three unique evidence IDs; the whole `EvidenceSet`
 retains its separate twelve-record cap.
@@ -81,7 +81,7 @@ individual retrieval stages and thirty for fusion/reranking.
 [`vocabulary.py`](vocabulary.py) pins machine-readable enums; their literal values
 are also exported in the generated schemas. The currently registered dictionary
 `questions-1` contains the twenty searchable explanation-focus, topic, companion,
-and atmosphere codes from the [initial design table](../../../docs/ai-rag/question-understanding.md).
+and atmosphere codes from the [initial design table](../../../docs/ai-rag/architecture/question-understanding.md).
 Operation codes remain the separate `questionFrame.operation` enum; condition
 operations use structured filters, and canonical fact fields have their own enum.
 
@@ -113,7 +113,7 @@ Unknown uppercase strings are rejected. New fixed reason/question IDs require a
 versioned plan-contract update rather than a regex-only extension.
 
 `ValidatedProposal.failureStage` uses its own `FailureStage` enum from the
-[request lifecycle failure table](../../../docs/ai-rag/request-lifecycle.md):
+[request lifecycle failure table](../../../docs/ai-rag/architecture/request-lifecycle.md):
 `REQUEST`, `INTERPRETATION`, `PLANNING`, `ROUTING`, `QUOTA`, `RETRIEVAL`,
 `RETRIEVAL_EMPTY`, `GENERATION`, `VALIDATION`, `DELIVERY`, or null. Progress stage
 values such as `RETRIEVING` and `GENERATING` are rejected in this field. Keeping
