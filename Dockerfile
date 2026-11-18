@@ -18,6 +18,8 @@ RUN apk upgrade --no-cache \
     && adduser -S onmaru -G onmaru
 
 COPY --from=builder --chown=onmaru:onmaru /workspace/.venv /app/.venv
+COPY --chown=onmaru:onmaru scripts /app/scripts
+COPY --chown=onmaru:onmaru migrations /app/migrations
 
 ENV PATH="/app/.venv/bin:${PATH}" \
     PYTHONUNBUFFERED=1 \

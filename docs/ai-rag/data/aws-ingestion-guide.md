@@ -1,6 +1,6 @@
-# AWS Lightsail PostgreSQL AI RAG 데이터 적재 및 활성화 가이드
+# AWS Lightsail PostgreSQL AI corpus 적재 가이드
 
-> 이 문서는 `OnMaruBE`에서 검증된 1,080건의 온마루 승인 장소 데이터셋(`data/seed/places_1080.json`)을 AWS Lightsail 상의 PostgreSQL `ai` 스키마로 적재하고, RAG 검색 서비스의 활성 코퍼스(`ai.active_corpus`)로 등록하는 운영 가이드입니다.
+> 현재 Plan/Execute의 staging 활성화는 [Plan/Execute staging runbook](../operations/plan-execute-staging-runbook.md)을 따른다. 이 문서는 JSON seed 기반 로컬/one-off 적재 경로를 설명하며, 운영 활성화 승인을 대신하지 않는다. 두 ingestion CLI는 Gemini profile로 새 revision을 stage만 하고, corpus activation은 별도 검증 CLI에서 수행한다.
 
 ---
 
@@ -29,9 +29,9 @@
 
 ---
 
-## 2. AWS Lightsail 서버 내 원클릭 적재 실행 방법
+## 2. Gemini profile로 새 revision stage
 
-AI Engine 컨테이너와 PostgreSQL 컨테이너는 AWS Lightsail 내부 Docker 네트워크(`onmaru-lightsail_app`, `database`)에서 통신하므로, Lightsail 호스트에서 아래 명령을 실행합니다.
+Gemini key는 보호된 secret 환경(`ONMARU_SECRET_GEMINI_API_KEY_CURRENT`)으로 one-off 작업에 주입한다. API key를 명령 인자로 전달하지 않는다. `--hash-only`는 `--dry-run`과 함께 사용할 때만 허용되며 실제 DB에는 쓸 수 없다.
 
 ### 2.1. 서버 접속 후 실행
 
@@ -45,13 +45,17 @@ cd /opt/onmaru/repo/infra/lightsail
 # 3. 환경 변수 로드 (.env 파일 기준)
 source .env
 
-# 4. AI Engine 컨테이너 내부에서 데이터 적재 및 즉시 활성화 실행
-docker compose --profile ai-engine exec ai-engine \
+# 4. 승인된 데이터 bundle을 Gemini profile로 stage (활성화하지 않음)
+docker compose --profile ai-engine run --rm \
+  -e ONMARU_AI_DB_DSN -e ONMARU_SECRET_GEMINI_API_KEY_CURRENT ai-engine \
   python scripts/ingest_to_postgres.py \
     --input data/seed/places_1080.json \
-    --dsn "postgresql://${ONMARU_DB_AI_MIGRATION_USER}:${ONMARU_DB_AI_MIGRATION_PASSWORD}@postgres:5432/${ONMARU_POSTGRES_DB}" \
-    --activate
+    --revision-id "$STAGING_GEMINI_REVISION"
 ```
+
+one-off runner의 `ONMARU_AI_DB_DSN`과 `ONMARU_SECRET_GEMINI_API_KEY_CURRENT`에 writer DSN 및 Gemini key를 secret injection하고 `docker compose run -e` passthrough로 전달한다. 값을 CLI 인자나 Compose 상시 runtime 환경에 저장하지 않는다.
+
+KTO active catalog에서 바로 가져오는 staging은 `scripts/ingest_catalog_from_postgres.py`를 사용하고, AI schema writer DSN과 catalog read DSN을 별도로 준다. 이 스크립트도 stage만 수행한다.
 
 ---
 
@@ -63,8 +67,9 @@ docker compose --profile ai-engine exec ai-engine \
 -- 1. 활성 코퍼스 포인터 확인 (id=1, revision_id 일치 확인)
 SELECT * FROM ai.active_corpus;
 
--- 2. 등록된 코퍼스 리비전 상태 확인 (state = 'ACTIVE' 또는 'VALIDATED')
-SELECT revision_id, state, document_count, chunk_count, created_at 
+-- 2. 새 Gemini revision 상태와 embedding profile 확인
+SELECT revision_id, state, embedding_profile_id, document_count, chunk_count,
+       embedding_count, created_at
 FROM ai.corpus_revisions 
 ORDER BY created_at DESC LIMIT 1;
 
@@ -75,6 +80,8 @@ GROUP BY category_code
 ORDER BY COUNT(*) DESC;
 ```
 
+실제 count와 profile이 일치하고 staging 평가를 통과한 뒤 [별도 corpus activator](../operations/plan-execute-staging-runbook.md)에 같은 revision ID를 두 번 전달해 read-only 검증한다. 결과를 검토한 다음에만 `--apply`로 active pointer를 전환한다. 이 문서의 예시만으로 staging/운영 corpus를 활성화하지 않는다.
+
 ---
 
 ## 4. 로컬 환경 테스트 (필요 시)
@@ -82,8 +89,9 @@ ORDER BY COUNT(*) DESC;
 로컬에서 PostgreSQL 컨테이너를 띄우고 테스트할 경우:
 
 ```bash
-uv run python scripts/ingest_to_postgres.py \
+ONMARU_AI_DB_DSN="$AI_CORPUS_WRITE_DSN" \
+ONMARU_SECRET_GEMINI_API_KEY_CURRENT="$GEMINI_KEY_FROM_SECRET_STORE" \
+  uv run python scripts/ingest_to_postgres.py \
   --input data/seed/places_1080.json \
-  --dsn "postgresql://onmaru_user:password@127.0.0.1:5432/onmaru" \
-  --activate
+  --revision-id "rev-local-validation"
 ```

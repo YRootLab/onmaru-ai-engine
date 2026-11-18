@@ -19,14 +19,45 @@ AI Engine `ai-engine` 컨테이너에는 다음 설정을 전달한다.
 
 이번 코드와 맞는 기본 이행안은 **Gemini profile로 staging corpus를 새 revision에 재색인하고 검증한 다음 활성화하는 것**이다. 기존 active revision은 staging 검증과 rollback 판단 전까지 보존한다. 운영 corpus를 직접 덮어쓰지 않는다.
 
-기존 E5 revision이 진짜 `intfloat/multilingual-e5-small` 모델로 만들어졌는지 먼저 inventory와 ingest 기록으로 확인한다. `scripts/ingest_catalog_from_postgres.py`는 Gemini key가 없으면 deterministic hash backend로 fallback하면서 E5 profile ID를 쓸 수 있으므로, 그 경로의 E5 표시만으로 의미 임베딩이라고 판단하면 안 된다. 재색인 전에 명시적으로 Gemini key를 제공하고 `--hash-only`는 사용하지 않는다. 결과 revision의 `embedding_profile_id`가 `gemini-embedding-001-384@v1`인지, document/chunk/embedding 수가 일치하는지 확인한다.
+기존 E5 revision이 진짜 `intfloat/multilingual-e5-small` 모델로 만들어졌는지 먼저 inventory와 ingest 기록으로 확인한다. 이제 두 ingestion CLI는 key가 없으면 실패하고, hash backend는 `deterministic-hash-384@local-only`로 표시되며 `--hash-only --dry-run` 외에는 사용할 수 없다. API key는 `ONMARU_SECRET_GEMINI_API_KEY_CURRENT` 환경 secret으로만 전달한다. CLI 인자로 전달하지 않는다.
+
+KTO catalog corpus는 활성화와 분리해 먼저 적재한다. `AI_CORPUS_WRITE_DSN`은 one-off AI migration/corpus-writer role, `CATALOG_READ_DSN`은 공개 catalog read role의 접속 문자열로 운영자 환경에서 구성한다. 둘 다 Compose runtime env에 저장하지 않는다.
+
+```bash
+# `AI_ENGINE_SERVICE=staging-ai-engine` in staging, `ai-engine` in production.
+docker compose --profile ai-engine run --rm \
+  -e ONMARU_AI_DB_DSN -e ONMARU_AI_CATALOG_READ_DSN \
+  -e ONMARU_SECRET_GEMINI_API_KEY_CURRENT \
+  "$AI_ENGINE_SERVICE" \
+  python scripts/ingest_catalog_from_postgres.py \
+  --revision-id "$STAGING_GEMINI_REVISION"
+```
+
+이 호출 전에 one-off runner environment로 `ONMARU_AI_DB_DSN=$AI_CORPUS_WRITE_DSN`, `ONMARU_AI_CATALOG_READ_DSN=$CATALOG_READ_DSN`, `ONMARU_SECRET_GEMINI_API_KEY_CURRENT`를 secret injection으로 전달한다. `docker compose run -e NAME` passthrough를 사용하고 DSN이나 Gemini key를 CLI 인자로 넣지 않는다.
+
+적재 완료 후 `ai.corpus_revisions`의 profile이 `gemini-embedding-001-384@v1`인지, 저장된 문서·청크·embedding 수와 실제 count가 같은지 확인한다. 그런 다음 revision을 먼저 read-only 검사한다:
+
+```bash
+docker compose --profile ai-engine run --rm -e ONMARU_AI_DB_DSN "$AI_ENGINE_SERVICE" \
+  python scripts/activate_corpus_revision.py \
+  --revision-id "$STAGING_GEMINI_REVISION" \
+  --confirm-revision "$STAGING_GEMINI_REVISION"
+```
+
+read-only 결과를 검토한 뒤에만 같은 명령에 `--apply`를 추가해 활성화한다. activator는 정확한 revision 재확인, Gemini profile, 상태, count 정합성, revocation heartbeat를 점검하고 저장소의 optimistic concurrency 검사로 pointer를 전환한다. 기존 active revision은 rollback 판단이 끝날 때까지 보존한다.
 
 Gemini API 비용·지연 또는 데이터 정책 때문에 E5를 유지하기로 결정한다면, 실제 고정 모델 artifact를 로드하고 profile identity를 검증하는 E5 `EmbeddingBackend`를 먼저 구현·테스트해야 한다. 현재 Plan/Execute에는 E5 backend가 없으므로 E5 유지 상태에서 dense route를 켜면 안 된다.
 
 ## `003_reviewed_facts.sql` 적용과 fact 검수
 
 1. 변경이 검토·병합된 AI Engine release를 고정하고 staging DB backup/restore 절차를 확인한다.
-2. 배포 artifact의 `migrations/ai/003_reviewed_facts.sql`을 `ONMARU_DB_AI_MIGRATION_USER`에 해당하는 별도 migration role로 staging DB에 한 번 적용한다. AI Engine runtime role을 migration에 사용하지 않는다.
+2. 배포 artifact의 migration을 `ONMARU_DB_AI_MIGRATION_USER`에 해당하는 별도 migration role로 staging DB에 한 번 적용한다. AI Engine runtime role을 migration에 사용하지 않는다.
+
+   ```bash
+   psql "$AI_MIGRATION_DSN" -v ON_ERROR_STOP=1 \
+     -f migrations/ai/003_reviewed_facts.sql
+   ```
+
 3. migration owner로 실행 권한을 구성한다. runtime role 이름은 환경별 실제 role을 확인한 뒤 치환한다:
 
    ```sql
@@ -36,8 +67,35 @@ Gemini API 비용·지연 또는 데이터 정책 때문에 E5를 유지하기�
 
    이 표는 새 fact table에 필요한 최소 권한이다. corpus의 기존 테이블 권한은 별도 기존 권한 정책을 따른다.
 4. 장소별 public source 자료를 사람이 검토해 사실 단위로 선별한다. 검색 chunk를 자동 승인하거나 모델이 만든 문장을 fact로 적재하지 않는다. 공개 계약의 `placeId`는 `ai.documents.source_id`와 같아야 한다. `chunk_id`, offset, 문장 원문은 active revision 문서와 정확히 일치해야 한다.
-5. 승인된 fact는 감사 가능한 별도 적재 artifact로 준비하고 reviewer, 승인 시각, 출처 revision을 기록한다. 이 저장소에는 아직 정식 curated-fact 적재 CLI/seed가 없으므로, 임시 SQL을 운영에서 직접 실행하기 전에 적재 도구와 리뷰 절차를 PR로 추가한다.
-6. 다음 확인 쿼리에서 불일치가 0건인지 확인하고, 승인 fact 수와 표본을 콘텐츠 담당자가 재검토한다:
+5. 승인된 fact는 감사 가능한 JSONL artifact로 준비하고 reviewer, 승인 시각, source revision을 기록한다. loader는 승인 여부를 결정하지 않는다. 각 row의 `factText`는 원문 내 exact span이어야 하고 reviewer 메타데이터가 이미 있어야 한다. 한 줄에 JSON object 하나를 쓰며 필드는 `revisionId`, `factId`, `chunkId`(UUID), `placeId`(public ID), `startOffset`, `endOffset`, `factText`, `kind`, `supportType`, `timeScope`, `relation`, `reviewStatus`(`APPROVED`), `approvedBy`, `approvedAt`(timezone 포함)이다. `relation`은 null 또는 generation `VerifiedRelation` schema다. `scripts/load_reviewed_facts.py --help`와 `ReviewedFactImport` 모델이 입력 계약이다.
+6. runtime role과 분리된 일회성 fact loader role에 필요한 최소 권한을 migration owner가 부여한다. 실제 role 이름은 staging DB에서 확인한다:
+
+   ```sql
+   GRANT USAGE ON SCHEMA ai TO <ai_fact_loader_role>;
+   GRANT SELECT ON ai.active_corpus, ai.revocation_state, ai.corpus_revisions,
+     ai.documents, ai.chunks, ai.place_revocations, ai.source_revocations
+     TO <ai_fact_loader_role>;
+   GRANT INSERT ON ai.reviewed_facts TO <ai_fact_loader_role>;
+   ```
+
+   migration owner는 runtime role에 별도로 `SELECT ON ai.reviewed_facts`만 부여한다. fact loader credential은 Compose에 넣지 않고, 적재 후 일회성 권한을 revoke한다.
+7. 먼저 기본 read-only 검증을 실행한다. 출력 count와 오류를 확인하고, 그 후에만 `--apply`를 추가해 전체 JSONL을 단일 transaction으로 적재한다:
+
+   ```bash
+   docker compose --profile ai-engine run --rm \
+     -e ONMARU_AI_DB_DSN \
+     -v "$PWD/$REVIEWED_FACTS_JSONL:/tmp/reviewed-facts.jsonl:ro" \
+     "$AI_ENGINE_SERVICE" python scripts/load_reviewed_facts.py \
+       --input /tmp/reviewed-facts.jsonl
+
+   docker compose --profile ai-engine run --rm \
+     -e ONMARU_AI_DB_DSN \
+     -v "$PWD/$REVIEWED_FACTS_JSONL:/tmp/reviewed-facts.jsonl:ro" \
+     "$AI_ENGINE_SERVICE" python scripts/load_reviewed_facts.py \
+       --input /tmp/reviewed-facts.jsonl --apply
+   ```
+
+8. 다음 확인 쿼리에서 불일치가 0건인지 확인하고, 승인 fact 수와 표본을 콘텐츠 담당자가 재검토한다:
 
    ```sql
    SELECT f.revision_id, count(*) AS approved_fact_count
@@ -72,6 +130,6 @@ Gemini API 비용·지연 또는 데이터 정책 때문에 E5를 유지하기�
 
 - 구현은 [AI Engine PR #84](https://github.com/YRootLab/onmaru-ai-engine/pull/84)에 공유되어 있고 CI는 통과했다. PR은 현재 draft/open 상태이며 review와 merge가 남았다.
 - production active corpus inventory와 embedding profile을 재확인해야 한다. 저장소 handoff에 남은 E5 정보는 이전 inventory 기록이다.
-- curated fact 적재 도구, 실제 fact set, reviewer 승인·감사 절차가 아직 없다.
+- JSONL parser/loader와 별도 corpus activator는 구현됐지만, 실제 curated fact set·reviewer 승인·감사 절차는 BE/content owner가 준비해야 한다.
 - PostgreSQL migration은 여기서 실행하지 않았다. runtime role grant도 실제 role명을 모르는 상태에서 적용하지 않았다.
 - Spring 계약 테스트 통과는 live HTTP 합동 E2E 통과를 의미하지 않는다.
