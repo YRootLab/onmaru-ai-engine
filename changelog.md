@@ -5,6 +5,7 @@ Lightweight human-readable summary of meaningful repository changes. Newest date
 ## 2026-11-18
 
 - Added fail-closed Gemini corpus staging, confirmation-gated corpus activation, and a read-only-by-default reviewed-fact loader with transactional apply. Documented staging operations; no staging/production database or feature flag was changed.
+- SQL_PLUS_RETRIEVAL now resolves Spring place IDs to exact approved corpus facts when retrieval has no evidence; failed plan reservations release capacity, and malformed lexical UUID values are excluded safely.
 
 ## 2026-11-17
 

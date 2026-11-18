@@ -147,11 +147,19 @@ class PlanExecuteService:
         self._plans[body.run_id] = None
         self._plans.move_to_end(body.run_id)
         self._plan_deadlines[body.run_id] = context.deadline
-        async with asyncio.timeout(self.remaining(context.deadline)):
-            proposal = await self.planner(body)
-        proposal = PlanProposal.model_validate(proposal.model_dump(by_alias=True))
-        self.remaining(context.deadline)
-        validate_plan(body, proposal, current_versions=self.current_versions())
+        try:
+            async with asyncio.timeout(self.remaining(context.deadline)):
+                proposal = await self.planner(body)
+            proposal = PlanProposal.model_validate(proposal.model_dump(by_alias=True))
+            self.remaining(context.deadline)
+            validate_plan(body, proposal, current_versions=self.current_versions())
+        except BaseException:
+            # A failed or cancelled plan never became executable; free its reservation
+            # instead of consuming capacity until the original request deadline.
+            if self._plans.get(body.run_id) is None:
+                self._plans.pop(body.run_id, None)
+                self._plan_deadlines.pop(body.run_id, None)
+            raise
         self._plans[body.run_id] = PlanBinding.from_plan(
             proposal,
             context.trace_id,

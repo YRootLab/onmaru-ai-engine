@@ -175,6 +175,20 @@ class OrchestrationEngine:
             and getattr(sql_lookup_outcome, "disposition", None) == "COMPLETE"
             and getattr(sql_lookup_outcome, "places", ())
         )
+        if (
+            route == "SQL_PLUS_RETRIEVAL"
+            and sql_lookup_outcome is not None
+            and lookup_has_places
+            and (evidence_set is None or not evidence_set.evidence)
+            and self._evidence_selector is not None
+        ):
+            select_for_places = getattr(self._evidence_selector, "select_for_places", None)
+            if callable(select_for_places):
+                evidence_set = select_for_places(
+                    plan,
+                    tuple(place.place_id for place in sql_lookup_outcome.places),
+                    snapshot=snapshot,
+                )
         if self._generator is not None and (evidence_set is not None or lookup_has_places):
             try:
                 proposal = await self._generator.generate(

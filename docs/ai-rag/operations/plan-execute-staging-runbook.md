@@ -123,7 +123,7 @@ Gemini API 비용·지연 또는 데이터 정책 때문에 E5를 유지하기�
 1. BE와 AI Engine의 승인된 PR/image digest 및 migration version을 함께 고정한다. 두 저장소의 uncommitted 상태를 직접 staging에 배포하지 않는다.
 2. staging에서 AI DB runtime role의 schema 접근, 활성 corpus revision/profile, secret 주입, Spring 내부 URL, AI readiness를 확인한다. 준비가 모두 끝날 때까지 `onmaru.ai.plan-execute-enabled=false`를 유지한다.
 3. 동일 trace/run으로 `CLARIFY_OR_SCOPE`(execute 0회), `SQL_ONLY + NO_MATCH`, pinned IDs가 있어도 `placeIds=null`인 일반 추천, 그리고 SQL_ONLY/LEXICAL_ONLY/DENSE_ONLY/HYBRID/SQL_PLUS_RETRIEVAL 5개 route를 실제 Spring↔AI HTTP로 검증한다.
-4. 각 route에서 승인·제외·revocation 필터, grounding/evidence, timeout/fallback, 기존 board/state 보존, 로그상 corpus/profile/config version을 확인한다. 기능·품질·지연·메모리 결과를 기록한다.
+4. 각 route에서 승인·제외·revocation 필터, grounding/evidence, timeout/fallback, 기존 board/state 보존, 로그상 corpus/profile/config version을 확인한다. `SQL_PLUS_RETRIEVAL`의 Spring 장소 응답은 corpus evidence로 직접 사용하지 않으며, 같은 Postgres snapshot에서 해당 장소 ID에 연결된 승인 fact와 exact source span을 찾은 경우에만 generation에 전달한다. 검수 fact가 없으면 빈 evidence 결과가 정상 fail-closed 동작이다. 기능·품질·지연·메모리 결과를 기록한다.
 5. 검증 결과를 BE와 AI Engine 양쪽 PR에 연결한다. 그 다음 별도 rollout 승인에 따라 staging flag부터 단계적으로 변경한다. 운영 flag는 staging 결과, rollback rehearsal, 배포 승인 전까지 false로 유지한다.
 
 ## 남은 blocker

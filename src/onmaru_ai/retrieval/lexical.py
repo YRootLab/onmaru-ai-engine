@@ -188,7 +188,7 @@ class LexicalSearchAdapter:
         filters = request.filters
         try:
             place_uuid = UUID(chunk.corpus_place_id or chunk.place_id)
-        except ValueError:
+        except (AttributeError, TypeError, ValueError):
             return False
         return (
             chunk.public
