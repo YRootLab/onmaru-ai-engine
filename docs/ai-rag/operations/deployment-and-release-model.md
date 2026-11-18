@@ -1,12 +1,14 @@
 # AI Engine 배포와 릴리스 모델
 
-> 상태: 설계 초안. AI 저장소는 아직 비어 있는 원격 저장소에 대한 로컬 migration draft이며, FastAPI 운영 배포는 구현되지 않았다.
+> 상태: 목표 운영 계약과 구현 handoff. 실제 Compose 배선, AI migration 적용, 운영 활성화는 백엔드 저장소와 staging 검증 증거로 별도 확인한다.
+
+> Plan/Execute 구현 handoff (2026-11-18): 아래 현재 코드가 요구하는 AI Engine 설정과 DB migration 순서는 [Plan/Execute staging 운영 절차](./plan-execute-staging-runbook.md)에 정리한다. 해당 절차의 staging 검증 전까지 Spring feature flag는 꺼 둔다.
 
 ## 핵심 원칙
 
 AI 코드 저장소를 분리해도 AWS 실행 인스턴스는 분리하지 않는다. `onmaru-ai-engine`은 FastAPI 코드·검증·빌드와 immutable image 발행을 소유한다. `OnMaru-backend`는 현재 Lightsail host, Compose, Nginx, PostgreSQL volume/backup, 제한된 production deployer를 계속 소유한다. 2GB로 업그레이드한 기존 한 인스턴스에서 Spring·DB·FastAPI를 공존시키는 것이 목표다.
 
-현재 Compose는 Spring Blue-Green·PostgreSQL·Nginx만 운영하며 FastAPI를 포함하지 않는다. 구현되었다고 간주하지 말고, 2GB 혼합 부하와 배포/복구 리허설을 통과한 뒤에만 운영 경로를 연다.
+백엔드 저장소에는 AI Engine Compose 서비스가 추가됐지만, 현재 확인된 staging/production 정의에는 database network/DB env가 빠져 있고 운영에는 `ONMARU_SPRING_BASE_URL`도 필요하다. 완성된 배선으로 간주하지 말고, 2GB 혼합 부하와 배포/복구 리허설을 통과한 뒤에만 운영 경로를 연다.
 
 ## 배포 토폴로지
 

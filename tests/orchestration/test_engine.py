@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from onmaru_ai.adapters.spring_place import PlaceLookupOutcome
 from onmaru_ai.contracts.models import ApprovedQueryPlan, EvidenceSet, ValidatedProposal
 from onmaru_ai.orchestration.engine import (
     OrchestrationEngine,
@@ -23,6 +24,8 @@ def _load_approved_plan(mode: str) -> ApprovedQueryPlan:
         / (
             "accepted-approved-sql_only.json"
             if mode == "SQL_ONLY"
+            else "accepted-approved-sql_plus_retrieval.json"
+            if mode == "SQL_PLUS_RETRIEVAL"
             else "accepted-approved-hybrid.json"
         )
     )
@@ -106,6 +109,31 @@ async def test_hybrid_route_executes_pipeline_and_reranker() -> None:
     reranker.rerank.assert_called_once()
     evidence_selector.select_evidence.assert_called_once()
     generator.generate.assert_awaited_once()
+
+
+@pytest.mark.anyio
+async def test_sql_plus_retrieval_calls_generator_when_lookup_succeeds_without_evidence() -> None:
+    plan = _load_approved_plan("SQL_PLUS_RETRIEVAL")
+    sql_adapter = AsyncMock()
+    sql_adapter.execute.return_value = PlaceLookupOutcome.model_validate({
+        "disposition": "COMPLETE", "places": [{"placeId": "p-place-1"}]
+    })
+    retrieval = MagicMock()
+    retrieval_set = MagicMock()
+    retrieval_set.candidates = ()
+    retrieval.execute.return_value = retrieval_set
+    generator = AsyncMock()
+
+    engine = OrchestrationEngine(
+        sql_adapter=sql_adapter,
+        retrieval_coordinator=retrieval,
+        generator=generator,
+    )
+    result = await engine.execute_run(plan, snapshot=MagicMock())
+
+    assert result.evidence is None
+    generator.generate.assert_awaited_once()
+    assert generator.generate.await_args.kwargs["evidence_set"] is None
 
 
 @pytest.mark.anyio

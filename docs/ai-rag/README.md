@@ -12,6 +12,7 @@
 | 요청에서 응답까지의 전체 모듈 경계 | [Module boundaries and pipelines](./architecture/module-boundaries-and-pipelines.md) |
 | 질문 처리, 검색 경로와 RAG 구조 | [Query processing](./architecture/query-processing.md), [Architecture](./architecture/architecture.md) |
 | 운영·평가 실행 계획 | [Operations and evaluation](./operations/operations-and-evaluation.md) |
+| Plan/Execute staging env, embedding profile, migration·fact 검수 및 합동 E2E | [Plan/Execute staging runbook](./operations/plan-execute-staging-runbook.md) |
 | 이전 목표 아키텍처 시각 스냅샷 | [2026-10-21 system briefing](reports/2026-10-21-system-briefing.html) |
 
 ## 현재 문서 기준

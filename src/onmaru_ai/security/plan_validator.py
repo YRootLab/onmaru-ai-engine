@@ -25,6 +25,7 @@ class PlanBinding:
     filters: HardFilters
     fields: tuple[CanonicalField, ...]
     semantic_hash: str | None
+    operation: str
     versions: Versions
     trace_id: str
     expires_at: datetime
@@ -39,6 +40,7 @@ class PlanBinding:
             plan.proposed_filters,
             plan.requested_canonical_fields,
             semantic_digest(plan.semantic_query),
+            plan.question_frame.operation,
             plan.versions,
             trace_id,
             expires_at,

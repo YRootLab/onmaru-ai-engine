@@ -55,6 +55,7 @@ class LexicalChunk:
     exact_names: tuple[str, ...]
     public: bool
     source_type: str = "TOUR_API"
+    corpus_place_id: str | None = None
 
 
 class LexicalChunkRepository(Protocol):
@@ -87,7 +88,8 @@ class PostgresLexicalChunkRepository:
         if request.index_version != self._index_version:
             raise LexicalIndexError("BM25_INDEX_VERSION_MISMATCH")
         rows = snapshot.connection.execute(
-            """SELECT c.chunk_id, d.place_id, d.source_type, d.source_id,
+            """SELECT c.chunk_id, d.source_id AS place_id,
+                      d.place_id AS corpus_place_id, d.source_type, d.source_id,
                       d.source_revision, c.revision_id AS corpus_revision,
                       d.region_code, d.category_code, c.search_text AS text,
                       d.title, d.eligibility_status
@@ -101,6 +103,7 @@ class PostgresLexicalChunkRepository:
                 chunk_id=str(row["chunk_id"]),
                 place_id=str(row["place_id"]),
                 source_type=str(row["source_type"]),
+                corpus_place_id=str(row["corpus_place_id"]),
                 source_id=str(row["source_id"]),
                 source_revision=str(row["source_revision"]),
                 corpus_revision=str(row["corpus_revision"]),
@@ -184,7 +187,7 @@ class LexicalSearchAdapter:
     ) -> bool:
         filters = request.filters
         try:
-            place_uuid = UUID(chunk.place_id)
+            place_uuid = UUID(chunk.corpus_place_id or chunk.place_id)
         except ValueError:
             return False
         return (
@@ -195,8 +198,15 @@ class LexicalSearchAdapter:
             not in snapshot.revoked_sources
             and chunk.place_id not in filters.excluded_place_ids
             and (filters.place_ids is None or chunk.place_id in filters.place_ids)
-            and (filters.region_codes is None or chunk.region_code in filters.region_codes)
-            and (filters.category_codes is None or chunk.category_code in filters.category_codes)
+            and (
+                filters.region_codes is None
+                or chunk.region_code.lower() in {code.lower() for code in filters.region_codes}
+            )
+            and (
+                filters.category_codes is None
+                or chunk.category_code.lower()
+                in {code.lower() for code in filters.category_codes}
+            )
         )
 
 

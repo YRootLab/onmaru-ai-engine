@@ -65,6 +65,7 @@ class OrchestrationEngine:
         override_route: Route | None = None,
         progress_sink: ProgressSink | None = None,
         traceparent: str | None = None,
+        operation: str | None = None,
     ) -> OrchestrationExecutionResult:
         if override_route is not None and override_route != plan.approved_route:
             raise OrchestrationError("Route switching prohibited during run execution")
@@ -107,6 +108,7 @@ class OrchestrationEngine:
                         plan,
                         evidence_set=None,
                         lookup_outcome=lookup_outcome,
+                        operation=operation,
                     )
                 except TypeError:
                     proposal = await self._generator.generate(plan, evidence_set=None)
@@ -160,18 +162,27 @@ class OrchestrationEngine:
 
         evidence_set: EvidenceSet | None = None
         if cand_set and self._evidence_selector is not None and ranked_items:
-            evidence_set = self._evidence_selector.select_evidence(cand_set, ranked_items)
+            evidence_set = self._evidence_selector.select_evidence(
+                cand_set, ranked_items, snapshot=snapshot
+            )
 
         if progress_sink is not None:
             await progress_sink.enter(ProgressStage.GENERATING)
 
         proposal = None
-        if self._generator is not None and evidence_set is not None:
+        lookup_has_places = bool(
+            sql_lookup_outcome is not None
+            and getattr(sql_lookup_outcome, "disposition", None) == "COMPLETE"
+            and getattr(sql_lookup_outcome, "places", ())
+        )
+        if self._generator is not None and (evidence_set is not None or lookup_has_places):
             try:
                 proposal = await self._generator.generate(
                     plan,
                     evidence_set=evidence_set,
                     lookup_outcome=sql_lookup_outcome,
+                    snapshot=snapshot,
+                    operation=operation,
                 )
             except TypeError:
                 proposal = await self._generator.generate(plan, evidence_set=evidence_set)

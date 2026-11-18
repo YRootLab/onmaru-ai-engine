@@ -4,18 +4,14 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
 from urllib.parse import urlsplit
+from uuid import UUID
 
 import httpx
 
-from onmaru_ai.adapters.spring_place import (
-    PlaceLookupDisposition,
-    PlaceLookupOutcome,
-    SpringPlaceQueryAdapter,
-)
+from onmaru_ai.adapters.spring_place import SpringPlaceQueryAdapter
 from onmaru_ai.api.plan_execute import (
     ExecutionResult,
     PlanExecuteService,
@@ -30,8 +26,7 @@ from onmaru_ai.contracts import (
     ValidatedProposal,
     Versions,
 )
-from onmaru_ai.contracts.models import Evidence, PlaceClaims
-from onmaru_ai.contracts.validation import _place_allowed
+from onmaru_ai.generation import EvidenceGenerator, GenerationInput
 from onmaru_ai.orchestration import OrchestrationEngine
 from onmaru_ai.progress import CallbackProgressSink
 from onmaru_ai.query import CatalogEntry, QueryPlanner
@@ -40,35 +35,31 @@ from onmaru_ai.security.plan_validator import QueryGrant
 logger = logging.getLogger(__name__)
 
 DEFAULT_CATALOG_ENTRIES: tuple[CatalogEntry, ...] = (
-    CatalogEntry(code="JEONJU", kind="REGION", display_label="전주", synonyms=("전주시",)),
-    CatalogEntry(code="SEOUL", kind="REGION", display_label="서울", synonyms=("서울시",)),
-    CatalogEntry(code="BUSAN", kind="REGION", display_label="부산"),
-    CatalogEntry(code="GYEONGGI", kind="REGION", display_label="경기"),
-    CatalogEntry(code="GANGWON", kind="REGION", display_label="강원"),
-    CatalogEntry(code="INCHEON", kind="REGION", display_label="인천"),
-    CatalogEntry(code="DAEGU", kind="REGION", display_label="대구"),
-    CatalogEntry(code="DAEJEON", kind="REGION", display_label="대전"),
-    CatalogEntry(code="GWANGJU", kind="REGION", display_label="광주"),
-    CatalogEntry(code="ULSAN", kind="REGION", display_label="울산"),
-    CatalogEntry(code="SEJONG", kind="REGION", display_label="세종"),
-    CatalogEntry(code="CHUNGBUK", kind="REGION", display_label="충북"),
-    CatalogEntry(code="CHUNGNAM", kind="REGION", display_label="충남"),
-    CatalogEntry(code="JEONBUK", kind="REGION", display_label="전북"),
-    CatalogEntry(code="JEONNAM", kind="REGION", display_label="전남"),
-    CatalogEntry(code="GYEONGBUK", kind="REGION", display_label="경북"),
-    CatalogEntry(code="GYEONGNAM", kind="REGION", display_label="경남"),
-    CatalogEntry(code="JEJU", kind="REGION", display_label="제주"),
-    CatalogEntry(code="p1", kind="PLACE", display_label="경복궁", region_code="SEOUL"),
-    CatalogEntry(code="p2", kind="PLACE", display_label="덕수궁", region_code="SEOUL"),
     CatalogEntry(
-        code="p3",
-        kind="PLACE",
-        display_label="전주한옥마을",
-        region_code="JEONJU",
-        synonyms=("전주 한옥마을",),
+        code="kr-11", kind="REGION", display_label="서울", synonyms=("서울시", "서울특별시")
     ),
-    CatalogEntry(code="p4", kind="PLACE", display_label="중앙시장", region_code="SEOUL"),
-    CatalogEntry(code="p5", kind="PLACE", display_label="중앙시장", region_code="BUSAN"),
+    CatalogEntry(
+        code="kr-26", kind="REGION", display_label="부산", synonyms=("부산시", "부산광역시")
+    ),
+    CatalogEntry(code="kr-45-jeonju", kind="REGION", display_label="전주", synonyms=("전주시",)),
+    CatalogEntry(code="kr-41", kind="REGION", display_label="경기", synonyms=("경기도",)),
+    CatalogEntry(code="kr-42", kind="REGION", display_label="강원", synonyms=("강원도",)),
+    CatalogEntry(code="kr-28", kind="REGION", display_label="인천", synonyms=("인천시",)),
+    CatalogEntry(code="kr-27", kind="REGION", display_label="대구", synonyms=("대구시",)),
+    CatalogEntry(code="kr-30", kind="REGION", display_label="대전", synonyms=("대전시",)),
+    CatalogEntry(code="kr-29", kind="REGION", display_label="광주", synonyms=("광주시",)),
+    CatalogEntry(code="kr-31", kind="REGION", display_label="울산", synonyms=("울산시",)),
+    CatalogEntry(code="kr-36", kind="REGION", display_label="세종", synonyms=("세종시",)),
+    CatalogEntry(code="kr-43", kind="REGION", display_label="충북", synonyms=("충청북도",)),
+    CatalogEntry(code="kr-44", kind="REGION", display_label="충남", synonyms=("충청남도",)),
+    CatalogEntry(
+        code="kr-45", kind="REGION", display_label="전북",
+        synonyms=("전북특별자치도", "전라북도"),
+    ),
+    CatalogEntry(code="kr-46", kind="REGION", display_label="전남", synonyms=("전라남도",)),
+    CatalogEntry(code="kr-47", kind="REGION", display_label="경북", synonyms=("경상북도",)),
+    CatalogEntry(code="kr-48", kind="REGION", display_label="경남", synonyms=("경상남도",)),
+    CatalogEntry(code="kr-50", kind="REGION", display_label="제주", synonyms=("제주도",)),
 )
 
 
@@ -96,28 +87,6 @@ def get_spring_base_url(environ: Mapping[str, str] | None = None) -> str:
     return url.rstrip("/")
 
 
-@dataclass(frozen=True)
-class DummyCorpusSnapshot:
-    """Minimal immutable snapshot placeholder for queries when Postgres store is inactive."""
-
-    versions: Versions
-    embedding_profile_id: str = "e5-small-384"
-    revoked_places: frozenset[Any] = frozenset()
-    revoked_sources: frozenset[tuple[str, str, str]] = frozenset()
-    connection: Any = None
-
-
-def make_production_versions() -> Versions:
-    return Versions.model_validate(
-        {
-            "corpusRevision": "corpus-1",
-            "configHash": "sha256:" + "a" * 64,
-            "questionDictionaryVersion": "questions-1",
-            "sourceRevocationSequence": 7,
-        }
-    )
-
-
 def default_verify_grant(
     grant_id: str,
     approved: ApprovedQueryPlan,
@@ -136,142 +105,100 @@ def default_verify_grant(
     )
 
 
-def build_evidence_and_proposal_from_lookup(
-    plan: ApprovedQueryPlan,
-    outcome: PlaceLookupOutcome,
-) -> tuple[EvidenceSet, ValidatedProposal]:
-    """Constructs valid EvidenceSet and ValidatedProposal from approved Spring place lookup."""
-    valid_places = [p for p in outcome.places if _place_allowed(p.place_id, plan)]
-    allowed_ids = tuple(p.place_id for p in valid_places)
+class ProductionEvidenceGenerator:
+    """Gemini generator adapter using exact corpus spans; facts remain registry-gated."""
 
-    evidence_items: list[Evidence] = []
-    place_claims_list: list[PlaceClaims] = []
-
-    for idx, place in enumerate(valid_places, start=1):
-        clean_pid = place.place_id.replace("-", "_")
-        ev_id = f"ev-{idx}-{clean_pid}"
-        chunk_id = f"chk-{idx}-{clean_pid}"
-        claim_id = f"clm-{idx}-{clean_pid}"
-
-        evidence_items.append(
-            Evidence.model_validate(
-                {
-                    "evidenceId": ev_id,
-                    "chunkId": chunk_id,
-                    "placeId": place.place_id,
-                    "sourceId": "src-approved-lookup",
-                    "sourceRevision": "rev-0",
-                    "startOffset": 0,
-                    "endOffset": 10,
-                }
-            )
-        )
-
-        display_text = (
-            place.public_address
-            or place.address
-            or place.name
-            or f"Approved canonical place {place.place_id}"
-        )
-        place_claims_list.append(
-            PlaceClaims.model_validate(
-                {
-                    "placeId": place.place_id,
-                    "reasonClaims": [
-                        {
-                            "claimId": claim_id,
-                            "text": display_text[:990],
-                            "kind": "FACT",
-                            "evidenceIds": [ev_id],
-                        }
-                    ],
-                }
-            )
-        )
-
-    evidence_set = EvidenceSet.model_validate(
-        {
-            "schemaVersion": "ai-evidence-set.v1",
-            "runId": plan.run_id,
-            "planHash": plan.approved_plan_hash,
-            "versions": plan.versions.model_dump(by_alias=True),
-            "allowedPlaceIds": allowed_ids,
-            "evidence": evidence_items,
-        }
-    )
-
-    proposal = ValidatedProposal.model_validate(
-        {
-            "schemaVersion": "ai-validated-proposal.v1",
-            "runId": plan.run_id,
-            "planHash": plan.approved_plan_hash,
-            "versions": plan.versions.model_dump(by_alias=True),
-            "candidatePlaceIds": allowed_ids,
-            "places": place_claims_list,
-            "summaryClaims": [],
-            "retrievalStatus": "COMPLETE" if allowed_ids else "NO_EVIDENCE",
-            "generationStatus": "GENERATED" if allowed_ids else "NOT_RUN",
-            "failureStage": None,
-        }
-    )
-
-    return evidence_set, proposal
-
-
-class ProductionGenerator:
-    """Production fallback generator reflecting approved place lookup results."""
+    def __init__(self, provider: EvidenceGenerator) -> None:
+        self._provider = provider
 
     async def generate(
         self,
         plan: ApprovedQueryPlan,
         evidence_set: EvidenceSet | None = None,
-        lookup_outcome: PlaceLookupOutcome | None = None,
+        lookup_outcome: Any | None = None,
+        snapshot: Any | None = None,
+        operation: str | None = None,
     ) -> ValidatedProposal | None:
-        if (
-            lookup_outcome is not None
-            and lookup_outcome.disposition == PlaceLookupDisposition.COMPLETE
-            and lookup_outcome.places
+        del lookup_outcome
+        if evidence_set is None or snapshot is None:
+            return None
+        documents = []
+        for source_id, source_revision in sorted(
+            {(item.source_id, item.source_revision) for item in evidence_set.evidence}
         ):
-            _, proposal = build_evidence_and_proposal_from_lookup(plan, lookup_outcome)
-            return proposal
-
-        if evidence_set is not None and evidence_set.allowed_place_ids:
-            return ValidatedProposal.model_validate(
-                {
-                    "schemaVersion": "ai-validated-proposal.v1",
-                    "runId": plan.run_id,
-                    "planHash": plan.approved_plan_hash,
-                    "versions": plan.versions.model_dump(by_alias=True),
-                    "candidatePlaceIds": evidence_set.allowed_place_ids,
-                    "places": [
-                        {
-                            "placeId": pid,
-                            "reasonClaims": [
-                                {
-                                    "claimId": f"clm-{idx}-{pid.replace('-', '_')}",
-                                    "text": f"Grounded candidate {pid}",
-                                    "kind": "FACT",
-                                    "evidenceIds": [ev.evidence_id],
-                                }
-                            ],
-                        }
-                        for idx, (pid, ev) in enumerate(
-                            zip(
-                                evidence_set.allowed_place_ids,
-                                evidence_set.evidence,
-                                strict=False,
-                            ),
-                            start=1,
-                        )
-                    ],
-                    "summaryClaims": [],
-                    "retrievalStatus": "COMPLETE",
-                    "generationStatus": "GENERATED",
-                    "failureStage": None,
-                }
-            )
-
-        return None
+            row = snapshot.connection.execute(
+                """SELECT source_id, source_revision, revision_id, normalized_text
+                     FROM ai.documents WHERE revision_id=%s AND source_id=%s
+                       AND source_revision=%s AND eligibility_status='PUBLIC'""",
+                (snapshot.versions.corpus_revision, source_id, source_revision),
+            ).fetchone()
+            if row is not None:
+                documents.append({
+                    "sourceId": row["source_id"],
+                    "sourceRevision": row["source_revision"],
+                    "corpusRevision": row["revision_id"],
+                    "text": row["normalized_text"],
+                })
+        if len(documents) != len({(e.source_id, e.source_revision) for e in evidence_set.evidence}):
+            return None
+        if operation not in {"RECOMMEND", "EXPLAIN", "COMPARE", "REFINE"}:
+            return None
+        evidence_by_chunk = {item.chunk_id: item for item in evidence_set.evidence}
+        try:
+            fact_rows = snapshot.connection.execute(
+                """SELECT f.fact_id, f.place_id, f.fact_text, f.kind, f.support_type,
+                      f.time_scope, f.relation, f.chunk_id, f.start_offset, f.end_offset,
+                      d.source_revision
+                 FROM ai.reviewed_facts f
+                 JOIN ai.chunks c USING (revision_id, chunk_id)
+                 JOIN ai.documents d USING (revision_id, document_id)
+                WHERE f.revision_id=%s AND f.review_status='APPROVED'
+                  AND f.chunk_id = ANY(%s) AND d.source_id=f.place_id
+                  AND d.eligibility_status='PUBLIC'
+                    ORDER BY f.fact_id""",
+                (
+                    snapshot.versions.corpus_revision,
+                    [UUID(item.chunk_id) for item in evidence_set.evidence],
+                ),
+            ).fetchall()
+        except Exception:
+            logger.warning("Reviewed fact registry unavailable; Gemini generation skipped")
+            return None
+        verified_facts = []
+        for row in fact_rows:
+            evidence = evidence_by_chunk.get(str(row["chunk_id"]))
+            if (
+                evidence is None
+                or evidence.place_id != row["place_id"]
+                or evidence.source_revision != row["source_revision"]
+                or evidence.start_offset != row["start_offset"]
+                or evidence.end_offset != row["end_offset"]
+            ):
+                continue
+            verified_facts.append({
+                "factId": row["fact_id"],
+                "placeId": row["place_id"],
+                "text": row["fact_text"],
+                "kind": row["kind"],
+                "evidenceIds": [evidence.evidence_id],
+                "supportType": row["support_type"],
+                "timeScope": row["time_scope"],
+                "relation": row["relation"],
+            })
+        data = GenerationInput.model_validate({
+            "operation": operation,
+            "approvedPlan": plan,
+            "evidenceSet": evidence_set,
+            "currentVersions": snapshot.versions,
+            "revokedSources": [
+                {"sourceId": source_id, "sourceRevision": source_revision}
+                for _source_type, source_id, source_revision in snapshot.revoked_sources
+            ],
+            "documents": documents,
+            "verifiedFacts": verified_facts,
+        })
+        result = await self._provider.generate(data, timeout_seconds=2.5)
+        return result.proposal
 
 
 def create_production_plan_execute_service(
@@ -279,8 +206,9 @@ def create_production_plan_execute_service(
     secret_provider: SecretProvider,
     http_client: httpx.AsyncClient,
     environ: Mapping[str, str] | None = None,
-    catalog: tuple[CatalogEntry, ...] = DEFAULT_CATALOG_ENTRIES,
-    versions_factory: Callable[[], Versions] = make_production_versions,
+    catalog: tuple[CatalogEntry, ...] | None = None,
+    versions_factory: Callable[[], Versions] | None = None,
+    corpus_store: Any | None = None,
 ) -> PlanExecuteService:
     spring_base_url = get_spring_base_url(environ)
     if not is_valid_http_origin(spring_base_url):
@@ -297,16 +225,89 @@ def create_production_plan_execute_service(
         timeout_seconds=2.0,
     )
 
-    query_planner = QueryPlanner(catalog=catalog)
-    generator = ProductionGenerator()
+    import os
+
+    from onmaru_ai.storage.postgres import PostgresCorpusStore
+    source_env = os.environ if environ is None else environ
+    dsn = source_env.get("ONMARU_AI_DB_DSN") or source_env.get("ONMARU_DB_URL")
+    store = corpus_store or (PostgresCorpusStore(dsn.strip()) if dsn and dsn.strip() else None)
+    if store is None:
+        raise ValueError("Plan/Execute requires an active Postgres corpus store")
+
+    def active_versions() -> Versions:
+        with store.snapshot() as snapshot:
+            return snapshot.versions
+
+    def load_catalog(snapshot: Any) -> tuple[CatalogEntry, ...]:
+        rows = snapshot.connection.execute(
+            """SELECT DISTINCT source_id AS place_id, title, region_code, category_code
+                 FROM ai.documents WHERE revision_id=%s AND eligibility_status='PUBLIC'
+                 ORDER BY title, place_id""", (snapshot.versions.corpus_revision,)
+        ).fetchall()
+        entries = list(DEFAULT_CATALOG_ENTRIES)
+        for row in rows:
+            region = str(row["region_code"]).strip().lower()
+            category = str(row["category_code"]).strip().lower()
+            # Normalize legacy ISO codes; Spring-specific city suffixes remain explicit
+            # entries and are never guessed from a broad province code.
+            if region.startswith("kr-"):
+                region = region.upper().lower()
+            entries.append(
+                CatalogEntry(
+                    code=str(row["place_id"]),
+                    kind="PLACE",
+                    display_label=str(row["title"]),
+                    region_code=region or None,
+                    category_code=category or None,
+                )
+            )
+        return tuple(entries)
 
     # Issue #63: Wire real retrieval coordinator, reranker, and evidence selector
     # allowing HYBRID, SQL_PLUS_RETRIEVAL, LEXICAL_ONLY, DENSE_ONLY routes.
+    from onmaru_ai.embedding import (
+        GEMINI_EMBEDDING_384,
+        EmbeddingService,
+        GeminiEmbeddingBackend,
+    )
     from onmaru_ai.retrieval.evidence import EvidenceSelector
     from onmaru_ai.retrieval.hybrid import HybridRetrievalCoordinator
+    from onmaru_ai.retrieval.lexical import LexicalSearchAdapter, PostgresLexicalChunkRepository
     from onmaru_ai.retrieval.rerank import Reranker
+    from onmaru_ai.retrieval.vector import VectorSearcher
 
-    retrieval_coordinator = HybridRetrievalCoordinator()
+    try:
+        gemini_key = secret_provider.get("gemini.api-key").current
+    except Exception as error:
+        raise ValueError("Plan/Execute requires the Gemini API key") from error
+    from onmaru_ai.observability import create_telemetry_sink
+    from onmaru_ai.providers.gemini.adapter import GeminiAdapter
+    from onmaru_ai.providers.gemini.models import GeminiConfig, GeminiPricing
+    from onmaru_ai.providers.gemini.transport import HttpxGeminiTransport
+
+    source_env = os.environ if environ is None else environ
+    generation_provider = EvidenceGenerator(GeminiAdapter(
+        GeminiConfig(
+            model_alias="plan-execute-grounded",
+            model_name=source_env.get("ONMARU_GEMINI_MODEL_NAME", "gemini-2.5-flash"),
+            max_output_tokens=4096,
+            pricing=GeminiPricing(input_micros_per_million=0, output_micros_per_million=0),
+        ),
+        HttpxGeminiTransport(),
+        api_key=gemini_key,
+        telemetry_sink=create_telemetry_sink(),
+    ))
+    generator = ProductionEvidenceGenerator(generation_provider)
+    current_versions_factory = versions_factory or active_versions
+    vector_searcher = VectorSearcher(EmbeddingService(
+        GeminiEmbeddingBackend(gemini_key, task_type="RETRIEVAL_QUERY", timeout_seconds=2.5),
+        profile=GEMINI_EMBEDDING_384,
+    ))
+
+    retrieval_coordinator = HybridRetrievalCoordinator(
+        lexical_searcher=LexicalSearchAdapter(PostgresLexicalChunkRepository()),
+        dense_searcher=vector_searcher,
+    )
     reranker = Reranker()
     evidence_selector = EvidenceSelector()
 
@@ -319,7 +320,11 @@ def create_production_plan_execute_service(
     )
 
     async def planner_func(request: SafeQueryRequest) -> PlanProposal:
-        return query_planner.plan(request)
+        with store.snapshot() as snapshot:
+            if request.versions != snapshot.versions:
+                raise ValueError("VERSION_MISMATCH")
+            selected_catalog = catalog if catalog is not None else load_catalog(snapshot)
+            return QueryPlanner(catalog=selected_catalog).plan(request)
 
     async def executor_func(
         body: ApprovedQueryPlan,
@@ -340,56 +345,18 @@ def create_production_plan_execute_service(
             if context is not None
             else "00-" + "0" * 32 + "-" + "0" * 16 + "-01"
         )
-        snapshot = DummyCorpusSnapshot(versions=body.versions)
-
-        orch_result = await engine.execute_run(
-            plan=body,
-            snapshot=snapshot,  # type: ignore[arg-type]
-            progress_sink=progress_sink,
-            traceparent=tp,
-        )
+        with store.snapshot() as snapshot:
+            if snapshot.versions != body.versions:
+                raise ValueError("VERSION_MISMATCH")
+            orch_result = await engine.execute_run(
+                plan=body, snapshot=snapshot,
+                progress_sink=progress_sink, traceparent=tp,
+                operation=context.operation if context is not None else None,
+            )
 
         proposal = orch_result.proposal
         evidence = orch_result.evidence
 
-        if (
-            body.approved_route in ("SQL_ONLY", "SQL_PLUS_RETRIEVAL")
-            and proposal is not None
-            and evidence is None
-            and sql_adapter is not None
-        ):
-            # When lookup returned places, ensure proposal and evidence are paired
-            lookup_places = [
-                p for p in getattr(proposal, "places", ()) if _place_allowed(p.place_id, body)
-            ]
-            if lookup_places:
-                # Build matching EvidenceSet
-                ev_items = []
-                for idx, p in enumerate(lookup_places, start=1):
-                    clean_pid = p.place_id.replace("-", "_")
-                    ev_items.append(
-                        Evidence.model_validate(
-                            {
-                                "evidenceId": f"ev-{idx}-{clean_pid}",
-                                "chunkId": f"chk-{idx}-{clean_pid}",
-                                "placeId": p.place_id,
-                                "sourceId": "src-approved-lookup",
-                                "sourceRevision": "rev-0",
-                                "startOffset": 0,
-                                "endOffset": 10,
-                            }
-                        )
-                    )
-                evidence = EvidenceSet.model_validate(
-                    {
-                        "schemaVersion": "ai-evidence-set.v1",
-                        "runId": body.run_id,
-                        "planHash": body.approved_plan_hash,
-                        "versions": body.versions.model_dump(by_alias=True),
-                        "allowedPlaceIds": tuple(p.place_id for p in lookup_places),
-                        "evidence": ev_items,
-                    }
-                )
 
         return ExecutionResult.model_validate(
             {
@@ -424,7 +391,7 @@ def create_production_plan_execute_service(
             run_id="",
             plan_hash="",
             filter_hash="",
-            versions=versions_factory(),
+            versions=current_versions_factory(),
             issued_at=now - timedelta(seconds=1),
             expires_at=now + timedelta(seconds=29),
         )
@@ -432,7 +399,7 @@ def create_production_plan_execute_service(
     service = PlanExecuteService(
         planner=planner_func,
         executor=executor_func,
-        current_versions=versions_factory,
+        current_versions=current_versions_factory,
         verify_grant=verify_grant_func,
     )
     return service

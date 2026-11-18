@@ -7,6 +7,8 @@ from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock
 
+import pytest
+
 from onmaru_ai.contracts.models import ApprovedQueryPlan, Candidate, CandidateSet
 from onmaru_ai.retrieval.hybrid import (
     HybridRetrievalCoordinator,
@@ -24,7 +26,13 @@ def _load_sample_plan(mode: str = "HYBRID") -> ApprovedQueryPlan:
         data = json.load(f)
     payload = dict(data["payload"])
     payload["approvedRetrievalMode"] = mode
-    return ApprovedQueryPlan.model_validate(payload)
+    plan = ApprovedQueryPlan.model_validate(payload)
+    # These coordinator unit tests exercise revocation/route behavior independently
+    # from the fixture's sample public IDs.
+    filters = plan.approved_filters.model_copy(
+        update={"place_ids": None, "pinned_place_ids": (), "excluded_place_ids": ()}
+    )
+    return plan.model_copy(update={"approved_filters": filters})
 
 
 def _make_candidate_set(
@@ -64,6 +72,7 @@ def _mock_snapshot(
     snapshot = MagicMock(spec=CorpusSnapshot)
     snapshot.revoked_places = revoked_places or set()
     snapshot.revoked_sources = revoked_sources or set()
+    snapshot.connection = None
     return snapshot
 
 
@@ -251,3 +260,49 @@ def test_hybrid_enforces_hard_filter_and_caps() -> None:
     assert all(
         not (c.source_id == "s_revoked" and c.source_revision == "r1") for c in result.candidates
     )
+
+
+@pytest.mark.parametrize(
+    ("mode", "lexical_fails", "dense_fails"),
+    [
+        ("LEXICAL_ONLY", False, False),
+        ("DENSE_ONLY", False, False),
+        ("HYBRID", False, False),
+        ("HYBRID", False, True),
+        ("HYBRID", True, False),
+    ],
+)
+def test_approved_place_and_exclusion_filters_hold_in_every_route_branch(
+    mode: str, lexical_fails: bool, dense_fails: bool
+) -> None:
+    plan = _load_sample_plan(mode)
+    filters = plan.approved_filters.model_copy(
+        update={
+            "place_ids": ("p-allowed", "p-pinned"),
+            "pinned_place_ids": ("p-pinned",),
+            "excluded_place_ids": ("p-excluded",),
+        }
+    )
+    plan = plan.model_copy(update={"approved_filters": filters})
+    items = [
+        {"chunk_id": f"00000000-0000-0000-0000-{i:012d}",
+         "place_id": pid, "source_id": "source", "source_revision": "r1"}
+        for i, pid in enumerate(
+            ("p-allowed", "p-pinned", "p-excluded", "p-other"), start=1
+        )
+    ]
+    lex = MagicMock()
+    dense = MagicMock()
+    lex.search.return_value = _make_candidate_set(plan, "LEXICAL", items)
+    dense.search.return_value = _make_candidate_set(plan, "DENSE", items)
+    if lexical_fails:
+        lex.search.side_effect = RuntimeError("lexical failed")
+    if dense_fails:
+        dense.search.side_effect = RuntimeError("dense failed")
+
+    result = HybridRetrievalCoordinator(
+        lexical_searcher=lex, dense_searcher=dense
+    ).execute(HybridSearchRequest(plan=plan), _mock_snapshot())
+
+    returned_places = {candidate.place_id for candidate in result.candidates}
+    assert returned_places == {"p-allowed", "p-pinned"}

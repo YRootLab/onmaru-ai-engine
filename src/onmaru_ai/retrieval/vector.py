@@ -14,14 +14,16 @@ class VectorSearchError(RuntimeError):
 
 @dataclass(frozen=True)
 class VectorSearchFilters:
-    place_ids: frozenset[UUID] = frozenset()
-    region_codes: frozenset[str] = frozenset()
-    category_codes: frozenset[str] = frozenset()
+    place_ids: frozenset[str] | None = None
+    region_codes: frozenset[str] | None = None
+    category_codes: frozenset[str] | None = None
+    excluded_place_ids: frozenset[str] = frozenset()
 
 
 @dataclass(frozen=True)
 class VectorCandidate:
-    place_id: UUID
+    place_id: str
+    corpus_place_id: UUID
     document_id: UUID
     chunk_id: UUID
     source_type: str
@@ -52,6 +54,12 @@ class VectorSearcher:
         filters = filters or VectorSearchFilters()
         if not 1 <= limit <= 20:
             raise VectorSearchError("LIMIT_OUT_OF_RANGE")
+        if (
+            filters.place_ids == frozenset()
+            or filters.region_codes == frozenset()
+            or filters.category_codes == frozenset()
+        ):
+            return ()
         if snapshot.embedding_profile_id != self._embeddings.profile.profile_id:
             raise VectorSearchError("PROFILE_MISMATCH")
         try:
@@ -76,18 +84,22 @@ class VectorSearcher:
             snapshot.versions.corpus_revision,
             snapshot.embedding_profile_id,
         ]
-        if filters.place_ids:
-            clauses.append("d.place_id = ANY(%s)")
+        if filters.place_ids is not None:
+            clauses.append("d.source_id = ANY(%s)")
             parameters.append(list(sorted(filters.place_ids, key=str)))
-        if filters.region_codes:
-            clauses.append("d.region_code = ANY(%s)")
-            parameters.append(sorted(filters.region_codes))
-        if filters.category_codes:
-            clauses.append("d.category_code = ANY(%s)")
-            parameters.append(sorted(filters.category_codes))
+        if filters.excluded_place_ids:
+            clauses.append("NOT (d.source_id = ANY(%s))")
+            parameters.append(list(sorted(filters.excluded_place_ids, key=str)))
+        if filters.region_codes is not None:
+            clauses.append("lower(d.region_code) = ANY(%s)")
+            parameters.append(sorted(code.lower() for code in filters.region_codes))
+        if filters.category_codes is not None:
+            clauses.append("lower(d.category_code) = ANY(%s)")
+            parameters.append(sorted(code.lower() for code in filters.category_codes))
         parameters.extend((vector, limit))
         statement = f"""
-            SELECT d.place_id, d.document_id, c.chunk_id, d.source_type, d.source_id,
+            SELECT d.place_id AS corpus_place_id, d.source_id AS public_place_id,
+                   d.document_id, c.chunk_id, d.source_type, d.source_id,
                    d.source_revision, 1 - (e.embedding <=> %s::vector) AS score
               FROM ai.embeddings e
               JOIN ai.chunks c USING (revision_id, chunk_id)
@@ -112,7 +124,8 @@ class VectorSearcher:
         candidates: list[VectorCandidate] = []
         for rank, row in enumerate(rows, 1):
             try:
-                place_id = UUID(str(row["place_id"]))
+                corpus_place_id = UUID(str(row["corpus_place_id"]))
+                place_id = str(row["public_place_id"])
                 chunk_id = UUID(str(row["chunk_id"]))
                 raw_score = row["score"]
                 if isinstance(raw_score, bool) or not isinstance(raw_score, (int, float)):
@@ -126,15 +139,17 @@ class VectorSearcher:
                 if chunk_id in seen or not math.isfinite(score) or not -1.0 <= score <= 1.0:
                     raise ValueError
                 if (
-                    place_id in snapshot.revoked_places
+                    corpus_place_id in snapshot.revoked_places
                     or source in snapshot.revoked_sources
-                    or (filters.place_ids and place_id not in filters.place_ids)
+                    or (filters.place_ids is not None and place_id not in filters.place_ids)
+                    or place_id in filters.excluded_place_ids
                 ):
                     raise VectorSearchError("RESULT_OUTSIDE_FILTERS")
                 seen.add(chunk_id)
                 candidates.append(
                     VectorCandidate(
                         place_id=place_id,
+                        corpus_place_id=corpus_place_id,
                         document_id=UUID(str(row["document_id"])),
                         chunk_id=chunk_id,
                         source_type=source[0],

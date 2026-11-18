@@ -17,11 +17,8 @@ def test_default_create_app_wires_production_components() -> None:
     app = create_app(secret_provider=FakeSecretProvider())
     assert hasattr(app.state, "plan_execute_service")
     service: PlanExecuteService = app.state.plan_execute_service
-    assert service is not None
-    assert callable(service.planner)
-    assert callable(service.executor)
-    assert callable(service.current_versions)
-    assert callable(service.verify_grant)
+    # No configured AI corpus DSN means the production gate fails closed.
+    assert service is None
 
     assert hasattr(app.state, "http_client")
     client: httpx.AsyncClient = app.state.http_client
@@ -30,7 +27,9 @@ def test_default_create_app_wires_production_components() -> None:
 
 
 def test_readiness_returns_200_when_wired() -> None:
-    client = TestClient(create_app(secret_provider=FakeSecretProvider()))
+    client = TestClient(
+        create_app(secret_provider=FakeSecretProvider(), plan_execute_service=_ready_service())
+    )
     resp = client.get("/ready")
     assert resp.status_code == 200
     assert resp.json() == {"status": "ready"}
@@ -76,6 +75,7 @@ def test_readiness_rejects_process_local_activation_log_for_rag() -> None:
             secret_provider=FakeSecretProvider(),
             rag_activation_log=InMemoryRagActivationLog(),
             rag_retriever=ActiveRevisionRetriever(),
+            plan_execute_service=_ready_service(),
             environ={"ONMARU_RAG_ENABLED": "true"},
         )
     )
@@ -108,6 +108,7 @@ def test_readiness_passes_when_rag_is_enabled_with_durable_log_and_retriever() -
             secret_provider=FakeSecretProvider(),
             rag_activation_log=DurableTestLog(),  # type: ignore[arg-type]
             rag_retriever=DurableActiveRetriever(),
+            plan_execute_service=_ready_service(),
             environ={"ONMARU_RAG_ENABLED": "true"},
         )
     )
@@ -139,11 +140,34 @@ async def test_composition_root_wires_retrieval_components() -> None:
             secret_provider=provider,
             http_client=client,
             environ={"ONMARU_SPRING_BASE_URL": "http://127.0.0.1:8080"},
+            corpus_store=object(),
         )
         assert service is not None
         assert service.executor is not None
     finally:
         await client.aclose()
+
+
+def _ready_service() -> PlanExecuteService:
+    async def planner(_request: object) -> object:
+        raise AssertionError("readiness does not plan")
+
+    async def executor(_plan: object) -> object:
+        raise AssertionError("readiness does not execute")
+
+    from onmaru_ai.contracts.models import Versions
+
+    return PlanExecuteService(
+        planner=planner,  # type: ignore[arg-type]
+        executor=executor,  # type: ignore[arg-type]
+        current_versions=lambda: Versions.model_validate({
+            "corpusRevision": "corpus-v1",
+            "configHash": "sha256:" + "a" * 64,
+            "questionDictionaryVersion": "questions-1",
+            "sourceRevocationSequence": 1,
+        }),
+        verify_grant=lambda _grant_id: None,
+    )
 
 
 def test_create_app_configures_onmaru_ai_stdout_info_logging_and_redaction() -> None:

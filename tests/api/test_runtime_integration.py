@@ -11,6 +11,7 @@ Tests:
 from __future__ import annotations
 
 import json
+from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -19,8 +20,10 @@ import pytest
 from fastapi.testclient import TestClient
 
 from onmaru_ai.config.secrets import FakeSecretProvider
+from onmaru_ai.contracts.models import Versions
 from onmaru_ai.main import create_app
 from onmaru_ai.security.internal_auth import create_internal_token
+from onmaru_ai.storage.postgres import CorpusSnapshot
 
 
 @pytest.mark.anyio
@@ -71,10 +74,36 @@ async def test_runtime_integration_flow_with_spring_mock() -> None:
         base_url="http://mock-spring:8080",
     )
 
+    class CatalogConnection:
+        def execute(self, statement: str, parameters: tuple[object, ...]) -> Any:
+            assert "SELECT DISTINCT source_id AS place_id" in statement
+            assert parameters == ("corpus-1",)
+            return self
+
+        def fetchall(self) -> list[dict[str, str]]:
+            return [{
+                "place_id": "p1", "title": "경복궁",
+                "region_code": "KR-11", "category_code": "HANOK",
+            }]
+
+    class CorpusStore:
+        @contextmanager
+        def snapshot(self) -> Any:
+            yield CorpusSnapshot(
+                versions=Versions.model_validate({
+                    "corpusRevision": "corpus-1", "configHash": "sha256:" + "a" * 64,
+                    "questionDictionaryVersion": "questions-1", "sourceRevocationSequence": 7,
+                }),
+                embedding_profile_id="test-profile",
+                revoked_places=frozenset(), revoked_sources=frozenset(),
+                connection=CatalogConnection(),  # type: ignore[arg-type]
+            )
+
     app = create_app(
         secret_provider=FakeSecretProvider(),
         environ={"ONMARU_SPRING_BASE_URL": "http://mock-spring:8080"},
         http_client=mock_spring_client,
+        plan_execute_corpus_store=CorpusStore(),
     )
 
     client = TestClient(app)
@@ -184,13 +213,11 @@ async def test_runtime_integration_flow_with_spring_mock() -> None:
     assert exec_result["runId"] == run_id
     assert exec_result["planHash"] == proposal["planHash"]
 
-    # Verify approved lookup was triggered and places incorporated into proposal & evidence
+    # Lookup is transported; it is not fabricated into passage evidence or claims.
     assert len(received_lookups) == 1
     assert received_lookups[0]["queryGrantId"] == grant_id
-
-    assert exec_result["proposal"] is not None
-    assert exec_result["evidence"] is not None
-    assert "p1" in exec_result["proposal"]["candidatePlaceIds"]
+    assert exec_result["proposal"] is None
+    assert exec_result["evidence"] is None
 
     # Verify progress callback events were delivered in order with ordinal 1..5
     stages = [cb["stage"] for cb in received_callbacks]

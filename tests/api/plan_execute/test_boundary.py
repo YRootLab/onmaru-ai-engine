@@ -138,6 +138,11 @@ def test_w0_fixture_round_trip_executes_exact_approval_once(route: str) -> None:
     response = h.post_plan()
     assert response.status_code == 200
     assert response.json() == h.data["context"]["proposal"]
+    binding = h.service._plans[h.data["payload"]["runId"]]
+    assert binding is not None
+    assert binding.operation == (
+        h.data["context"]["proposal"]["questionFrame"]["operation"]
+    )
     assert response.headers["cache-control"] == "no-store"
     assert h.effects == []
     executed = h.post_execute()
@@ -329,6 +334,15 @@ def test_capacity_fails_closed_without_evicting_prior_run() -> None:
     h.service.capacity = 0
     assert h.post_plan().json()["code"] == "PLAN_CAPACITY_EXCEEDED"
     assert h.plans == 0
+
+
+def test_expired_reservations_are_pruned_before_capacity_check() -> None:
+    h = Harness()
+    h.service.capacity = 1
+    h.service._plans["expired-run"] = None
+    h.service._plan_deadlines["expired-run"] = NOW - timedelta(seconds=1)
+    assert h.post_plan().status_code == 200
+    assert "expired-run" not in h.service._plans
 
 
 def test_clarification_never_enters_executor() -> None:

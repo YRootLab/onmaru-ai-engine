@@ -250,7 +250,8 @@ class _Connection:
             (
                 {
                     "chunk_id": "chunk-1",
-                    "place_id": PLACE,
+                    "place_id": "source-1",
+                    "corpus_place_id": PLACE,
                     "source_type": "TOUR_API",
                     "source_id": "source-1",
                     "source_revision": "source-r1",
