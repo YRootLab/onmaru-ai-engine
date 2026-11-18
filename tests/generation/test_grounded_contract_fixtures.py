@@ -1,8 +1,8 @@
 """Grounding contract checks shared by the fixed W0 fixtures and the Gemini generation path.
 
 The fixed fixtures in ``tests/contracts/fixtures`` are the contract authority. Gemini output
-is only accepted when it reproduces the same claim -> evidence -> place binding, and the
-production lookup builder must produce the same binding without any model involved.
+is only accepted when it reproduces the same claim -> evidence -> place binding. A canonical
+Spring lookup is never converted into passage evidence.
 """
 
 from __future__ import annotations
@@ -15,12 +15,7 @@ from typing import Any
 
 import pytest
 
-from onmaru_ai.adapters.spring_place import (
-    CanonicalPlaceProjection,
-    PlaceLookupDisposition,
-    PlaceLookupOutcome,
-)
-from onmaru_ai.composition import build_evidence_and_proposal_from_lookup
+from onmaru_ai.composition import ProductionEvidenceGenerator
 from onmaru_ai.contracts import (
     ApprovedQueryPlan,
     ContractViolation,
@@ -219,28 +214,20 @@ def test_gemini_claim_citing_other_place_evidence_is_rejected_before_publish() -
     assert result.proposal.generation_status != "GENERATED"
 
 
-@pytest.mark.parametrize("place_id", ["place-1", "place-with-dash"])
-def test_lookup_built_proposal_binds_every_claim_to_its_own_place_evidence(place_id: str) -> None:
+def test_lookup_projection_is_never_fabricated_into_corpus_evidence() -> None:
     plan = ApprovedQueryPlan.model_validate(contract_payload("accepted-approved-hybrid"))
-    outcome = PlaceLookupOutcome(
-        disposition=PlaceLookupDisposition.COMPLETE,
-        places=(
-            CanonicalPlaceProjection.model_validate(
-                {
-                    "placeId": place_id,
-                    "publicAddress": "서울 종로구 자하문로5길 5",
-                    "regionCode": "SEOUL",
-                    "categoryCode": "HANOK",
-                    "publicStatus": "PUBLIC",
-                }
-            ),
-        ),
-    )
-    evidence, proposal = build_evidence_and_proposal_from_lookup(plan, outcome)
+    class Provider:
+        async def generate(self, *_args: Any, **_kwargs: Any) -> Any:
+            raise AssertionError("generation needs corpus evidence and reviewed facts")
 
-    validate_artifact(evidence, plan, current_versions=plan.versions)
-    validate_artifact(proposal, plan, current_versions=plan.versions, evidence_set=evidence)
-    assert_claims_bound_to_same_place(proposal, evidence)
+    result = asyncio.run(
+        ProductionEvidenceGenerator(
+            EvidenceGenerator(Provider())  # type: ignore[arg-type]
+        ).generate(
+            plan, evidence_set=None, lookup_outcome=object(), snapshot=None
+        )
+    )
+    assert result is None
 
 
 def test_claim_pointing_at_evidence_of_another_place_is_a_contract_violation() -> None:

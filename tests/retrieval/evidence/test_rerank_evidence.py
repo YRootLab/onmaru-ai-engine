@@ -126,3 +126,41 @@ def test_evidence_selector_enforces_diversity_caps() -> None:
     for _p, count in counts.items():
         assert count <= 2
     assert set(evidence_set.allowed_place_ids) == set(counts.keys())
+
+
+def test_production_evidence_uses_only_exact_reviewed_fact_offsets() -> None:
+    class Connection:
+        def execute(self, statement: str, _parameters: tuple[object, ...]) -> Any:
+            assert "ai.reviewed_facts" in statement
+            return self
+
+        def fetchall(self) -> list[dict[str, Any]]:
+            return [
+                {
+                    "start_offset": 3,
+                    "end_offset": 8,
+                    "fact_text": "한옥입니다",
+                    "normalized_text": "소개:한옥입니다.끝",
+                },
+                {
+                    "start_offset": 0,
+                    "end_offset": 3,
+                    "fact_text": "wrong",
+                    "normalized_text": "소개:한옥입니다.끝",
+                },
+            ]
+
+    chunk_lookup = MagicMock(spec=ChunkSpanLookup)
+    chunk_lookup.get_span.return_value = (3, 8)
+    selector = EvidenceSelector(chunk_lookup=chunk_lookup)
+    selected = selector.select_evidence(
+        _load_sample_candidate_set(),
+        [{
+            "chunk_id": "chunk-1", "place_id": "place-1", "source_id": "source-1",
+            "source_revision": "source-r1",
+        }],
+        snapshot=None,
+    )
+
+    assert len(selected.evidence) == 1
+    assert (selected.evidence[0].start_offset, selected.evidence[0].end_offset) == (3, 8)

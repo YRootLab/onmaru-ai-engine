@@ -147,3 +147,13 @@ def test_dictionary_mismatch_is_closed_contract_failure() -> None:
     payload["versions"]["questionDictionaryVersion"] = "questions-unknown"
     with pytest.raises(ContractViolation, match="VERSION_MISMATCH"):
         planner().plan(SafeQueryRequest.model_validate(payload))
+
+
+def test_pins_do_not_narrow_unbounded_recommendation_place_ids() -> None:
+    payload = request("추천 한옥", pinnedPlaceIds=["p-pinned"]).model_dump(
+        mode="json", by_alias=True
+    )
+    req = SafeQueryRequest.model_validate(payload)
+    proposal = planner().plan(req)
+    assert proposal.proposed_filters.place_ids is None
+    assert proposal.proposed_filters.pinned_place_ids == ("p-pinned",)

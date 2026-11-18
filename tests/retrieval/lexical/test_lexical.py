@@ -171,6 +171,15 @@ def test_hard_filters_revocations_and_public_scope_apply_before_top_twenty() -> 
     assert all(item.exclusion_reason is None for item in result.candidates)
 
 
+def test_malformed_runtime_place_id_is_excluded_without_failing_search() -> None:
+    malformed = chunk(1, corpus_place_id=object())
+
+    result = LexicalSearchAdapter(Repository((malformed,))).search(request(), snapshot())
+
+    assert result.candidates == ()
+    assert result.retrieval_status == "NO_EVIDENCE"
+
+
 def test_ties_are_deterministic_by_chunk_id() -> None:
     documents = tuple(
         replace(chunk(index), chunk_id=value)
@@ -250,7 +259,8 @@ class _Connection:
             (
                 {
                     "chunk_id": "chunk-1",
-                    "place_id": PLACE,
+                    "place_id": "source-1",
+                    "corpus_place_id": PLACE,
                     "source_type": "TOUR_API",
                     "source_id": "source-1",
                     "source_revision": "source-r1",

@@ -69,6 +69,7 @@ class Harness:
         self.effects: list[ApprovedQueryPlan] = []
         self.delay = False
         self.fail = False
+        self.fail_plan = False
         self.grant = QueryGrant(
             grant_id="grant-1",
             run_id=self.data["payload"]["runId"],
@@ -94,6 +95,8 @@ class Harness:
 
     async def plan(self, request: SafeQueryRequest) -> PlanProposal:
         self.plans += 1
+        if self.fail_plan:
+            raise RuntimeError("planner unavailable")
         return PlanProposal.model_validate(self.data["context"]["proposal"])
 
     async def execute(self, approved: ApprovedQueryPlan) -> Any:
@@ -138,6 +141,11 @@ def test_w0_fixture_round_trip_executes_exact_approval_once(route: str) -> None:
     response = h.post_plan()
     assert response.status_code == 200
     assert response.json() == h.data["context"]["proposal"]
+    binding = h.service._plans[h.data["payload"]["runId"]]
+    assert binding is not None
+    assert binding.operation == (
+        h.data["context"]["proposal"]["questionFrame"]["operation"]
+    )
     assert response.headers["cache-control"] == "no-store"
     assert h.effects == []
     executed = h.post_execute()
@@ -329,6 +337,30 @@ def test_capacity_fails_closed_without_evicting_prior_run() -> None:
     h.service.capacity = 0
     assert h.post_plan().json()["code"] == "PLAN_CAPACITY_EXCEEDED"
     assert h.plans == 0
+
+
+def test_expired_reservations_are_pruned_before_capacity_check() -> None:
+    h = Harness()
+    h.service.capacity = 1
+    h.service._plans["expired-run"] = None
+    h.service._plan_deadlines["expired-run"] = NOW - timedelta(seconds=1)
+    assert h.post_plan().status_code == 200
+    assert "expired-run" not in h.service._plans
+
+
+def test_failed_planning_releases_reservation_and_capacity() -> None:
+    h = Harness()
+    h.service.capacity = 1
+    h.fail_plan = True
+
+    failed = h.post_plan()
+
+    assert failed.status_code == 503
+    assert h.data["payload"]["runId"] not in h.service._plans
+    assert h.data["payload"]["runId"] not in h.service._plan_deadlines
+
+    h.fail_plan = False
+    assert h.post_plan().status_code == 200
 
 
 def test_clarification_never_enters_executor() -> None:

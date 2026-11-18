@@ -64,7 +64,8 @@ def snapshot(connection: Any, *, profile: str = E5_SMALL_384.profile_id) -> Corp
 
 def row(*, score: float = 0.9) -> dict[str, Any]:
     return {
-        "place_id": PLACE,
+        "corpus_place_id": PLACE,
+        "public_place_id": "p-place-1",
         "document_id": DOCUMENT,
         "chunk_id": CHUNK,
         "source_type": "TOUR",
@@ -78,7 +79,7 @@ def test_search_uses_snapshot_revision_profile_filters_and_deterministic_rank() 
     connection = Connection([row(), {**row(score=0.8), "chunk_id": UUID(int=4)}])
     searcher = VectorSearcher(EmbeddingService(Backend(), profile=E5_SMALL_384))
     filters = VectorSearchFilters(
-        place_ids=frozenset({PLACE}), region_codes=frozenset({"KR-11"})
+        place_ids=frozenset({"p-place-1"}), region_codes=frozenset({"KR-11"})
     )
 
     candidates = searcher.search(snapshot(connection), "한옥", filters=filters, limit=20)
@@ -102,6 +103,27 @@ def test_limit_is_fail_closed_above_vector_top_20() -> None:
         searcher.search(snapshot(Connection([])), "한옥", filters=VectorSearchFilters(), limit=21)
 
 
+def test_empty_authority_allowlist_returns_zero_without_query() -> None:
+    connection = Connection([row()])
+    searcher = VectorSearcher(EmbeddingService(Backend(), profile=E5_SMALL_384))
+    assert searcher.search(
+        snapshot(connection), "한옥", filters=VectorSearchFilters(place_ids=frozenset())
+    ) == ()
+    assert connection.query == ""
+
+
+def test_excluded_public_place_ids_are_applied_in_sql() -> None:
+    connection = Connection([])
+    searcher = VectorSearcher(EmbeddingService(Backend(), profile=E5_SMALL_384))
+    searcher.search(
+        snapshot(connection), "한옥",
+        filters=VectorSearchFilters(excluded_place_ids=frozenset({"p-excluded"})),
+    )
+    assert "NOT (d.source_id = ANY(%s))" in connection.query
+    assert ["p-excluded"] in connection.params
+    assert "AND d.source_id = ANY(%s)" not in connection.query
+
+
 def test_profile_mismatch_fails_before_query() -> None:
     connection = Connection([])
     searcher = VectorSearcher(EmbeddingService(Backend(), profile=E5_SMALL_384))
@@ -111,13 +133,13 @@ def test_profile_mismatch_fails_before_query() -> None:
 
 
 def test_result_outside_snapshot_or_filters_fails_closed() -> None:
-    connection = Connection([{**row(), "place_id": UUID(int=99)}])
+    connection = Connection([{**row(), "public_place_id": "p-other"}])
     searcher = VectorSearcher(EmbeddingService(Backend(), profile=E5_SMALL_384))
     with pytest.raises(VectorSearchError, match="RESULT_OUTSIDE_FILTERS"):
         searcher.search(
             snapshot(connection),
             "한옥",
-            filters=VectorSearchFilters(place_ids=frozenset({PLACE})),
+            filters=VectorSearchFilters(place_ids=frozenset({"p-place-1"})),
         )
 
 

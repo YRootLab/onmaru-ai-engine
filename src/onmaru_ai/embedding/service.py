@@ -38,6 +38,15 @@ E5_SMALL_384 = EmbeddingProfile(
     query_prefix="query: ",
 )
 
+DETERMINISTIC_HASH_384 = EmbeddingProfile(
+    profile_id="deterministic-hash-384@local-only",
+    model_id="deterministic-hash",
+    model_commit="local-only",
+    dimensions=384,
+    passage_prefix="",
+    query_prefix="",
+)
+
 GEMINI_EMBEDDING_384 = EmbeddingProfile(
     profile_id="gemini-embedding-001-384@v1",
     model_id="gemini-embedding-001",
@@ -85,15 +94,14 @@ class _NullMetrics:
 
 
 class DeterministicHashBackend:
-    """Deterministic, CPU-only embedding backend implementing E5_SMALL_384.
+    """Deterministic, CPU-only embedding backend for local pipeline dry-runs.
 
     Produces normalized, repeatable 384-dimensional vectors via SHA-256 seed expansion.
-    Useful for offline ingestion, testing, and lightweight staging environments without
-    requiring PyTorch/HuggingFace dependencies.
+    Useful only for local pipeline dry-runs; it is not a semantic embedding model.
     """
 
-    model_id: str = E5_SMALL_384.model_id
-    model_commit: str = E5_SMALL_384.model_commit
+    model_id: str = DETERMINISTIC_HASH_384.model_id
+    model_commit: str = DETERMINISTIC_HASH_384.model_commit
     dimensions: int = 384
 
     def encode(self, texts: tuple[str, ...]) -> tuple[tuple[float, ...], ...]:

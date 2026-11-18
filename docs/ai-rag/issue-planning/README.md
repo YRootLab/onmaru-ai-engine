@@ -5,7 +5,7 @@
 ## 지금까지 완료한 작업
 
 - 기존 AI-RAG 설계를 AI 엔진 소유 범위로 나누고 Spring·FE·운영 인프라의 소유 경계를 명시했다.
-- FastAPI → Spring 진행 이벤트 초안을 정의했다. AI는 실행한 단계만 내부 callback으로 알리고, Spring이 공개 `run.stage` SSE와 확정 snapshot을 소유한다. 세부 계약은 [진행 이벤트 계약](../progress-event-contract.md)에 있다.
+- FastAPI → Spring 진행 이벤트 초안을 정의했다. AI는 실행한 단계만 내부 callback으로 알리고, Spring이 공개 `run.stage` SSE와 확정 snapshot을 소유한다. 세부 계약은 [진행 이벤트 계약](../integration/progress-event-contract.md)에 있다.
 - 23개 구현 이슈의 목표, 범위, 선행 작업, 예상 수정 경로, 인수 기준, 검증 방법을 [작업 그래프](work-graph.json)에 기록했다. 실제 GitHub 번호는 [생성 목록](created-issues.json)에 있다.
 - Root/Child의 GitHub Sub-Issue와 blocked-by 관계를 연결하고, 제목에 작업 ID, 라벨에 `track:*`와 `area:*`를 붙였다.
 

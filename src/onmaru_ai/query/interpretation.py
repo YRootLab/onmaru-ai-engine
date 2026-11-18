@@ -195,7 +195,10 @@ def interpret(request: SafeQueryRequest, catalog: tuple[CatalogEntry, ...]) -> I
         raise InterpretationError("UNSUPPORTED_SCOPE")
     if () in (bounds.place_ids, bounds.region_codes, bounds.category_codes):
         raise InterpretationError("UNSUPPORTED_SCOPE")
-    place_ids = _narrow(bounds.place_ids, _unique([*target_ids, *pinned_ids]))
+    # Pins are presentation constraints, not user-selected query targets. In a
+    # recommendation they must not turn an unconstrained authority bound into a
+    # one-place retrieval query.
+    place_ids = _narrow(bounds.place_ids, target_ids)
     category_codes = _unique([code for m, neg in marked if m.kind == "CATEGORY" and not neg
                               for code in m.codes])
     filters = HardFilters.model_validate({

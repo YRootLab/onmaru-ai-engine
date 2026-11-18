@@ -12,7 +12,7 @@ AI-RAG 설계 문서·다이어그램·HTML 보고서는 2026-10-22 이 저장�
 
 AI 저장소는 검증된 FastAPI container image를 발행합니다. AWS credential, 운영 `.env`, PostgreSQL volume, Nginx, Lightsail host는 소유하지 않습니다. 기존 백엔드 저장소가 Lightsail Compose와 제한 배포 workflow를 소유합니다. 목표는 기존 Lightsail을 2GB로 확장한 뒤 Spring Boot, PostgreSQL, Nginx, FastAPI를 같은 인스턴스에서 실행하는 것이며 두 번째 인스턴스는 계획하지 않았습니다.
 
-현재 이동 중인 FastAPI 코드는 기존 16차원 결정적 임베딩·메모리 검색 baseline입니다. 이 코드를 384차원 pgvector, BM25, hybrid ranking이 구현된 것으로 간주하지 않습니다. 실제 운영 배포 전에는 코드·DB migration·독립 CI·digest 기반 배포 및 공존 검증이 필요합니다. 자세한 목표는 [배포/릴리스 설계](docs/ai-rag/deployment-and-release-model.md)를 참고하세요.
+Plan/Execute의 Postgres corpus, lexical/vector 검색, reviewed-fact grounding 코드는 [PR #84](https://github.com/YRootLab/onmaru-ai-engine/pull/84)에서 검토 중이며 아직 운영 배포된 상태가 아닙니다. PR merge 뒤에도 staging profile 재색인, migration/fact 준비, Spring live HTTP E2E 전까지 Spring flag는 false로 유지합니다. 구체적인 배선과 순서는 [Plan/Execute staging runbook](docs/ai-rag/operations/plan-execute-staging-runbook.md)을 기준으로 합니다.
 
 The private two-step plan/execute boundary is documented in
 [`src/onmaru_ai/api/README.md`](src/onmaru_ai/api/README.md). It uses the W0
@@ -22,13 +22,13 @@ planner and executor through `create_production_plan_execute_service`; set
 
 ## 운영 설정과 RAG/LLM 활성화
 
-운영 컨테이너의 기본값은 `ONMARU_RAG_ENABLED=false`, `ONMARU_JOURNEY_GEMINI_ENABLED=false`입니다. 두 플래그를 바꾸기 전에 아래 현재 동작을 확인하세요. 2026-11-11 코드 기준으로 **플래그만 켜서는 RAG 검색이 실행되지 않습니다.**
+운영 컨테이너의 기본값은 `ONMARU_RAG_ENABLED=false`, `ONMARU_JOURNEY_GEMINI_ENABLED=false`입니다. 아래 표는 2026-11-11 legacy `/proposals` 및 `/stream` 경로 기준이며, Plan/Execute 배포 상태는 위 staging runbook을 확인하세요. Plan/Execute feature flag도 합동 staging 검증 전까지 false입니다.
 
 ### 현재 동작 요약
 
 | 플래그 / 설정 | 기본값 | 실제 효과 |
 | :--- | :--- | :--- |
-| `ONMARU_RAG_ENABLED` | `false` | 레거시 `/internal/v1/journey/proposals`의 `useRag` 경로에서만 읽습니다. 현재 운영 기본 `create_app`에는 retriever와 영속 activation log가 연결되지 않아 검색은 실행되지 않으며, 플래그를 켜면 `/ready`가 `rag_runtime_unwired`로 503을 반환합니다. plan/execute의 실제 검색도 아직 운영 연결 전입니다. |
+| `ONMARU_RAG_ENABLED` | `false` | 레거시 `/internal/v1/journey/proposals`의 `useRag` 경로만 제어합니다. Plan/Execute의 feature flag와 별개입니다. |
 | `ONMARU_JOURNEY_GEMINI_ENABLED` | `false` | 레거시 제안 경로와 `/stream`에서만 Gemini를 호출합니다. plan/execute의 근거·제안 생성에는 관여하지 않습니다. |
 | `ONMARU_GEMINI_MODEL_NAME` | `gemini-2.5-flash` | 위 Gemini 호출의 모델 이름입니다. |
 | `ONMARU_SECRET_GEMINI_API_KEY_CURRENT` | 시작 시 필수 | 플래그와 무관하게 시작 시 검증됩니다. |
@@ -38,17 +38,17 @@ staging Compose 파일은 이 저장소에 없습니다. 백엔드 저장소의 
 
 ### RAG를 실제로 켜기 위해 필요한 조건
 
-1. 활성화 기록을 영속 저장소에 남기도록 `InMemoryRagActivationLog`를 교체하고, `RagEvidenceRetriever`(pgvector 검색)를 `create_app`에 주입해야 합니다. 현재 둘 다 없습니다.
-2. 검색 라우트의 lexical·dense searcher를 `HybridRetrievalCoordinator`에 연결해야 합니다. 현재 후보는 항상 0개입니다.
-3. 코퍼스 revision을 `ai.corpus_revisions`에 `ACTIVE`로 적재하고 `ai.active_corpus.revision_id`로 가리켜야 합니다.
+1. 이 조건은 legacy `ONMARU_RAG_ENABLED` 경로에만 해당합니다. Plan/Execute는 별도 구조와 staging gate를 사용합니다.
+2. Plan/Execute retrieval 및 생성 조건은 [staging runbook](docs/ai-rag/operations/plan-execute-staging-runbook.md)을 따릅니다.
+3. Corpus revision은 Gemini profile로 stage·검증하고, 검증한 뒤 별도 activator로 활성화해야 합니다.
 4. 평가 보고서(`RagActivationPolicy.evaluate`)가 전체 통과하고, 기준선 대비 `retrievalRecallAt5`·`ndcgAt3`·`claimSupport` 중 하나 이상이 양의 개선을 보이며, 지연·비용이 악화되지 않아야 `enabled` 기록이 남습니다.
 5. 요청은 `useRag=true`만 보내면 됩니다. 활성 corpus revision은 AI 서버가 선택하고, 실제 사용한 `corpusRevisionId`를 응답에 반환합니다. 요청의 기존 `corpusRevisionId`는 호환을 위해 받을 수 있지만 선택에는 사용하지 않습니다.
-6. 임베딩은 `e5-small-384` 프로필이고 차원은 384여야 합니다. 현재 적재 스크립트의 `DeterministicHashBackend`는 의미 임베딩이 아닙니다. 의미 검색을 켜기 전에 실제 임베딩 모델로 다시 적재해야 합니다.
+6. Plan/Execute query embedding은 `gemini-embedding-001-384@v1`이며 active revision profile과 일치해야 합니다. 두 corpus ingestion CLI는 Gemini key가 없으면 실패합니다. `--hash-only --dry-run`은 local-only profile이며 staging corpus를 만들지 않습니다.
 
 ### Gemini 근거 생성을 켜기 전에
 
 - 레거시 제안 경로만 Gemini를 씁니다. 응답은 `candidateRefs` 안의 ID만 허용합니다.
-- plan/execute의 근거 생성은 Gemini를 쓰지 않습니다. `generation/EvidenceGenerator`는 검증된 사실 목록(`verifiedFacts`)과 근거 span을 요구하며, 운영 경로에 아직 연결되지 않았습니다.
+- Plan/Execute의 claim generation은 exact reviewed facts와 source span을 검사한 뒤 Gemini를 호출합니다. staging에서 `003_reviewed_facts.sql` 적용과 검수 fact 적재가 끝나기 전에는 grounded generation을 운영에서 켜지 않습니다.
 - 고정 fixture 기준의 claim→evidence→place 연결 검증은 `tests/generation/test_grounded_contract_fixtures.py`가 CI에서 수행합니다.
 
 ### pgvector 점검 SQL (운영 DB, AI migration 소유자 계정으로 실행)

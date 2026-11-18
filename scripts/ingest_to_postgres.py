@@ -2,7 +2,9 @@
 """CLI script to ingest approved category places and load into PostgreSQL ai schema.
 
 Usage:
-    python scripts/ingest_to_postgres.py --input <places.json> [--dsn <postgres_dsn>] [--activate]
+    python scripts/ingest_to_postgres.py --input <places.json>
+
+Database and Gemini credentials are read only from the process environment.
 """
 
 from __future__ import annotations
@@ -15,7 +17,8 @@ import sys
 from datetime import UTC, datetime
 
 from onmaru_ai.corpus.batch_ingest import IngestItem, build_corpus_bundle
-from onmaru_ai.embedding import E5_SMALL_384, DeterministicHashBackend, EmbeddingService
+from onmaru_ai.corpus.embedding_selection import select_embedding_backend
+from onmaru_ai.embedding import EmbeddingService
 from onmaru_ai.storage.postgres import PostgresCorpusStore
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
@@ -26,25 +29,17 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Ingest places into PostgreSQL ai schema.")
     parser.add_argument("--input", required=True, help="Path to input JSON file.")
     parser.add_argument(
-        "--dsn",
-        default=None,
-        help="PostgreSQL connection string (defaults to ONMARU_AI_DB_DSN or ONMARU_DB_URL).",
-    )
-    parser.add_argument(
         "--revision-id",
         default=None,
         help="Corpus revision ID (defaults to auto-generated timestamp).",
     )
-    parser.add_argument(
-        "--activate",
-        action="store_true",
-        help="Activate revision immediately after staging.",
-    )
+    parser.add_argument("--hash-only", action="store_true", help="Local hash-only dry-run.")
+    parser.add_argument("--dry-run", action="store_true", help="Build but do not stage a revision.")
     args = parser.parse_args()
 
-    dsn = args.dsn or os.environ.get("ONMARU_AI_DB_DSN") or os.environ.get("ONMARU_DB_URL")
-    if not dsn:
-        logger.error("No PostgreSQL DSN provided. Set --dsn, ONMARU_AI_DB_DSN, or ONMARU_DB_URL.")
+    dsn = os.environ.get("ONMARU_AI_DB_DSN") or os.environ.get("ONMARU_DB_URL")
+    if not args.dry_run and not dsn:
+        logger.error("No PostgreSQL DSN provided. Set ONMARU_AI_DB_DSN or ONMARU_DB_URL.")
         return 1
 
     input_path = args.input
@@ -132,8 +127,19 @@ def main() -> int:
     revision_id = args.revision_id or f"rev-{datetime.now(UTC).strftime('%Y%m%d%H%M%S')}"
     logger.info("Building corpus bundle for revision: %s", revision_id)
 
-    embedding_backend = DeterministicHashBackend()
-    embedding_service = EmbeddingService(embedding_backend, profile=E5_SMALL_384)
+    api_key = (
+        os.environ.get("ONMARU_SECRET_GEMINI_API_KEY_CURRENT")
+        or os.environ.get("GEMINI_API_KEY")
+        or ""
+    ).strip()
+    try:
+        embedding_backend, profile = select_embedding_backend(
+            api_key=api_key, hash_only=args.hash_only, dry_run=args.dry_run
+        )
+    except ValueError as exc:
+        logger.error("%s", exc)
+        return 2
+    embedding_service = EmbeddingService(embedding_backend, profile=profile)
 
     result, revision, docs, chunks, embeddings = build_corpus_bundle(
         revision_id=revision_id,
@@ -153,6 +159,11 @@ def main() -> int:
         logger.warning("No documents accepted matching the 12 approved categories. Exiting.")
         return 0
 
+    if args.dry_run:
+        logger.info("Dry run enabled; skipped PostgreSQL staging (profile=%s).", profile.profile_id)
+        return 0
+
+    assert dsn is not None
     store = PostgresCorpusStore(dsn)
     logger.info("Staging revision into PostgreSQL ai schema...")
     try:
@@ -161,16 +172,6 @@ def main() -> int:
             logger.info("Revision manifest hash already exists; skipped duplicate insertion.")
         else:
             logger.info("Successfully staged revision %s.", revision_id)
-
-        if args.activate:
-            logger.info("Activating revision %s...", revision_id)
-            store.activate(
-                revision.revision_id,
-                manifest_hash=revision.manifest_hash,
-                expected_active=None,
-                expected_revocation_sequence=0,
-            )
-            logger.info("Successfully activated revision %s as active corpus.", revision_id)
 
     except Exception as e:
         logger.error("Failed to stage/activate in PostgreSQL: %s", e)

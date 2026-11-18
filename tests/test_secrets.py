@@ -87,5 +87,5 @@ async def _request_ready() -> tuple[int, dict[str, str]]:
 def test_create_app_accepts_fake_secret_provider() -> None:
     status_code, body = asyncio.run(_request_ready())
 
-    assert status_code == 200
-    assert body == {"status": "ready"}
+    assert status_code == 503
+    assert body == {"status": "not_ready", "reason": "plan_execute_service_unwired"}

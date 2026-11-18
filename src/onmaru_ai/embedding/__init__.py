@@ -1,6 +1,7 @@
 """Pinned embedding profiles and fail-closed embedding execution."""
 
 from .service import (
+    DETERMINISTIC_HASH_384,
     E5_SMALL_384,
     GEMINI_EMBEDDING_384,
     DeterministicHashBackend,
@@ -17,6 +18,7 @@ from .service import (
 
 __all__ = [
     "DeterministicHashBackend",
+    "DETERMINISTIC_HASH_384",
     "E5_SMALL_384",
     "GEMINI_EMBEDDING_384",
     "EmbeddingBackend",

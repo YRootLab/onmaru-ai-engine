@@ -4,15 +4,19 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from onmaru_ai.adapters.spring_place import PlaceLookupOutcome
 from onmaru_ai.contracts.models import ApprovedQueryPlan, EvidenceSet, ValidatedProposal
 from onmaru_ai.orchestration.engine import (
     OrchestrationEngine,
     OrchestrationError,
 )
+from onmaru_ai.retrieval.evidence import EvidenceSelector
+from onmaru_ai.storage.postgres import CorpusSnapshot
 
 
 def _load_approved_plan(mode: str) -> ApprovedQueryPlan:
@@ -23,6 +27,8 @@ def _load_approved_plan(mode: str) -> ApprovedQueryPlan:
         / (
             "accepted-approved-sql_only.json"
             if mode == "SQL_ONLY"
+            else "accepted-approved-sql_plus_retrieval.json"
+            if mode == "SQL_PLUS_RETRIEVAL"
             else "accepted-approved-hybrid.json"
         )
     )
@@ -106,6 +112,77 @@ async def test_hybrid_route_executes_pipeline_and_reranker() -> None:
     reranker.rerank.assert_called_once()
     evidence_selector.select_evidence.assert_called_once()
     generator.generate.assert_awaited_once()
+
+
+@pytest.mark.anyio
+async def test_sql_plus_retrieval_calls_generator_when_lookup_succeeds_without_evidence() -> None:
+    from types import SimpleNamespace
+
+    plan = _load_approved_plan("SQL_PLUS_RETRIEVAL")
+    sql_adapter = AsyncMock()
+    sql_adapter.execute.return_value = PlaceLookupOutcome.model_validate(
+        {"disposition": "COMPLETE", "places": [{"placeId": "place-1"}]}
+    )
+    retrieval = MagicMock()
+    retrieval_set = MagicMock()
+    retrieval_set.candidates = ()
+    retrieval.execute.return_value = retrieval_set
+    text = "검수된 한옥 사실입니다."
+    chunk_id = "6d4209a1-9190-4be9-a4d5-1ba75eb23dbc"
+    connection: Any = MagicMock()
+    snapshot = cast(CorpusSnapshot, SimpleNamespace(
+        versions=plan.versions,
+        revoked_places=frozenset(),
+        revoked_sources=frozenset(),
+        connection=connection,
+    ))
+    connection.execute.return_value.fetchall.return_value = [{
+        "fact_id": "fact-1",
+        "chunk_id": chunk_id,
+        "place_id": "place-1",
+        "start_offset": 0,
+        "end_offset": len(text),
+        "fact_text": text,
+        "corpus_place_uuid": "abb3f8d7-48a8-4c80-aa46-b6ff4d5eb729",
+        "source_id": "place-1",
+        "source_revision": "source-r1",
+        "source_type": "TOUR_API",
+        "region_code": "SEOUL",
+        "category_code": "HANOK",
+        "eligibility_status": "PUBLIC",
+        "normalized_text": text,
+        "chunk_start": 0,
+        "chunk_end": len(text),
+        "chunk_text": text,
+    }]
+    generator = AsyncMock()
+
+    engine = OrchestrationEngine(
+        sql_adapter=sql_adapter,
+        retrieval_coordinator=retrieval,
+        evidence_selector=EvidenceSelector(),
+        generator=generator,
+    )
+    result = await engine.execute_run(plan, snapshot=snapshot)
+
+    assert result.evidence is not None
+    assert len(result.evidence.evidence) == 1
+    assert result.evidence.evidence[0].chunk_id == chunk_id
+    generator.generate.assert_awaited_once()
+    assert generator.generate.await_args.kwargs["evidence_set"] == result.evidence
+
+    revoked_snapshot = cast(
+        CorpusSnapshot,
+        SimpleNamespace(
+            versions=plan.versions,
+            revoked_places=frozenset(),
+            revoked_sources=frozenset({("TOUR_API", "place-1", "source-r1")}),
+            connection=connection,
+        ),
+    )
+    revoked_result = await engine.execute_run(plan, snapshot=revoked_snapshot)
+    assert revoked_result.evidence is not None
+    assert revoked_result.evidence.evidence == ()
 
 
 @pytest.mark.anyio

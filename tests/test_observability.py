@@ -40,7 +40,7 @@ def test_correlates_request_run_revision_and_trace_without_sensitive_attributes(
         )
     )
 
-    assert response.status_code == 200
+    assert response.status_code == 503
     assert response.headers["X-Request-Id"] == "req-123"
     assert response.headers["X-Run-Id"] == "run-456"
     assert response.headers["X-Revision"] == "rev-789"
@@ -54,7 +54,7 @@ def test_correlates_request_run_revision_and_trace_without_sensitive_attributes(
         "revision": "rev-789",
         "http.request.method": "GET",
         "http.route": "/ready",
-        "http.response.status_code": "200",
+        "http.response.status_code": "503",
     }
     assert "query" not in event.attributes
     assert "location" not in event.attributes
