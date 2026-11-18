@@ -4,7 +4,7 @@
 
 ## 소유권과 키
 
-`ai` 스키마의 모든 corpus 자료는 공개 자료만 담는다. Spring은 revision 고정 export를 제공하고 `ai` 테이블을 읽거나 쓰지 않는다. FastAPI runtime 계정은 승인된 DML/SELECT만, migration 계정은 DDL만 수행한다. `place_id`는 Spring canonical UUID의 복사 값이며 교차 스키마 FK가 아니다. 현재 자격은 최종적으로 Spring이 다시 판정한다.
+`ai` 스키마의 모든 corpus 자료는 공개 자료만 담는다. Spring은 revision 고정 export를 제공하고 `ai` 테이블을 읽거나 쓰지 않는다. FastAPI runtime 계정은 승인된 DML/SELECT만, migration 계정은 DDL만 수행한다. 장소 식별자는 경계를 구분한다. `ai.documents.place_id`는 revocation/FK에 쓰는 내부 corpus UUID이고, `ai.documents.source_id`는 Spring 계약에 돌려주는 공개 장소 ID다(현재 KTO 수집기는 이를 Spring의 canonical place ID로 채운다). 둘은 같은 의미의 키가 아니며 조인·필터 코드에서 혼용하지 않는다. 최종 공개 자격은 Spring이 다시 판정한다.
 
 DBML은 기존 저장소의 `ai_*` 논리 테이블명을 사용하지만 실행 migration의 물리 namespace는 `ai`로 고정한다. 구현 시 DBML 이름과 물리 `ai.*` 매핑을 migration 문서에 명시하고 같은 이름의 `public` 테이블을 새로 만들지 않는다. Spring 업무 migration과 FastAPI AI migration의 실행 순서·권한도 분리한다.
 
@@ -19,6 +19,7 @@ DBML은 기존 저장소의 `ai_*` 논리 테이블명을 사용하지만 실행
 | `ai_source_revocations` | `(source_type,source_id,source_revision)` PK, `last_sequence`, `revoked_at` | 특정 출처 개정만 차단. 새로 검수된 개정은 별도 자격 확인 후 적재 가능 |
 | `ai_place_revocations` | `place_id` PK, `last_sequence`, `revoked_at` | 장소 전체가 비공개면 모든 출처 revision 차단 |
 | `ai_corpus_sync_runs` | `run_id` PK, `revision_id`, `manifest_hash`, `state`, 단계별 건수/오류 코드, `started_at`,`finished_at` | 수집·파싱·임베딩·색인 실패 분리 |
+| `ai.reviewed_facts` | `fact_id` PK, `revision_id`, `chunk_id`, 공개 `place_id`, exact `start_offset/end_offset`, `fact_text`, kind/support/time/relation, `review_status`, reviewer/audit metadata | 사람 검수된 사실만 생성 입력으로 허용. 원문 검색 결과를 이 테이블로 자동 승격하지 않으며, public place ID는 `documents.source_id`와 일치해야 함 |
 
 실행 DDL의 필수 `CHECK`는 active pointer singleton=1, 문서/청크/임베딩 건수≥0, 청크 `ordinal≥0`·`0≤start_offset<end_offset`, 빈 본문 금지, revision state allowlist, 철회 scope별 필수 대상 필드다. `end_offset≤문서 길이`는 교차 행 검사이므로 수집 검증에서 강제하고 필요하면 trigger로 보강한다. 임베딩은 `vector(384)` 타입과 유한값/정규화 검증을 migration·적재 양쪽에서 확인한다. DBML이 표현하지 못하는 `CHECK`, `GIN gin_trgm_ops`, extension, 부분 인덱스, 권한은 migration에서 검증한다. `ai_chunks`의 문서 소속과 `ai_embeddings`의 청크 소속은 `(revision_id, id)` 복합 FK로 강제한다.
 

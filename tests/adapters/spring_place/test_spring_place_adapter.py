@@ -11,6 +11,7 @@ import pytest
 
 from onmaru_ai.adapters.spring_place import (
     PlaceLookupDisposition,
+    PlaceLookupResponse,
     SpringPlaceQueryAdapter,
 )
 from onmaru_ai.contracts import ApprovedQueryPlan
@@ -42,6 +43,11 @@ def response_for(plan: ApprovedQueryPlan) -> dict[str, Any]:
         "sourceRevocationSequence": plan.versions.source_revocation_sequence,
         "places": [projection],
     }
+
+
+def test_missing_status_with_empty_places_is_normalized_to_no_match() -> None:
+    result = PlaceLookupResponse.model_validate({"places": []})
+    assert result.status == "NO_MATCH"
 
 
 def adapter(

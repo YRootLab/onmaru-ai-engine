@@ -2,8 +2,9 @@
 """Ingest active KTO catalog places + TourAPI detail overviews directly from PostgreSQL
 into the AI schema (`ai.corpus_revisions`, `ai.documents`, `ai.chunks`, `ai.embeddings`).
 
-Uses Gemini `gemini-embedding-001` (384-D, L2-normalized) by default when an API key is
-available, or `--hash-only` for deterministic local dry-runs.
+Uses Gemini `gemini-embedding-001` (384-D, L2-normalized) for corpus ingestion. A missing
+API key is an error. `--hash-only` is reserved for local dry-runs and cannot stage or activate
+a corpus revision.
 """
 
 from __future__ import annotations
@@ -19,13 +20,9 @@ import psycopg
 from psycopg.rows import dict_row
 
 from onmaru_ai.corpus.batch_ingest import IngestItem, build_corpus_bundle
+from onmaru_ai.corpus.embedding_selection import select_embedding_backend
 from onmaru_ai.embedding import (
-    E5_SMALL_384,
-    GEMINI_EMBEDDING_384,
-    DeterministicHashBackend,
-    EmbeddingBackend,
     EmbeddingService,
-    GeminiEmbeddingBackend,
 )
 from onmaru_ai.storage.postgres import PostgresCorpusStore
 
@@ -92,35 +89,6 @@ def resolve_region_code(explicit_code: str, address: str) -> str:
     return "KR-11"
 
 
-class _RetryingBackend:
-    def __init__(self, inner: EmbeddingBackend, max_retries: int = 5) -> None:
-        self._inner = inner
-        self._max_retries = max_retries
-        self.model_id = inner.model_id
-        self.model_commit = inner.model_commit
-        self.dimensions = inner.dimensions
-
-    def encode(self, texts: tuple[str, ...]) -> tuple[tuple[float, ...], ...]:
-        delay = 1.0
-        for attempt in range(1, self._max_retries + 1):
-            try:
-                encoded = self._inner.encode(texts)
-                return tuple(tuple(float(v) for v in vec) for vec in encoded)
-            except Exception as exc:
-                if attempt == self._max_retries:
-                    raise
-                logger.warning(
-                    "Embedding batch attempt %d/%d failed (%s); retrying in %.1fs...",
-                    attempt,
-                    self._max_retries,
-                    type(exc).__name__,
-                    delay,
-                )
-                time.sleep(delay)
-                delay = min(delay * 2.0, 20.0)
-        raise RuntimeError("unreachable")
-
-
 def fetch_catalog_items(dsn: str, *, limit: int | None = None) -> list[IngestItem]:
     query = _CATALOG_QUERY if limit is None else f"{_CATALOG_QUERY}\nLIMIT {int(limit)}"
     items: list[IngestItem] = []
@@ -162,14 +130,7 @@ def fetch_catalog_items(dsn: str, *, limit: int | None = None) -> list[IngestIte
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Ingest production KTO catalog into ai schema.")
-    parser.add_argument("--dsn", default=None, help="PostgreSQL DSN with ai write privileges.")
-    parser.add_argument(
-        "--catalog-dsn",
-        default=None,
-        help="Optional separate PostgreSQL DSN for reading onmaru catalog tables.",
-    )
     parser.add_argument("--revision-id", default=None, help="Corpus revision ID.")
-    parser.add_argument("--gemini-api-key", default=None, help="Gemini API key.")
     parser.add_argument(
         "--hash-only",
         action="store_true",
@@ -177,15 +138,14 @@ def main() -> int:
     )
     parser.add_argument("--limit", type=int, default=None, help="Optional max rows to read.")
     parser.add_argument("--batch-size", type=int, default=100, help="Embedding batch size (<=100).")
-    parser.add_argument("--activate", action="store_true", help="Activate revision after staging.")
     parser.add_argument("--dry-run", action="store_true", help="Skip Postgres write.")
     args = parser.parse_args()
 
-    dsn = args.dsn or os.environ.get("ONMARU_AI_DB_DSN") or os.environ.get("ONMARU_DB_URL")
+    dsn = os.environ.get("ONMARU_AI_DB_DSN") or os.environ.get("ONMARU_DB_URL")
     if not dsn:
-        logger.error("No PostgreSQL DSN provided. Set --dsn, ONMARU_AI_DB_DSN, or ONMARU_DB_URL.")
+        logger.error("No PostgreSQL DSN provided. Set ONMARU_AI_DB_DSN or ONMARU_DB_URL.")
         return 1
-    catalog_dsn = args.catalog_dsn or dsn
+    catalog_dsn = os.environ.get("ONMARU_AI_CATALOG_READ_DSN") or dsn
 
     batch_size = max(1, min(100, args.batch_size))
     revision_id = args.revision_id or f"rev-{datetime.now(UTC).strftime('%Y%m%d%H%M%S')}"
@@ -198,22 +158,20 @@ def main() -> int:
         return 0
 
     api_key = (
-        args.gemini_api_key
-        or os.environ.get("ONMARU_SECRET_GEMINI_API_KEY_CURRENT")
+        os.environ.get("ONMARU_SECRET_GEMINI_API_KEY_CURRENT")
         or os.environ.get("GEMINI_API_KEY")
         or ""
     ).strip()
 
-    if args.hash_only or not api_key:
-        if not args.hash_only and not api_key:
-            logger.warning("No Gemini API key found; falling back to DeterministicHashBackend.")
-        backend: EmbeddingBackend = DeterministicHashBackend()
-        profile = E5_SMALL_384
-    else:
-        backend = _RetryingBackend(
-            GeminiEmbeddingBackend(api_key, task_type="RETRIEVAL_DOCUMENT", timeout_seconds=30.0)
+    try:
+        backend, profile = select_embedding_backend(
+            api_key=api_key,
+            hash_only=args.hash_only,
+            dry_run=args.dry_run,
         )
-        profile = GEMINI_EMBEDDING_384
+    except ValueError as exc:
+        logger.error("%s", exc)
+        return 2
 
     logger.info(
         "Building corpus bundle revision=%s profile=%s batch_size=%d...",
@@ -254,34 +212,6 @@ def main() -> int:
     logger.info("Staging revision %s into ai schema...", revision_id)
     staged = store.stage(revision, docs, chunks, embeddings)
     logger.info("Stage complete (inserted=%s, manifest_hash=%s).", staged, revision.manifest_hash)
-
-    if args.activate:
-        with psycopg.connect(dsn, row_factory=dict_row) as conn:
-            active_row = conn.execute(
-                "SELECT revision_id FROM ai.active_corpus WHERE id=1"
-            ).fetchone()
-            rev_seq_row = conn.execute(
-                "SELECT sequence FROM ai.revocation_state WHERE id=1"
-            ).fetchone()
-        expected_active = (
-            str(active_row["revision_id"])
-            if active_row and active_row["revision_id"]
-            else None
-        )
-        expected_seq = int(rev_seq_row["sequence"]) if rev_seq_row else 0
-        logger.info(
-            "Activating %s (expected_active=%s, expected_revocation_sequence=%d)...",
-            revision_id,
-            expected_active,
-            expected_seq,
-        )
-        store.activate(
-            revision.revision_id,
-            manifest_hash=revision.manifest_hash,
-            expected_active=expected_active,
-            expected_revocation_sequence=expected_seq,
-        )
-        logger.info("Activated corpus revision %s!", revision_id)
 
     return 0
 

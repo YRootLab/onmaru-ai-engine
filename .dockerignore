@@ -8,3 +8,9 @@ tests
 evals
 docs
 scripts
+!scripts/
+scripts/*
+!scripts/ingest_catalog_from_postgres.py
+!scripts/ingest_to_postgres.py
+!scripts/load_reviewed_facts.py
+!scripts/activate_corpus_revision.py

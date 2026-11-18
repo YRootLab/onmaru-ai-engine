@@ -7,6 +7,7 @@ import time
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
+from uuid import UUID
 
 from onmaru_ai.contracts.models import (
     ApprovedQueryPlan,
@@ -148,7 +149,21 @@ class HybridRetrievalCoordinator:
         if mode in ("LEXICAL_ONLY", "HYBRID"):
             try:
                 if self._lexical_searcher is not None:
-                    lexical_set = self._lexical_searcher.search(plan, snapshot)
+                    from onmaru_ai.retrieval.lexical import LexicalRequest
+                    filters = plan.approved_filters
+                    region_codes = None if filters.region_codes is None else tuple(
+                        _corpus_region(code) for code in filters.region_codes
+                    )
+                    lexical_filters = filters.model_copy(update={"region_codes": region_codes})
+                    lexical_set = self._lexical_searcher.search(
+                        LexicalRequest.model_validate({
+                            "runId": plan.run_id, "planHash": plan.approved_plan_hash,
+                            "versions": plan.versions,
+                            "query": plan.semantic_query or " ",
+                            "filters": lexical_filters,
+                            "indexVersion": "ko-bm25-v1",
+                        }), snapshot
+                    )
             except Exception as e:
                 logger.warning("Lexical search error: %s", e)
                 lexical_error = True
@@ -156,7 +171,7 @@ class HybridRetrievalCoordinator:
         if mode in ("DENSE_ONLY", "HYBRID"):
             try:
                 if self._dense_searcher is not None:
-                    dense_set = self._dense_searcher.search(plan, snapshot)
+                    dense_set = self._dense_candidates(plan, snapshot)
             except Exception as e:
                 logger.warning("Dense search error: %s", e)
                 dense_error = True
@@ -167,12 +182,12 @@ class HybridRetrievalCoordinator:
         if mode == "LEXICAL_ONLY":
             if lexical_error or lexical_set is None:
                 return self._build_empty_set(plan, "LEXICAL", "FAILED", elapsed_ms)
-            return lexical_set
+            return self._filtered(lexical_set, plan, snapshot, "LEXICAL")
 
         if mode == "DENSE_ONLY":
             if dense_error or dense_set is None:
                 return self._build_empty_set(plan, "DENSE", "FAILED", elapsed_ms)
-            return dense_set
+            return self._filtered(dense_set, plan, snapshot, "DENSE")
 
         # Hybrid route branch
         if lexical_error and dense_error:
@@ -182,17 +197,29 @@ class HybridRetrievalCoordinator:
             # Degraded, dense candidates only
             assert dense_set is not None
             return self._convert_to_fusion(
-                dense_set, "DEGRADED", elapsed_ms, limit=STAGE_LIMIT_HYBRID
+                self._filtered(dense_set, plan, snapshot, "DENSE"),
+                "DEGRADED",
+                elapsed_ms,
+                limit=STAGE_LIMIT_HYBRID,
             )
 
         if dense_error:
             # Degraded, lexical candidates only
             assert lexical_set is not None
             return self._convert_to_fusion(
-                lexical_set, "DEGRADED", elapsed_ms, limit=STAGE_LIMIT_HYBRID
+                self._filtered(lexical_set, plan, snapshot, "LEXICAL"),
+                "DEGRADED",
+                elapsed_ms,
+                limit=STAGE_LIMIT_HYBRID,
             )
 
         # Both succeeded: run RRF
+        lexical_candidates = self._post_filter(
+            lexical_set.candidates if lexical_set else (), plan, snapshot
+        )
+        dense_candidates = self._post_filter(
+            dense_set.candidates if dense_set else (), plan, snapshot
+        )
         lex_items = [
             {
                 "chunk_id": str(c.chunk_id),
@@ -202,8 +229,7 @@ class HybridRetrievalCoordinator:
                 "rank": c.rank,
                 "score": c.score,
             }
-            for c in (lexical_set.candidates if lexical_set else ())
-            if self._passes_hard_filters(c, snapshot)
+            for c in lexical_candidates
         ]
         dense_items = [
             {
@@ -214,8 +240,7 @@ class HybridRetrievalCoordinator:
                 "rank": c.rank,
                 "score": c.score,
             }
-            for c in (dense_set.candidates if dense_set else ())
-            if self._passes_hard_filters(c, snapshot)
+            for c in dense_candidates
         ]
 
         fused = rrf_combine(
@@ -250,15 +275,105 @@ class HybridRetrievalCoordinator:
             }
         )
 
-    def _passes_hard_filters(self, candidate: Candidate, snapshot: CorpusSnapshot) -> bool:
-        # Filter revoked places or sources
-        if str(candidate.place_id) in {str(p) for p in snapshot.revoked_places}:
-            return False
-        for _rev_type, rev_id, rev_rev in snapshot.revoked_sources:
-            if candidate.source_id == rev_id and candidate.source_revision == rev_rev:
-                return False
-        return True
+    def _approved(self, candidate: Candidate, plan: ApprovedQueryPlan) -> bool:
+        f = plan.approved_filters
+        place = str(candidate.place_id)
+        return (
+            (f.place_ids is None or place in f.place_ids)
+            and place not in f.excluded_place_ids
+        )
 
+    def _post_filter(
+        self, candidates: Sequence[Candidate], plan: ApprovedQueryPlan, snapshot: CorpusSnapshot
+    ) -> tuple[Candidate, ...]:
+        connection = getattr(snapshot, "connection", None)
+        corpus_places: dict[str, UUID] = {}
+        if connection is not None and candidates:
+            try:
+                chunk_ids = [UUID(candidate.chunk_id) for candidate in candidates]
+                rows = connection.execute(
+                    """SELECT c.chunk_id, d.place_id FROM ai.chunks c
+                         JOIN ai.documents d USING (revision_id, document_id)
+                        WHERE c.revision_id=%s AND c.chunk_id=ANY(%s)
+                          AND d.eligibility_status='PUBLIC'
+                          AND NOT EXISTS (
+                              SELECT 1 FROM ai.place_revocations pr
+                              WHERE pr.place_id=d.place_id
+                          )
+                          AND NOT EXISTS (
+                              SELECT 1 FROM ai.source_revocations sr WHERE
+                              (sr.source_type,sr.source_id,sr.source_revision)=
+                              (d.source_type,d.source_id,d.source_revision)
+                          )""",
+                    (snapshot.versions.corpus_revision, chunk_ids),
+                ).fetchall()
+                corpus_places = {str(row["chunk_id"]): UUID(str(row["place_id"])) for row in rows}
+            except Exception:
+                return ()
+        revoked_sources = {
+            (source_id, revision)
+            for _, source_id, revision in snapshot.revoked_sources
+        }
+        revoked_place_ids = {str(place_id) for place_id in snapshot.revoked_places}
+        return tuple(
+            candidate
+            for candidate in candidates
+            if self._approved(candidate, plan)
+            and (
+                (connection is None and str(candidate.place_id) not in revoked_place_ids)
+                or (
+                    connection is not None
+                    and candidate.chunk_id in corpus_places
+                    and corpus_places[candidate.chunk_id] not in snapshot.revoked_places
+                )
+            )
+            and (candidate.source_id, candidate.source_revision) not in revoked_sources
+        )
+
+    def _filtered(self, result: CandidateSet, plan: ApprovedQueryPlan,
+                  snapshot: CorpusSnapshot, stage: str) -> CandidateSet:
+        candidates = self._post_filter(result.candidates, plan, snapshot)
+        return CandidateSet.model_validate({
+            "schemaVersion": "ai-candidate-set.v1", "runId": plan.run_id,
+            "planHash": plan.approved_plan_hash, "versions": plan.versions,
+            "stage": stage, "candidates": candidates,
+            "retrievalStatus": "COMPLETE" if candidates else "NO_EVIDENCE",
+            "latencyMs": result.latency_ms,
+        })
+
+    def _dense_candidates(
+        self, plan: ApprovedQueryPlan, snapshot: CorpusSnapshot
+    ) -> CandidateSet:
+        assert self._dense_searcher is not None
+        from onmaru_ai.retrieval.vector import VectorSearchFilters
+        filters = plan.approved_filters
+        region_codes = None if filters.region_codes is None else frozenset(
+            _corpus_region(code) for code in filters.region_codes
+        )
+        vector_filters = VectorSearchFilters(
+            place_ids=None if filters.place_ids is None else frozenset(filters.place_ids),
+            region_codes=region_codes,
+            category_codes=(
+                None if filters.category_codes is None else frozenset(filters.category_codes)
+            ),
+            excluded_place_ids=frozenset(filters.excluded_place_ids),
+        )
+        rows = self._dense_searcher.search(
+            snapshot, plan.semantic_query or " ", filters=vector_filters, limit=STAGE_LIMIT_SINGLE
+        )
+        if isinstance(rows, CandidateSet):
+            return rows
+        candidates = tuple(Candidate.model_validate({
+            "chunkId": str(row.chunk_id), "placeId": str(row.place_id),
+            "sourceId": row.source_id, "sourceRevision": row.source_revision,
+            "rank": row.rank, "score": row.score, "exclusionReason": None,
+        }) for row in rows)
+        return CandidateSet.model_validate({
+            "schemaVersion": "ai-candidate-set.v1", "runId": plan.run_id,
+            "planHash": plan.approved_plan_hash, "versions": plan.versions,
+            "stage": "DENSE", "candidates": candidates,
+            "retrievalStatus": "COMPLETE" if candidates else "NO_EVIDENCE", "latencyMs": 0,
+        })
     def _convert_to_fusion(
         self,
         base_set: CandidateSet,
@@ -312,3 +427,8 @@ class HybridRetrievalCoordinator:
                 "latencyMs": elapsed_ms,
             }
         )
+
+
+def _corpus_region(code: str) -> str:
+    normalized = code.strip().lower()
+    return normalized[:5] if len(normalized) > 5 and normalized.startswith("kr-") else normalized

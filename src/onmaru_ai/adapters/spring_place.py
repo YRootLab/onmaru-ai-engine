@@ -77,6 +77,8 @@ class PlaceLookupResponse(ClosedModel):
             data = dict(data)
             if "schemaVersion" not in data and "catalogVersion" in data:
                 data["schemaVersion"] = data.pop("catalogVersion")
+            if "status" not in data and "places" in data:
+                data["status"] = "NO_MATCH" if not data["places"] else "OK"
         return data
 
     @model_validator(mode="after")

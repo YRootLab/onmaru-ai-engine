@@ -87,6 +87,8 @@ def create_app(
     corpus_index: CorpusIndexService | None = None,
     environ: Mapping[str, str] | None = None,
     plan_execute_service: PlanExecuteService | None = None,
+    plan_execute_corpus_store: Any | None = None,
+    plan_execute_catalog: tuple[Any, ...] | None = None,
     http_client: httpx.AsyncClient | None = None,
 ) -> FastAPI:
     provider = secret_provider or provider_from_environment()
@@ -146,6 +148,8 @@ def create_app(
                 secret_provider=provider,
                 http_client=client,
                 environ=environ,
+                corpus_store=plan_execute_corpus_store,
+                catalog=plan_execute_catalog,
             )
         except ValueError:
             # Invalid origin configured; fail closed on /ready
@@ -223,13 +227,6 @@ def create_app(
                 content={"status": "not_ready", "reason": "invalid_spring_base_url"},
             )
 
-        # Check PlanExecuteService wired
-        if plan_execute_service is None:
-            return JSONResponse(
-                status_code=503,
-                content={"status": "not_ready", "reason": "plan_execute_service_unwired"},
-            )
-
         if _rag_feature_enabled(environ) and (
             rag_activation_log is None
             or not rag_activation_log.durable
@@ -238,6 +235,13 @@ def create_app(
             return JSONResponse(
                 status_code=503,
                 content={"status": "not_ready", "reason": "rag_runtime_unwired"},
+            )
+
+        # Check PlanExecuteService wired after feature-specific readiness checks.
+        if plan_execute_service is None:
+            return JSONResponse(
+                status_code=503,
+                content={"status": "not_ready", "reason": "plan_execute_service_unwired"},
             )
 
         # Check HTTP client ready

@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import asyncio
 import re
+from collections import OrderedDict
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 from typing import Literal
 
@@ -58,6 +59,7 @@ class TransportContext:
     trace_id: str
     deadline: datetime
     progress_token: str | None = None
+    operation: str | None = None
 
 
 def transport_context(request: Request, run_id: str, now: datetime) -> TransportContext:
@@ -117,7 +119,15 @@ class PlanExecuteService:
         self.verify_grant = verify_grant
         self.now = now
         self.capacity = capacity
-        self._plans: dict[str, PlanBinding | None] = {}
+        self._plans: OrderedDict[str, PlanBinding | None] = OrderedDict()
+        self._plan_deadlines: dict[str, datetime] = {}
+
+    def _prune_plans(self) -> None:
+        now = self.now()
+        expired = [run_id for run_id, deadline in self._plan_deadlines.items() if deadline <= now]
+        for run_id in expired:
+            self._plans.pop(run_id, None)
+            self._plan_deadlines.pop(run_id, None)
 
     def remaining(self, deadline: datetime) -> float:
         remaining = (deadline - self.now()).total_seconds()
@@ -126,6 +136,7 @@ class PlanExecuteService:
         return remaining
 
     async def plan(self, body: SafeQueryRequest, context: TransportContext) -> PlanProposal:
+        self._prune_plans()
         if body.run_id in self._plans:
             raise BoundaryError("RUN_ALREADY_PLANNED")
         if len(self._plans) >= self.capacity:
@@ -134,16 +145,27 @@ class PlanExecuteService:
             raise ContractViolation("VERSION_MISMATCH")
         # Reserve before awaiting; duplicate/concurrent requests cannot replan this run.
         self._plans[body.run_id] = None
-        async with asyncio.timeout(self.remaining(context.deadline)):
-            proposal = await self.planner(body)
-        proposal = PlanProposal.model_validate(proposal.model_dump(by_alias=True))
-        self.remaining(context.deadline)
-        validate_plan(body, proposal, current_versions=self.current_versions())
+        self._plans.move_to_end(body.run_id)
+        self._plan_deadlines[body.run_id] = context.deadline
+        try:
+            async with asyncio.timeout(self.remaining(context.deadline)):
+                proposal = await self.planner(body)
+            proposal = PlanProposal.model_validate(proposal.model_dump(by_alias=True))
+            self.remaining(context.deadline)
+            validate_plan(body, proposal, current_versions=self.current_versions())
+        except BaseException:
+            # A failed or cancelled plan never became executable; free its reservation
+            # instead of consuming capacity until the original request deadline.
+            if self._plans.get(body.run_id) is None:
+                self._plans.pop(body.run_id, None)
+                self._plan_deadlines.pop(body.run_id, None)
+            raise
         self._plans[body.run_id] = PlanBinding.from_plan(
             proposal,
             context.trace_id,
             context.deadline,
         )
+        self._plans.move_to_end(body.run_id)
         return proposal
 
     async def execute(
@@ -151,6 +173,7 @@ class PlanExecuteService:
         body: ApprovedQueryPlan,
         context: TransportContext,
     ) -> ExecutionResult:
+        self._prune_plans()
         binding = self._plans.get(body.run_id)
         if binding is None:
             code = "RUN_ALREADY_EXECUTED" if body.run_id in self._plans else "PLAN_NOT_FOUND"
@@ -175,9 +198,11 @@ class PlanExecuteService:
         remaining = self.remaining(deadline)
         # No await between validation and consumption. Failure/timeout never reopens the run.
         self._plans[body.run_id] = None
+        self._plans.move_to_end(body.run_id)
+        execution_context = replace(context, operation=binding.operation)
         async with asyncio.timeout(remaining):
             try:
-                result = await self.executor(body, context)  # type: ignore[call-arg]
+                result = await self.executor(body, execution_context)  # type: ignore[call-arg]
             except TypeError:
                 result = await self.executor(body)  # type: ignore[call-arg]
         self.remaining(deadline)

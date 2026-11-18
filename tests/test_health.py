@@ -20,11 +20,13 @@ def test_health_reports_process_is_alive() -> None:
     assert response.json() == {"status": "ok"}
 
 
-def test_readiness_reports_service_can_accept_requests() -> None:
+def test_readiness_fails_closed_without_the_active_corpus() -> None:
     response = asyncio.run(request("/ready"))
 
-    assert response.status_code == 200
-    assert response.json() == {"status": "ready"}
+    assert response.status_code == 503
+    assert response.json() == {
+        "status": "not_ready", "reason": "plan_execute_service_unwired"
+    }
 
 
 def test_readiness_fails_when_required_secret_missing() -> None:
