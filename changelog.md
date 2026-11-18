@@ -2,6 +2,10 @@
 
 Lightweight human-readable summary of meaningful repository changes. Newest dates go first.
 
+## 2026-11-18
+
+- Added fail-closed Gemini corpus staging, confirmation-gated corpus activation, and a read-only-by-default reviewed-fact loader with transactional apply. Documented staging operations; no staging/production database or feature flag was changed.
+
 ## 2026-11-17
 
 - Published the canary role-boundary diagnosis as paired Markdown/standalone HTML with the 2026-10-21 target-pipeline briefing in PR #83; organized AI-RAG docs by topic and repaired local links. Documentation only; no runtime code changed.

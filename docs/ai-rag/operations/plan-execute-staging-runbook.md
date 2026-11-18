@@ -128,7 +128,7 @@ Gemini API 비용·지연 또는 데이터 정책 때문에 E5를 유지하기�
 
 ## 남은 blocker
 
-- 구현은 [AI Engine PR #84](https://github.com/YRootLab/onmaru-ai-engine/pull/84)에 공유되어 있고 CI는 통과했다. PR은 현재 draft/open 상태이며 review와 merge가 남았다.
+- 구현과 안전한 corpus/fact 준비 도구는 [AI Engine PR #84](https://github.com/YRootLab/onmaru-ai-engine/pull/84)에 공유되어 있다. PR CI 통과 후 review와 develop merge가 남았다.
 - production active corpus inventory와 embedding profile을 재확인해야 한다. 저장소 handoff에 남은 E5 정보는 이전 inventory 기록이다.
 - JSONL parser/loader와 별도 corpus activator는 구현됐지만, 실제 curated fact set·reviewer 승인·감사 절차는 BE/content owner가 준비해야 한다.
 - PostgreSQL migration은 여기서 실행하지 않았다. runtime role grant도 실제 role명을 모르는 상태에서 적용하지 않았다.

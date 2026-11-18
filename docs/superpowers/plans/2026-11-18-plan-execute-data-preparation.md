@@ -91,4 +91,4 @@
 - [x] Document Gemini-key requirement, hash-only restrictions, dry-run/apply commands, one-off write-role grants, and verification queries.
 - [x] Focused tests: 31 passed, 1 skipped; disposable local Postgres migration/import/rollback: 1 passed.
 - [x] `uv run pytest -q`: 1096 passed, 43 skipped; Ruff passed; mypy passed (170 source files); Docker build and bundled CLI checks passed; `git diff --check` passed.
-- [ ] Record actual results and push the follow-up commit to the existing PR branch.
+- [x] Record actual results and push the follow-up commit to the existing PR branch (`ebc2efb`).
