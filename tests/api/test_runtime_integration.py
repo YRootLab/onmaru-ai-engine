@@ -32,7 +32,7 @@ async def test_runtime_integration_flow_with_spring_mock() -> None:
     run_id = "45e6a7f5-31bc-469d-9e30-6f510a1dc497"
     trace_id = "1" * 32
     tp = f"00-{trace_id}-{'2'*16}-01"
-    grant_id = "grant-opaque-identifier-1234567890"
+    grant_id = "qg_" + "A" * 43
     progress_token = "run-progress-capability-token-value"
 
     received_callbacks: list[dict[str, Any]] = []

@@ -2,13 +2,21 @@
 
 from __future__ import annotations
 
+import json
+from datetime import UTC, datetime
+from pathlib import Path
+
 import httpx
 import pytest
 from fastapi.testclient import TestClient
 
 from onmaru_ai.api.plan_execute import PlanExecuteService
-from onmaru_ai.composition import create_production_plan_execute_service
+from onmaru_ai.composition import (
+    bind_spring_grant_reference,
+    create_production_plan_execute_service,
+)
 from onmaru_ai.config.secrets import FakeSecretProvider
+from onmaru_ai.contracts.models import ApprovedQueryPlan
 from onmaru_ai.main import create_app
 from onmaru_ai.rag import InMemoryRagActivationLog
 
@@ -222,3 +230,21 @@ def test_create_app_registers_screen_hanok_route_only_when_enabled() -> None:
 
     assert "/internal/v1/screen-hanok/research" not in disabled_paths
     assert "/internal/v1/screen-hanok/research" in enabled_paths
+
+
+def test_spring_grant_binding_requires_opaque_reference_shape_and_approved_plan() -> None:
+    fixture = (
+        Path(__file__).parent.parent
+        / "contracts/fixtures/accepted-approved-sql_plus_retrieval.json"
+    )
+    plan_payload = json.loads(fixture.read_text(encoding="utf-8"))["payload"]
+    plan = ApprovedQueryPlan.model_validate(plan_payload)
+    now = datetime.now(UTC)
+
+    bound = bind_spring_grant_reference("qg_" + "A" * 43, plan, now)
+
+    assert bound is not None
+    assert bound.run_id == plan.run_id
+    assert bound.plan_hash == plan.approved_plan_hash
+    assert bind_spring_grant_reference("not-a-spring-grant", plan, now) is None
+    assert bind_spring_grant_reference("qg_" + "A" * 43, None, now) is None

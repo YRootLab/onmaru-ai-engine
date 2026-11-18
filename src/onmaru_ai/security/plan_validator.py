@@ -71,10 +71,11 @@ def validate_execution(
 
 @dataclass(frozen=True)
 class QueryGrant:
-    """Trusted verifier result, never populated from execute JSON.
+    """Local approved-plan binding for Spring's opaque lookup reference.
 
-    The verifier resolves Spring's opaque reference. Spring remains responsible
-    for authorization, grant consumption, and lookup idempotency.
+    This value is never populated from execute JSON directly. It is not proof
+    of Spring issuance: Spring authorizes, scopes, and consumes the reference
+    when the AI calls its lookup endpoint.
     """
 
     grant_id: str

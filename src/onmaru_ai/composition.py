@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from collections.abc import Callable, Mapping
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -61,6 +62,32 @@ DEFAULT_CATALOG_ENTRIES: tuple[CatalogEntry, ...] = (
     CatalogEntry(code="kr-48", kind="REGION", display_label="경남", synonyms=("경상남도",)),
     CatalogEntry(code="kr-50", kind="REGION", display_label="제주", synonyms=("제주도",)),
 )
+
+_SPRING_GRANT_REFERENCE = re.compile(r"qg_[A-Za-z0-9_-]{43}")
+
+
+def bind_spring_grant_reference(
+    grant_id: str,
+    plan: ApprovedQueryPlan | None,
+    now: datetime,
+) -> QueryGrant | None:
+    """Bind the opaque reference to the approved plan; Spring verifies issuance/use.
+
+    AI Engine has no signing key or grant-store access. This local envelope only
+    prevents cross-run/plan substitution; Spring's lookup endpoint authenticates,
+    scopes, and consumes the reference against its persisted grant.
+    """
+    if plan is None or _SPRING_GRANT_REFERENCE.fullmatch(grant_id) is None:
+        return None
+    return QueryGrant(
+        grant_id=grant_id,
+        run_id=plan.run_id,
+        plan_hash=plan.approved_plan_hash,
+        filter_hash=plan.approved_filters.filter_hash,
+        versions=plan.versions,
+        issued_at=now - timedelta(seconds=1),
+        expires_at=now + timedelta(seconds=29),
+    )
 
 
 def is_valid_http_origin(url: str) -> bool:
@@ -369,37 +396,15 @@ def create_production_plan_execute_service(
             }
         )
 
-    def verify_grant_func(
-        grant_id: str,
-        plan: ApprovedQueryPlan | None = None,
+    def bind_grant_reference(
+        grant_id: str, plan: ApprovedQueryPlan | None = None
     ) -> QueryGrant | None:
-        now = datetime.now(UTC)
-        if not grant_id or len(grant_id) < 16 or len(grant_id) > 128:
-            return None
-        if plan is not None:
-            return QueryGrant(
-                grant_id=grant_id,
-                run_id=plan.run_id,
-                plan_hash=plan.approved_plan_hash,
-                filter_hash=plan.approved_filters.filter_hash,
-                versions=plan.versions,
-                issued_at=now - timedelta(seconds=1),
-                expires_at=now + timedelta(seconds=29),
-            )
-        return QueryGrant(
-            grant_id=grant_id,
-            run_id="",
-            plan_hash="",
-            filter_hash="",
-            versions=current_versions_factory(),
-            issued_at=now - timedelta(seconds=1),
-            expires_at=now + timedelta(seconds=29),
-        )
+        return bind_spring_grant_reference(grant_id, plan, datetime.now(UTC))
 
     service = PlanExecuteService(
         planner=planner_func,
         executor=executor_func,
         current_versions=current_versions_factory,
-        verify_grant=verify_grant_func,
+        verify_grant=bind_grant_reference,
     )
     return service

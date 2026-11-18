@@ -39,16 +39,19 @@ deadlines use 504, and unavailable dependencies or capacity use 503. W0
 `ContractViolation` codes are preserved.
 
 `PlanExecuteService` accepts an asynchronous local planner and executor, a
-synchronous current-version snapshot callback, and a trusted synchronous grant
-resolver. These callbacks must not block the event loop; async executor/provider
-implementations must honor cancellation. The resolver accepts only the opaque
-reference and returns `QueryGrant` metadata or `None`; it must return `None` for
-unknown, revoked, expired, or unauthorized references. Request JSON cannot supply
-this metadata. The boundary additionally checks grant identity, run, exact plan
-and filter hashes, versions, issue/expiry instants, and maximum 30-second lifetime.
-The plan hash includes canonical fields, route/mode, filters, and limits. Spring
-still owns grant issuance, fixed lookup operation authorization, consumption,
-receipts, and idempotency; W9 implements the lookup transport.
+synchronous current-version snapshot callback, and a synchronous grant-binding
+callback. These callbacks must not block the event loop; async executor/provider
+implementations must honor cancellation. The default composition checks the opaque
+Spring reference format and binds it to the approved run/plan; it cannot prove the
+reference was issued because the AI Engine has no grant-store access or Spring
+signing key. Spring remains the authority: its lookup endpoint authenticates the
+caller, resolves the random reference against its persisted grant, checks scope and
+expiry, and consumes it once. Unknown or forged references are rejected by Spring
+and returned as `GRANT_REJECTED`. Request JSON cannot supply local binding metadata.
+The boundary additionally checks grant identity, run, exact plan and filter hashes,
+versions, issue/expiry instants, and maximum 30-second lifetime. The plan hash
+includes canonical fields, route/mode, filters, and limits. Spring also owns lookup
+receipts and idempotency; W9 implements the lookup transport.
 
 A plan is validated before its metadata is retained. Only the semantic query
 SHA-256 digest is stored; safeQuery and semanticQuery text are never cached or
