@@ -46,7 +46,9 @@ jobs:
         run: docker build --tag onmaru-ai-engine:${{ github.sha }} .
 
   publish:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    if: >-
+      (github.event_name == 'push' && github.ref == 'refs/heads/master') ||
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/develop')
     needs: verify
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -78,6 +80,13 @@ jobs:
           no-cache-filters: runner
           cache-from: type=gha,scope=ai-engine
           cache-to: type=gha,mode=max,scope=ai-engine
+      - name: Report immutable image reference
+        env:
+          IMAGE_DIGEST: ${{ steps.image.outputs.digest }}
+          SOURCE_SHA: ${{ github.sha }}
+        run: |
+          echo "Published image: $IMAGE@$IMAGE_DIGEST" >> "$GITHUB_STEP_SUMMARY"
+          echo "Source commit: $SOURCE_SHA" >> "$GITHUB_STEP_SUMMARY"
       - name: Scan published image
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
