@@ -113,6 +113,42 @@ def test_prompt_excludes_query_and_document_commands_and_limits_output_schema() 
     assert set(schema["properties"]) == {"places", "summaryClaims"}
 
 
+def test_response_json_schema_strips_gemini_unsupported_keywords_while_post_validation_holds() -> (
+    None
+):
+    _, transport = execute(fixture("valid-output"))
+    schema = transport.requests[0].body["generationConfig"]["responseJsonSchema"]
+    forbidden = {
+        "pattern",
+        "minLength",
+        "maxLength",
+        "minItems",
+        "maxItems",
+        "uniqueItems",
+        "title",
+        "description",
+    }
+
+    def walk(node: object) -> None:
+        if isinstance(node, dict):
+            assert forbidden.isdisjoint(node.keys())
+            for value in node.values():
+                walk(value)
+        elif isinstance(node, list):
+            for item in node:
+                walk(item)
+
+    walk(schema)
+    assert schema["$defs"]["ProposedPlace"]["additionalProperties"] is False
+    assert schema["$defs"]["ProposedClaim"]["additionalProperties"] is False
+
+    bad_id_output = fixture("valid-output")
+    bad_id_output["places"][0]["reasonClaims"][0]["claimId"] = "bad claim id with spaces"
+    result, _ = execute(bad_id_output)
+    assert result.fallback == "INVALID_OUTPUT"
+    assert result.proposal.generation_status == "REJECTED"
+
+
 @pytest.mark.parametrize(
     "status,error,expected",
     [

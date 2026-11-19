@@ -135,8 +135,14 @@ def default_verify_grant(
 class ProductionEvidenceGenerator:
     """Gemini generator adapter using exact corpus spans; facts remain registry-gated."""
 
-    def __init__(self, provider: EvidenceGenerator) -> None:
+    def __init__(
+        self,
+        provider: EvidenceGenerator,
+        *,
+        timeout_seconds: float = 12.0,
+    ) -> None:
         self._provider = provider
+        self._timeout_seconds = timeout_seconds
 
     async def generate(
         self,
@@ -224,7 +230,7 @@ class ProductionEvidenceGenerator:
             "documents": documents,
             "verifiedFacts": verified_facts,
         })
-        result = await self._provider.generate(data, timeout_seconds=2.5)
+        result = await self._provider.generate(data, timeout_seconds=self._timeout_seconds)
         return result.proposal
 
 
@@ -316,11 +322,11 @@ def create_production_plan_execute_service(
     generation_provider = EvidenceGenerator(GeminiAdapter(
         GeminiConfig(
             model_alias="plan-execute-grounded",
-            model_name=source_env.get("ONMARU_GEMINI_MODEL_NAME", "gemini-2.5-flash"),
+            model_name=source_env.get("ONMARU_GEMINI_MODEL_NAME") or "gemini-3.5-flash-lite",
             max_output_tokens=4096,
             pricing=GeminiPricing(input_micros_per_million=0, output_micros_per_million=0),
         ),
-        HttpxGeminiTransport(),
+        HttpxGeminiTransport(http_client),
         api_key=gemini_key,
         telemetry_sink=create_telemetry_sink(),
     ))
