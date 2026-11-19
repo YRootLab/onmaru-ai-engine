@@ -156,6 +156,45 @@ async def test_composition_root_wires_retrieval_components() -> None:
         await client.aclose()
 
 
+def test_production_evidence_generator_uses_shared_client_and_12s_timeout() -> None:
+    from onmaru_ai.composition import ProductionEvidenceGenerator
+    from onmaru_ai.generation import EvidenceGenerator
+
+    provider = FakeSecretProvider()
+    client = httpx.AsyncClient()
+    captured: dict[str, object] = {}
+
+    original_init = ProductionEvidenceGenerator.__init__
+
+    def spy_init(
+        self: ProductionEvidenceGenerator,
+        gen: EvidenceGenerator,
+        *,
+        timeout_seconds: float = 12.0,
+    ) -> None:
+        original_init(self, gen, timeout_seconds=timeout_seconds)
+        captured["timeout_seconds"] = self._timeout_seconds
+        captured["generator"] = gen
+
+    try:
+        with pytest.MonkeyPatch.context() as mp:
+            mp.setattr(ProductionEvidenceGenerator, "__init__", spy_init)
+            create_production_plan_execute_service(
+                secret_provider=provider,
+                http_client=client,
+                environ={"ONMARU_SPRING_BASE_URL": "http://127.0.0.1:8080"},
+                corpus_store=object(),
+            )
+        assert captured["timeout_seconds"] == 12.0
+        adapter = captured["generator"]._provider  # type: ignore[attr-defined]
+        assert adapter._config.model_name == "gemini-3.5-flash-lite"
+        assert adapter._transport._client is client
+    finally:
+        import asyncio
+
+        asyncio.run(client.aclose())
+
+
 def _ready_service() -> PlanExecuteService:
     async def planner(_request: object) -> object:
         raise AssertionError("readiness does not plan")
