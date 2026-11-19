@@ -171,7 +171,7 @@ def create_app(
         rag_activation_log=rag_activation_log,
         rag_retriever=rag_retriever,
         rag_feature_enabled=_rag_feature_enabled(environ),
-        journey_llm=_journey_llm(provider, environ),
+        journey_llm=_journey_llm(provider, environ, http_client=client),
     )
     install_plan_execute(app, provider, plan_execute_service)
     install_corpus_rest(
@@ -190,14 +190,14 @@ def create_app(
         gemini_config = GeminiConfig(
             model_alias="screen-hanok-research",
             model_name=(os.environ if environ is None else environ).get(
-                "ONMARU_GEMINI_MODEL_NAME", "gemini-2.5-flash"
-            ),
+                "ONMARU_GEMINI_MODEL_NAME"
+            ) or "gemini-3.5-flash-lite",
             max_output_tokens=4096,
             pricing=GeminiPricing(input_micros_per_million=0, output_micros_per_million=0),
         )
         gemini_adapter = GeminiAdapter(
             gemini_config,
-            HttpxGeminiTransport(),
+            HttpxGeminiTransport(client),
             api_key=gemini_secret.current,
             telemetry_sink=telemetry_sink or create_telemetry_sink(),
         )
@@ -256,7 +256,11 @@ def create_app(
     return app
 
 
-def _journey_llm(secret_provider: SecretProvider, environ: Mapping[str, str] | None) -> Any:
+def _journey_llm(
+    secret_provider: SecretProvider,
+    environ: Mapping[str, str] | None,
+    http_client: httpx.AsyncClient | None = None,
+) -> Any:
     if not _journey_gemini_enabled(environ):
         return None
     from onmaru_ai.journey_llm import JourneyLlmService
@@ -265,15 +269,15 @@ def _journey_llm(secret_provider: SecretProvider, environ: Mapping[str, str] | N
     config = GeminiConfig(
         model_alias="journey-planner",
         model_name=(os.environ if environ is None else environ).get(
-            "ONMARU_GEMINI_MODEL_NAME", "gemini-2.5-flash"
-        ),
+            "ONMARU_GEMINI_MODEL_NAME"
+        ) or "gemini-3.5-flash-lite",
         max_output_tokens=2048,
         pricing=GeminiPricing(input_micros_per_million=0, output_micros_per_million=0),
     )
     return JourneyLlmService(
         GeminiAdapter(
             config,
-            HttpxGeminiTransport(),
+            HttpxGeminiTransport(http_client),
             api_key=gemini_secret.current,
             telemetry_sink=create_telemetry_sink(),
         )
