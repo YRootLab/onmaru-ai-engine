@@ -6,6 +6,12 @@ Current follow-up (BE canary role-boundary correction, 2026-11-17):
 - Remaining implementation work is outside this documentation PR: BE should track removal of Spring's arbitrary top-12 shortlist for general recommendations while preserving explicit targets and authority bounds. AI plan/execute production corpus wiring remains tracked by [#76](https://github.com/YRootLab/onmaru-ai-engine/issues/76); this PR does not close it.
 - No runtime code or production configuration changed. Keep the 2026-10-21 briefing available as a temporary target-pipeline reference; the user plans to remove it in a later cleanup.
 
+Current follow-up (Plan/Execute staging image publication, 2026-11-19):
+- Issue [#89](https://github.com/YRootLab/onmaru-ai-engine/issues/89); PR [#90](https://github.com/YRootLab/onmaru-ai-engine/pull/90), branch `feature/89-staging-image-publish`.
+- Adds a manual `workflow_dispatch` GHCR publish path restricted to `develop`; automatic publication remains `master` push only. The summary records the image digest and source commit; the existing Trivy gate remains.
+- CI `verify` passed on PR #90 (`44467328218`); publication was correctly skipped for the PR event. Workflow YAML parse and `git diff --check` passed.
+- Next: complete required review/merge, dispatch the workflow on `develop`, and give BE the digest only after publish and image scan succeed. BE owns Lightsail deployment/secrets; no Gemini key, AWS, DB, migration, corpus, or feature-flag operation was performed. The key shown in chat must be rotated before use.
+
 Current follow-up (Plan/Execute staging readiness, 2026-11-18):
 - Related issue: [#76](https://github.com/YRootLab/onmaru-ai-engine/issues/76) remains open for staging/production validation.
 - Merged PRs: AI Engine [#84](https://github.com/YRootLab/onmaru-ai-engine/pull/84), merge commit `b517891`; BE [#862](https://github.com/YRootLab/OnMaru-backend/pull/862), merge commit `ccefb5c`.
