@@ -155,7 +155,11 @@ def iter_catalog_jsonl(path: Path) -> Iterator[IngestItem]:
             if not line.strip():
                 continue
             try:
-                yield IngestItem(**json.loads(line))
+                record = json.loads(line)
+                if isinstance(record, dict) and "public_id" in record:
+                    yield _item_from_row(record)
+                else:
+                    yield IngestItem(**record)
             except (TypeError, ValueError, json.JSONDecodeError) as error:
                 raise ValueError(f"invalid catalog JSONL at line {line_number}") from error
 

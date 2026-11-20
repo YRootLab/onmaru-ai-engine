@@ -91,3 +91,20 @@ def test_catalog_jsonl_reports_invalid_line(tmp_path) -> None:
     source.write_text("not-json\n", encoding="utf-8")
     with pytest.raises(ValueError, match="line 1"):
         tuple(iter_catalog_jsonl(source))
+
+
+def test_catalog_jsonl_maps_database_export_row(tmp_path) -> None:
+    source = tmp_path / "catalog-raw.jsonl"
+    source.write_text(
+        '{"public_id":"p-tourapi-1","name":"한옥","category":"HANOK",'
+        '"address":"경기도 수원시","region_code":"KR-DATALAB-41110",'
+        '"version_overview":"원천 설명","detail_overview":"상세 설명",'
+        '"source_revision":"source-rev"}\n',
+        encoding="utf-8",
+    )
+    item = next(iter_catalog_jsonl(source))
+    assert item.place_id == "p-tourapi-1"
+    assert item.region_code == "KR-41"
+    assert "상세 설명" in item.body
+    assert "원천 설명" in item.body
+    assert item.source_revision == "source-rev"
