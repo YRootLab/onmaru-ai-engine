@@ -14,7 +14,8 @@ def dsn(monkeypatch: pytest.MonkeyPatch) -> str:
     value = os.environ.get("ONMARU_TEST_POSTGRES_DSN")
     if not value:
         pytest.skip(
-            "set ONMARU_TEST_POSTGRES_DSN to a disposable PostgreSQL 17 + pgvector database"
+            "set ONMARU_TEST_POSTGRES_DSN to a disposable PostgreSQL 17 + pgvector + "
+            "pg_search 0.27.0 database; this fixture drops the ai schema"
         )
     return value
 
