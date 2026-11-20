@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from onmaru_ai.corpus import embedding_selection
@@ -59,7 +61,7 @@ def test_hash_mode_is_local_only_and_dry_run_only() -> None:
         select_embedding_backend(model_dir="", hash_only=True, dry_run=False)
 
 
-def test_failure_manifest_records_and_clears_only_retried_places(tmp_path) -> None:
+def test_failure_manifest_records_and_clears_only_retried_places(tmp_path: Path) -> None:
     manifest = tmp_path / "failed.jsonl"
     _record_failure(manifest, "place-1", RuntimeError("transient"))
     _record_failure(manifest, "place-2", ValueError("bad input"))
@@ -73,7 +75,7 @@ def test_failure_manifest_records_and_clears_only_retried_places(tmp_path) -> No
     assert not manifest.exists()
 
 
-def test_catalog_jsonl_round_trips_ingest_items(tmp_path) -> None:
+def test_catalog_jsonl_round_trips_ingest_items(tmp_path: Path) -> None:
     source = tmp_path / "catalog.jsonl"
     source.write_text(
         '{"place_id":"p-1","title":"한옥","body":"한옥 장소",'
@@ -86,14 +88,14 @@ def test_catalog_jsonl_round_trips_ingest_items(tmp_path) -> None:
     assert items[0].source_revision == "rev-0"
 
 
-def test_catalog_jsonl_reports_invalid_line(tmp_path) -> None:
+def test_catalog_jsonl_reports_invalid_line(tmp_path: Path) -> None:
     source = tmp_path / "invalid.jsonl"
     source.write_text("not-json\n", encoding="utf-8")
     with pytest.raises(ValueError, match="line 1"):
         tuple(iter_catalog_jsonl(source))
 
 
-def test_catalog_jsonl_maps_database_export_row(tmp_path) -> None:
+def test_catalog_jsonl_maps_database_export_row(tmp_path: Path) -> None:
     source = tmp_path / "catalog-raw.jsonl"
     source.write_text(
         '{"public_id":"p-tourapi-1","name":"한옥","category":"HANOK",'

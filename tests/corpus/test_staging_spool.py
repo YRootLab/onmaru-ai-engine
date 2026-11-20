@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from pathlib import Path
 from uuid import UUID
 
 from onmaru_ai.corpus.staging_spool import CorpusStagingSpool
@@ -50,7 +51,7 @@ def _bundle(
     return revision, (document,), (chunk,), (embedding,)
 
 
-def test_staging_spool_persists_place_checkpoint_and_original_timestamp(tmp_path) -> None:
+def test_staging_spool_persists_place_checkpoint_and_original_timestamp(tmp_path: Path) -> None:
     revision, documents, chunks, embeddings = _bundle()
     path = tmp_path / "stage.sqlite"
     expected_timestamp = datetime(2026, 11, 20, 0, 0, tzinfo=UTC)

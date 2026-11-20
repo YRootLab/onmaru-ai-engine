@@ -311,6 +311,9 @@ def main() -> int:
             logger.info("Spool-only mode enabled; PostgreSQL staging skipped.")
             return 0
 
+        if dsn is None:
+            logger.error("No PostgreSQL DSN provided for staging.")
+            return 1
         store = PostgresCorpusStore(dsn)
         logger.info("Streaming staged revision %s into ai schema...", revision_id)
         staged = store.stage_spool(spool)

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from hashlib import sha256
+from pathlib import Path
 
 import pytest
 
@@ -13,12 +14,12 @@ def _digest(value: bytes) -> str:
     return sha256(value).hexdigest()
 
 
-def test_onnx_backend_rejects_incomplete_artifact(tmp_path) -> None:
+def test_onnx_backend_rejects_incomplete_artifact(tmp_path: Path) -> None:
     with pytest.raises(EmbeddingError, match="E5_ONNX_ARTIFACT_INCOMPLETE"):
         OnnxE5EmbeddingBackend(tmp_path)
 
 
-def test_onnx_backend_rejects_artifact_for_different_profile(tmp_path) -> None:
+def test_onnx_backend_rejects_artifact_for_different_profile(tmp_path: Path) -> None:
     model = b"onnx model placeholder"
     tokenizer = b"tokenizer placeholder"
     tokenizer_json = b"{}"

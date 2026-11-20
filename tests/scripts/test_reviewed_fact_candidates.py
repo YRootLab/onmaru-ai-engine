@@ -37,7 +37,7 @@ class Connection:
 
 
 def test_review_candidate_export_uses_exact_active_source_spans() -> None:
-    candidates = list(iter_candidate_rows(Connection(), "rev-active"))  # type: ignore[arg-type]
+    candidates = list(iter_candidate_rows(Connection(), "rev-active"))
     assert [item["candidateText"] for item in candidates] == [
         "한옥은 1930년에 지어졌다.",
         "주변에 마당이 있다.",
@@ -45,5 +45,7 @@ def test_review_candidate_export_uses_exact_active_source_spans() -> None:
     for item in candidates:
         start, end = item["startOffset"], item["endOffset"]
         assert item["reviewStatus"] == "NEEDS_HUMAN_REVIEW"
+        assert isinstance(item["candidateId"], str)
         assert item["candidateId"].startswith("fc-")
+        assert isinstance(start, int) and isinstance(end, int)
         assert end > start
