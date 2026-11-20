@@ -4,7 +4,8 @@
 Usage:
     python scripts/ingest_to_postgres.py --input <places.json>
 
-Database and Gemini credentials are read only from the process environment.
+Database credentials and the local E5 ONNX artifact location are read only from the process
+environment.
 """
 
 from __future__ import annotations
@@ -127,14 +128,10 @@ def main() -> int:
     revision_id = args.revision_id or f"rev-{datetime.now(UTC).strftime('%Y%m%d%H%M%S')}"
     logger.info("Building corpus bundle for revision: %s", revision_id)
 
-    api_key = (
-        os.environ.get("ONMARU_SECRET_GEMINI_API_KEY_CURRENT")
-        or os.environ.get("GEMINI_API_KEY")
-        or ""
-    ).strip()
+    model_dir = os.environ.get("ONMARU_E5_ONNX_DIR", "").strip()
     try:
         embedding_backend, profile = select_embedding_backend(
-            api_key=api_key, hash_only=args.hash_only, dry_run=args.dry_run
+            model_dir=model_dir, hash_only=args.hash_only, dry_run=args.dry_run
         )
     except ValueError as exc:
         logger.error("%s", exc)

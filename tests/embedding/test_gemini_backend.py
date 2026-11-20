@@ -12,6 +12,7 @@ from onmaru_ai.embedding import (
     EmbeddingService,
     GeminiEmbeddingBackend,
 )
+from onmaru_ai.providers.gemini.models import GeminiFailureCode, GeminiProviderError
 
 
 def test_gemini_embedding_backend_normalizes_and_batches() -> None:
@@ -38,6 +39,7 @@ def test_gemini_embedding_backend_normalizes_and_batches() -> None:
     assert len(captured) == 1
     assert captured[0]["requests"][0]["outputDimensionality"] == 384  # type: ignore[index]
     assert captured[0]["requests"][0]["taskType"] == "RETRIEVAL_DOCUMENT"  # type: ignore[index]
+    assert transport is not None
     for vec in vecs:
         assert len(vec) == 384
         assert abs(math.sqrt(sum(v * v for v in vec)) - 1.0) < 1e-6
@@ -60,3 +62,19 @@ def test_gemini_embedding_backend_validation_errors() -> None:
     backend_dim = GeminiEmbeddingBackend("k", transport=httpx.MockTransport(bad_dim))
     with pytest.raises(EmbeddingError, match="GEMINI_EMBEDDING_DIM_MISMATCH"):
         backend_dim.encode(("hello",))
+
+
+def test_gemini_embedding_quota_error_is_typed_and_uses_api_key_header() -> None:
+    observed: list[httpx.Request] = []
+
+    def quota(request: httpx.Request) -> httpx.Response:
+        observed.append(request)
+        return httpx.Response(429, headers={"Retry-After": "17"}, json={"error": {}})
+
+    backend = GeminiEmbeddingBackend("private-key", transport=httpx.MockTransport(quota))
+    with pytest.raises(GeminiProviderError) as captured:
+        backend.encode(("query",))
+    assert captured.value.code is GeminiFailureCode.AI_QUOTA_EXCEEDED
+    assert captured.value.retry_after == 17
+    assert observed[0].headers["x-goog-api-key"] == "private-key"
+    assert "key=" not in str(observed[0].url)

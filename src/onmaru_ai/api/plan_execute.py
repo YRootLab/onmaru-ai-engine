@@ -27,6 +27,7 @@ from onmaru_ai.contracts import (
     validate_plan,
 )
 from onmaru_ai.contracts.models import ClosedModel, RunArtifact
+from onmaru_ai.providers.gemini.models import GeminiFailureCode, GeminiProviderError
 from onmaru_ai.security.internal_auth import validate_internal_token
 from onmaru_ai.security.plan_validator import (
     PlanBinding,
@@ -258,6 +259,15 @@ def install_plan_execute(
             return error_response(error.code, 409)
         except BoundaryError as error:
             return error_response(error.code, error.status)
+        except GeminiProviderError as error:
+            if error.code is GeminiFailureCode.AI_QUOTA_EXCEEDED:
+                headers = (
+                    {}
+                    if error.retry_after is None
+                    else {"Retry-After": str(error.retry_after)}
+                )
+                return error_response("AI_QUOTA_EXCEEDED", 429, headers=headers)
+            return error_response(error.code.value, 503)
         except (ValidationError, ValueError):
             return error_response("INVALID_PAYLOAD", 422)
         except TimeoutError:
@@ -274,9 +284,12 @@ def install_plan_execute(
         return await dispatch(request, "execute")
 
 
-def error_response(code: str, status: int) -> JSONResponse:
+def error_response(
+    code: str, status: int, *, headers: dict[str, str] | None = None
+) -> JSONResponse:
+    response_headers = {"Cache-Control": "no-store", **(headers or {})}
     return JSONResponse(
         status_code=status,
         content=ErrorResponse(code=code).model_dump(by_alias=True),
-        headers={"Cache-Control": "no-store"},
+        headers=response_headers,
     )

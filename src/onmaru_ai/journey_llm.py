@@ -70,7 +70,9 @@ class JourneyLlmService:
                 response_schema=RESPONSE_SCHEMA,
                 timeout_seconds=20.0,
             )
-        except GeminiProviderError:
+        except GeminiProviderError as error:
+            if error.code is GeminiFailureCode.AI_QUOTA_EXCEEDED:
+                raise
             return None
         return self._filter_proposal(result.proposal, candidate_refs)
 

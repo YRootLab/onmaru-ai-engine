@@ -244,6 +244,30 @@ def test_maps_provider_failures_to_typed_codes(transport: Any, expected: GeminiF
     assert captured.value.code is expected
 
 
+def test_quota_error_preserves_bounded_retry_after_from_provider() -> None:
+    transport = FakeTransport(
+        GeminiTransportResponse(
+            status_code=429,
+            body={"error": {"message": "quota"}},
+            headers={"Retry-After": "31"},
+        )
+    )
+    adapter = GeminiAdapter(
+        config(), transport, api_key="secret", telemetry_sink=InMemoryTelemetrySink()
+    )
+    with pytest.raises(GeminiProviderError) as captured:
+        run_generate(adapter)
+    assert captured.value.code is GeminiFailureCode.AI_QUOTA_EXCEEDED
+    assert captured.value.retry_after == 31
+
+
+@pytest.mark.parametrize("value", ["0", "3601", "tomorrow", "1.5"])
+def test_quota_error_ignores_invalid_retry_after(value: str) -> None:
+    from onmaru_ai.providers.gemini.models import retry_after_seconds
+
+    assert retry_after_seconds({"retry-after": value}) is None
+
+
 def test_cancellation_stops_in_flight_transport() -> None:
     async def scenario() -> tuple[GeminiFailureCode, bool]:
         transport = BlockingTransport()

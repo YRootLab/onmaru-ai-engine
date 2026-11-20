@@ -11,16 +11,28 @@ dependencies = [
     "certifi>=2026.10.19",
     "fastapi>=0.116,<1.0",
     "httpx>=0.28,<1.0",
+    "numpy>=2.0,<3.0",
+    "onnxruntime>=1.20,<1.23",
     "opentelemetry-api>=1.37,<2.0",
     "opentelemetry-exporter-otlp-proto-http>=1.37,<2.0",
     "opentelemetry-sdk>=1.37,<2.0",
     "psycopg[binary]>=3.2,<4.0",
     "pydantic>=2.11,<3.0",
+    "sentencepiece>=0.2,<0.3; sys_platform == 'linux'",
+    "tokenizers>=0.20,<1.0",
     "uvicorn[standard]>=0.35,<1.0",
 ]
 
 [tool.uv]
 constraint-dependencies = ["urllib3>=2.8.0,<3"]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[tool.uv.sources]
+torch = [{ index = "pytorch-cpu", marker = "sys_platform == 'linux'" }]
 
 [dependency-groups]
 dev = [
@@ -30,6 +42,12 @@ dev = [
     "pytest-xdist>=3.8,<4.0",
     "ruff>=0.12,<1.0",
     "types-jsonschema>=4.25,<5.0",
+]
+embedding-export = [
+    "onnx>=1.17,<2.0",
+    "optimum-onnx[onnxruntime]>=0.1,<1.0",
+    "torch>=2.6,<3.0; sys_platform == 'linux'",
+    "transformers>=4.46,<5.0",
 ]
 
 [tool.hatch.build.targets.wheel]

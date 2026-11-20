@@ -31,7 +31,8 @@ planner and executor through `create_production_plan_execute_service`; set
 | `ONMARU_RAG_ENABLED` | `false` | 레거시 `/internal/v1/journey/proposals`의 `useRag` 경로만 제어합니다. Plan/Execute의 feature flag와 별개입니다. |
 | `ONMARU_JOURNEY_GEMINI_ENABLED` | `false` | 레거시 제안 경로와 `/stream`에서만 Gemini를 호출합니다. plan/execute의 근거·제안 생성에는 관여하지 않습니다. |
 | `ONMARU_GEMINI_MODEL_NAME` | `gemini-2.5-flash` | 위 Gemini 호출의 모델 이름입니다. |
-| `ONMARU_SECRET_GEMINI_API_KEY_CURRENT` | 시작 시 필수 | 플래그와 무관하게 시작 시 검증됩니다. |
+| `ONMARU_SECRET_GEMINI_API_KEY_CURRENT` | 시작 시 필수 | 답변 생성 등에 사용합니다. Corpus/query 임베딩에는 사용하지 않습니다. |
+| `ONMARU_E5_ONNX_DIR` | DB retrieval/Plan/Execute 시 필수 | pinned E5-small dynamic-int8 ONNX artifact 디렉터리. 런타임 다운로드는 하지 않습니다. |
 | `ONMARU_SPRING_BASE_URL` | 미설정 시 `http://staging-api:8080` | 운영에서는 Spring 내부 origin을 명시하세요. 미설정이어도 `/ready`는 통과합니다. |
 
 staging Compose 파일은 이 저장소에 없습니다. 백엔드 저장소의 Lightsail Compose가 소유합니다. 그 파일에서 RAG를 `false`로 고정한 경우, 값만 `true`로 바꾸면 위 표에 따라 효과가 없습니다.
@@ -40,10 +41,10 @@ staging Compose 파일은 이 저장소에 없습니다. 백엔드 저장소의 
 
 1. 이 조건은 legacy `ONMARU_RAG_ENABLED` 경로에만 해당합니다. Plan/Execute는 별도 구조와 staging gate를 사용합니다.
 2. Plan/Execute retrieval 및 생성 조건은 [staging runbook](docs/ai-rag/operations/plan-execute-staging-runbook.md)을 따릅니다.
-3. Corpus revision은 Gemini profile로 stage·검증하고, 검증한 뒤 별도 activator로 활성화해야 합니다.
+3. Corpus revision은 로컬 E5 ONNX profile로 stage·검증하고, 검증한 뒤 별도 activator로 활성화해야 합니다. Gemini는 검수된 근거를 이용한 답변 생성에만 사용합니다.
 4. 평가 보고서(`RagActivationPolicy.evaluate`)가 전체 통과하고, 기준선 대비 `retrievalRecallAt5`·`ndcgAt3`·`claimSupport` 중 하나 이상이 양의 개선을 보이며, 지연·비용이 악화되지 않아야 `enabled` 기록이 남습니다.
 5. 요청은 `useRag=true`만 보내면 됩니다. 활성 corpus revision은 AI 서버가 선택하고, 실제 사용한 `corpusRevisionId`를 응답에 반환합니다. 요청의 기존 `corpusRevisionId`는 호환을 위해 받을 수 있지만 선택에는 사용하지 않습니다.
-6. Plan/Execute query embedding은 `gemini-embedding-001-384@v1`이며 active revision profile과 일치해야 합니다. 두 corpus ingestion CLI는 Gemini key가 없으면 실패합니다. `--hash-only --dry-run`은 local-only profile이며 staging corpus를 만들지 않습니다.
+6. Plan/Execute query embedding과 passage embedding은 `multilingual-e5-small-384-onnx-int8@614241f622f5`로 일치해야 합니다. Ingestion에는 `ONMARU_E5_ONNX_DIR` artifact가 필요하고 Gemini API key는 embedding에 쓰지 않습니다. `--hash-only --dry-run`은 local-only profile이며 staging corpus를 만들지 않습니다.
 
 ### Gemini 근거 생성을 켜기 전에
 
