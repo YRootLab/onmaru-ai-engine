@@ -149,6 +149,17 @@ def fetch_catalog_items(dsn: str, *, limit: int | None = None) -> list[IngestIte
     return items
 
 
+def iter_catalog_jsonl(path: Path) -> Iterator[IngestItem]:
+    with path.open(encoding="utf-8") as source:
+        for line_number, line in enumerate(source, start=1):
+            if not line.strip():
+                continue
+            try:
+                yield IngestItem(**json.loads(line))
+            except (TypeError, ValueError, json.JSONDecodeError) as error:
+                raise ValueError(f"invalid catalog JSONL at line {line_number}") from error
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Ingest production KTO catalog into ai schema.")
     parser.add_argument("--revision-id", default=None, help="Corpus revision ID.")
@@ -158,6 +169,17 @@ def main() -> int:
         help="Use deterministic hash backend instead of Gemini semantic embeddings.",
     )
     parser.add_argument("--limit", type=int, default=None, help="Optional max rows to read.")
+    parser.add_argument(
+        "--input-jsonl",
+        type=Path,
+        default=None,
+        help="Use a catalog JSONL snapshot instead of a database read.",
+    )
+    parser.add_argument(
+        "--spool-only",
+        action="store_true",
+        help="Generate local embeddings and spool without PostgreSQL access.",
+    )
     parser.add_argument("--batch-size", type=int, default=16, help="Embedding batch size (<=100).")
     parser.add_argument("--spool-path", type=Path, default=None, help="Disk-backed resume spool.")
     parser.add_argument(
@@ -173,10 +195,15 @@ def main() -> int:
     args = parser.parse_args()
 
     dsn = os.environ.get("ONMARU_AI_DB_DSN") or os.environ.get("ONMARU_DB_URL")
-    if not dsn:
+    if not args.spool_only and not args.dry_run and not dsn:
         logger.error("No PostgreSQL DSN provided. Set ONMARU_AI_DB_DSN or ONMARU_DB_URL.")
         return 1
-    catalog_dsn = os.environ.get("ONMARU_AI_CATALOG_READ_DSN") or dsn
+    catalog_dsn = os.environ.get("ONMARU_AI_CATALOG_READ_DSN")
+    if args.input_jsonl is None:
+        catalog_dsn = catalog_dsn or dsn
+        if not catalog_dsn:
+            logger.error("Set ONMARU_AI_CATALOG_READ_DSN or pass --input-jsonl.")
+            return 1
 
     batch_size = max(1, min(100, args.batch_size))
     revision_id = args.revision_id or f"rev-{datetime.now(UTC).strftime('%Y%m%d%H%M%S')}"
@@ -219,7 +246,12 @@ def main() -> int:
             batch_size,
             spool.counts()[0],
         )
-        for item in iter_catalog_items(catalog_dsn, limit=args.limit):
+        source_items = (
+            iter_catalog_jsonl(args.input_jsonl)
+            if args.input_jsonl is not None
+            else iter_catalog_items(str(catalog_dsn), limit=args.limit)
+        )
+        for item in source_items:
             processed += 1
             spool.bind_catalog_revision(item.source_revision)
             if spool.has_place(item.place_id):
@@ -271,8 +303,8 @@ def main() -> int:
             chunks_count,
             embeddings_count,
         )
-        if args.dry_run:
-            logger.info("Dry run enabled; disk spool created but Postgres staging skipped.")
+        if args.dry_run or args.spool_only:
+            logger.info("Spool-only mode enabled; PostgreSQL staging skipped.")
             return 0
 
         store = PostgresCorpusStore(dsn)

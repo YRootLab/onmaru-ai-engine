@@ -36,6 +36,41 @@ Artifact export는 CI/Docker image build에서 pinned E5 commit으로 실행된�
 
 KTO catalog corpus는 활성화와 분리해 먼저 적재한다. `AI_CORPUS_WRITE_DSN`은 one-off AI migration/corpus-writer role, `CATALOG_READ_DSN`은 공개 catalog read role의 접속 문자열로 운영자 환경에서 구성한다. 둘 다 Compose runtime env에 저장하지 않는다.
 
+로컬 워크스테이션에서 임베딩하고 Lightsail DB가 Compose 내부에서만 접근 가능하면 catalog 원문 JSONL과 SQLite spool을 양방향으로 전달한다. 먼저 최신 승인 image에서 read-only export를 실행하고, 파일을 안전한 전송 경로로 로컬에 복사한다:
+
+```bash
+mkdir -p "$CORPUS_TRANSFER_DIR"
+docker compose --profile ai-engine run --rm \\
+  -e ONMARU_AI_CATALOG_READ_DSN \\
+  -v "$CORPUS_TRANSFER_DIR:/transfer" "$AI_ENGINE_SERVICE" \\
+  python scripts/export_catalog_jsonl.py --limit 10000 \\
+    --output /transfer/catalog-10000.jsonl
+scp "$LIGHTSAIL_HOST:$CORPUS_TRANSFER_DIR/catalog-10000.jsonl" ./catalog-10000.jsonl
+```
+
+로컬에서 pinned ONNX artifact로만 임베딩하고 PostgreSQL에 접속하지 않고 spool을 만든다. 실패 manifest가 남으면 같은 revision과 spool로 `--resume`을 실행한다:
+
+```bash
+ONMARU_E5_ONNX_DIR=/path/to/onmaru-e5-onnx-int8 \\
+  uv run python scripts/ingest_catalog_from_postgres.py \\
+    --input-jsonl ./catalog-10000.jsonl --spool-only \\
+    --revision-id "$PILOT_REVISION" --batch-size 16 \\
+    --spool-path "./$PILOT_REVISION.sqlite"
+```
+
+실패 manifest가 비어 있고 spool의 문서·청크·임베딩 수와 manifest를 확인한 다음 SQLite 파일을 Lightsail로 복사한다. Lightsail에서 AI corpus writer DSN을 one-off 환경변수로 전달하고, 먼저 read-only 검사 후 `--apply`로 적재한다:
+
+```bash
+scp "./$PILOT_REVISION.sqlite" "$LIGHTSAIL_HOST:$CORPUS_TRANSFER_DIR/"
+docker compose --profile ai-engine run --rm \\
+  -e ONMARU_AI_DB_DSN \\
+  -v "$CORPUS_TRANSFER_DIR:/transfer:ro" "$AI_ENGINE_SERVICE" \\
+  python scripts/stage_corpus_spool.py --revision-id "$PILOT_REVISION" \\
+    --spool-path "/transfer/$PILOT_REVISION.sqlite"
+```
+
+위 dry-run 출력의 profile, 건수, manifest hash를 기록한다. 같은 명령에 `--apply`를 추가하면 새 revision을 DB에 적재한다. 이 절차는 활성 corpus pointer를 변경하지 않으며 활성화는 별도 게이트다.
+
 ```bash
 # `AI_ENGINE_SERVICE=staging-ai-engine` in staging, `ai-engine` in production.
 docker volume create onmaru-ai-corpus-stage

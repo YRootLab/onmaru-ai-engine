@@ -13,6 +13,7 @@ from scripts.ingest_catalog_from_postgres import (
     _failure_count,
     _record_failure,
     _remove_failure,
+    iter_catalog_jsonl,
     resolve_region_code,
 )
 
@@ -70,3 +71,23 @@ def test_failure_manifest_records_and_clears_only_retried_places(tmp_path) -> No
 
     _remove_failure(manifest, "place-2")
     assert not manifest.exists()
+
+
+def test_catalog_jsonl_round_trips_ingest_items(tmp_path) -> None:
+    source = tmp_path / "catalog.jsonl"
+    source.write_text(
+        '{"place_id":"p-1","title":"한옥","body":"한옥 장소",'
+        '"region_code":"KR-11","category_code":"HANOK"}\n',
+        encoding="utf-8",
+    )
+    items = tuple(iter_catalog_jsonl(source))
+    assert len(items) == 1
+    assert items[0].place_id == "p-1"
+    assert items[0].source_revision == "rev-0"
+
+
+def test_catalog_jsonl_reports_invalid_line(tmp_path) -> None:
+    source = tmp_path / "invalid.jsonl"
+    source.write_text("not-json\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="line 1"):
+        tuple(iter_catalog_jsonl(source))
