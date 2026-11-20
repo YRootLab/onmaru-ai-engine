@@ -95,3 +95,4 @@ class GenerationResult:
     proposal: ValidatedProposal
     fallback: GenerationFallback | None
     held_claim_count: int = 0
+    retry_after: int | None = None

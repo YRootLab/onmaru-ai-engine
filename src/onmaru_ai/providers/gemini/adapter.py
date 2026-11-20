@@ -19,6 +19,7 @@ from onmaru_ai.providers.gemini.models import (
     GeminiTransportResponse,
     GeminiUsage,
     GroundingChunk,
+    retry_after_seconds,
 )
 from onmaru_ai.providers.gemini.transport import GeminiTransport
 
@@ -277,7 +278,10 @@ class GeminiAdapter:
 
     def _parse(self, response: GeminiTransportResponse, usage: GeminiUsage | None) -> GeminiResult:
         if response.status_code == 429:
-            raise GeminiProviderError(GeminiFailureCode.AI_QUOTA_EXCEEDED)
+            raise GeminiProviderError(
+                GeminiFailureCode.AI_QUOTA_EXCEEDED,
+                retry_after=retry_after_seconds(response.headers),
+            )
         if response.status_code in {408, 504}:
             raise GeminiProviderError(GeminiFailureCode.AI_TIMEOUT)
         if response.status_code >= 500 or response.status_code in {401, 403}:

@@ -2,6 +2,16 @@
 
 > 상태: AI Engine PR #84가 `develop`에 병합됐다. 아래 절차는 staging/운영 handoff이며, PostgreSQL migration, corpus 재색인, fact 적재 또는 feature flag 변경을 이미 수행했다는 뜻은 아니다.
 
+## 첫 오픈 범위와 차단 조건 (2026-11-20)
+
+- **E5 임베딩:** Gemini는 근거 기반 답변 생성에만 사용한다. pinned local E5 ONNX query/passage가 같은 프로필을 사용한다. Corpus는 새 revision으로만 적재하고, 스풀 파일과 resume 옵션으로 중단 후 재개한다.
+- **BM25:** PostgreSQL 17의 pg_search 0.27.0과 pdb.ngram(2,3) BM25 인덱스가 필수다. migration 004_pg_search_bm25.sql 적용 및 실제 한옥 쿼리/EXPLAIN 확인 전에는 lexical/hybrid route를 활성화하지 않는다.
+- **Reranker:** 첫 오픈은 Hybrid+RRF 후 기존 passthrough 순위를 사용한다. Cross-Encoder는 512MB RSS와 15초 제한에서 품질·지연 평가를 마친 뒤 별도 출시로 미룬다.
+- **Reviewed facts와 heartbeat:** 사람이 승인한 fact가 활성 revision에 1건 이상 있어야 하고 revocation heartbeat가 60초 이내여야 한다. 자동 문장 추출은 검토 대기 후보만 만든다. AI Engine은 source-of-truth heartbeat를 자체 갱신하지 않는다.
+- **Gemini quota:** AI Engine은 provider의 429를 HTTP 429와 AI_QUOTA_EXCEEDED로 Spring에 전달한다. Spring은 유효한 baseline을 만들고 engine=BASELINE, degradedReason=AI_QUOTA_EXCEEDED와 안내 배너로 응답한다. baseline도 불가능하면 Spring이 명시적 실패로 끝낸다. SSE는 이미 200으로 시작할 수 있으므로 종료 error 이벤트의 quota 코드를 매핑한다.
+
+기능 플래그 전환 전에는 새 E5 revision의 검색 평가, reviewed facts 적재·span 검증, revocation heartbeat, Spring 버전 4개 값 동기화 및 실제 Spring↔AI HTTP smoke를 모두 마친다. 값 확인에는 scripts/print_active_runtime_versions.py를 사용한다.
+
 ## 현재 코드가 요구하는 설정
 
 AI Engine `ai-engine` 컨테이너에는 다음 설정을 전달한다.
@@ -9,44 +19,86 @@ AI Engine `ai-engine` 컨테이너에는 다음 설정을 전달한다.
 | 변수 | 필요 여부 | 의미 |
 |---|---|---|
 | `ONMARU_AI_DB_DSN` | Plan/Execute 사용 시 필수 | `ai` schema 읽기와 retrieval에 사용할 **runtime role** 접속 문자열. migration role credential을 넣지 않는다. 기존 alias `ONMARU_DB_URL`도 읽지만 Compose 계약은 `ONMARU_AI_DB_DSN`으로 통일한다. |
-| `ONMARU_SECRET_GEMINI_API_KEY_CURRENT` | 현재 app 시작 시 필수 | secret provider의 `gemini.api-key` 값. Plan/Execute 생성 및 Gemini query embedding에 쓰인다. |
+| `ONMARU_SECRET_GEMINI_API_KEY_CURRENT` | 현재 app 시작 시 필수 | secret provider의 `gemini.api-key` 값. 검수 근거를 이용한 답변 생성에 사용한다. |
+| `ONMARU_E5_ONNX_DIR` | 기본값 `/opt/onmaru/e5` | Docker image build에서 생성·검증한 pinned E5 ONNX artifact 디렉터리. 실행 중 모델 다운로드는 하지 않는다. |
 | `ONMARU_SPRING_BASE_URL` | 배포에서 필수 권장 | Spring 내부 origin. 기본값은 `http://staging-api:8080`이므로 운영 Compose는 반드시 명시한다. |
 | `ONMARU_GEMINI_MODEL_NAME` | 선택 | grounded claim 생성 모델명. 기본값은 `gemini-2.5-flash`; 배포 전 실제 지원 모델과 비용 설정을 확인한다. |
 
-현재 Plan/Execute의 query embedding은 코드에 `gemini-embedding-001-384@v1`로 고정되어 있고 profile override env는 없다. 따라서 활성 corpus도 같은 profile이어야 dense route가 동작한다. profile 선택을 임의의 Compose env로 흉내 내지 않는다. 앱 컨테이너에는 database 내부 network 연결을 허용하되 DB port를 host에 공개하지 않는다. migration 계정은 Compose의 AI Engine runtime env로 전달하지 않는다.
+Gemini는 검수된 근거를 바탕으로 답변을 생성할 때만 사용한다. Query/passage embedding은 같은 로컬 E5 ONNX CPU artifact를 사용하며 활성 corpus profile은 `multilingual-e5-small-384-onnx-int8@614241f622f5`와 일치해야 한다. Docker image build에서 pinned artifact를 생성해 image에 포함하므로 실행 중 모델 다운로드나 별도 model volume은 없다. 앱 컨테이너에는 database 내부 network 연결을 허용하되 DB port를 host에 공개하지 않는다. migration 계정은 Compose의 AI Engine runtime env로 전달하지 않는다.
 
 ## Embedding profile 결정
 
-이번 코드와 맞는 기본 이행안은 **Gemini profile로 staging corpus를 새 revision에 재색인하고 검증한 다음 활성화하는 것**이다. 기존 active revision은 staging 검증과 rollback 판단 전까지 보존한다. 운영 corpus를 직접 덮어쓰지 않는다.
+선택한 이행안은 **고정된 로컬 E5 ONNX artifact로 별도 staging revision을 적재하고 검증한 다음 활성화하는 것**이다. 기존 active revision은 staging 검증과 rollback 판단 전까지 보존한다. 운영 corpus를 직접 덮어쓰지 않는다.
 
-기존 E5 revision이 진짜 `intfloat/multilingual-e5-small` 모델로 만들어졌는지 먼저 inventory와 ingest 기록으로 확인한다. 이제 두 ingestion CLI는 key가 없으면 실패하고, hash backend는 `deterministic-hash-384@local-only`로 표시되며 `--hash-only --dry-run` 외에는 사용할 수 없다. API key는 `ONMARU_SECRET_GEMINI_API_KEY_CURRENT` 환경 secret으로만 전달한다. CLI 인자로 전달하지 않는다.
+기존 E5 revision의 생성 기록을 inventory로 확인한다. 아래 export 명령은 pinned E5 commit을 dynamic-int8 ONNX artifact로 내보낸다. 이 프로파일은 기존 FP32 profile과 구별되므로 새 revision을 적재한다. Hash backend는 `deterministic-hash-384@local-only`로 표시되며 `--hash-only --dry-run` 외에는 사용할 수 없다. Corpus ingestion에는 Gemini key를 전달하지 않는다.
+
+Artifact export는 CI/Docker image build에서 pinned E5 commit으로 실행된다. 로컬 Linux에서 별도 artifact가 필요하면 `uv run --group embedding-export python scripts/export_e5_onnx.py --output <artifact-dir>`를 사용할 수 있다. Mac Intel에서는 ONNX artifact를 Docker build로 생성한다.
 
 KTO catalog corpus는 활성화와 분리해 먼저 적재한다. `AI_CORPUS_WRITE_DSN`은 one-off AI migration/corpus-writer role, `CATALOG_READ_DSN`은 공개 catalog read role의 접속 문자열로 운영자 환경에서 구성한다. 둘 다 Compose runtime env에 저장하지 않는다.
 
+로컬 워크스테이션에서 임베딩하고 Lightsail DB가 Compose 내부에서만 접근 가능하면 catalog 원문 JSONL과 SQLite spool을 양방향으로 전달한다. 먼저 최신 승인 image에서 read-only export를 실행하고, 파일을 안전한 전송 경로로 로컬에 복사한다:
+
 ```bash
-# `AI_ENGINE_SERVICE=staging-ai-engine` in staging, `ai-engine` in production.
-docker compose --profile ai-engine run --rm \
-  -e ONMARU_AI_DB_DSN -e ONMARU_AI_CATALOG_READ_DSN \
-  -e ONMARU_SECRET_GEMINI_API_KEY_CURRENT \
-  "$AI_ENGINE_SERVICE" \
-  python scripts/ingest_catalog_from_postgres.py \
-  --revision-id "$STAGING_GEMINI_REVISION"
+mkdir -p "$CORPUS_TRANSFER_DIR"
+docker compose --profile ai-engine run --rm \\
+  -e ONMARU_AI_CATALOG_READ_DSN \\
+  -v "$CORPUS_TRANSFER_DIR:/transfer" "$AI_ENGINE_SERVICE" \\
+  python scripts/export_catalog_jsonl.py --limit 10000 \\
+    --output /transfer/catalog-10000.jsonl
+scp "$LIGHTSAIL_HOST:$CORPUS_TRANSFER_DIR/catalog-10000.jsonl" ./catalog-10000.jsonl
 ```
 
-이 호출 전에 one-off runner environment로 `ONMARU_AI_DB_DSN=$AI_CORPUS_WRITE_DSN`, `ONMARU_AI_CATALOG_READ_DSN=$CATALOG_READ_DSN`, `ONMARU_SECRET_GEMINI_API_KEY_CURRENT`를 secret injection으로 전달한다. `docker compose run -e NAME` passthrough를 사용하고 DSN이나 Gemini key를 CLI 인자로 넣지 않는다.
+로컬에서 pinned ONNX artifact로만 임베딩하고 PostgreSQL에 접속하지 않고 spool을 만든다. 실패 manifest가 남으면 같은 revision과 spool로 `--resume`을 실행한다:
 
-적재 완료 후 `ai.corpus_revisions`의 profile이 `gemini-embedding-001-384@v1`인지, 저장된 문서·청크·embedding 수와 실제 count가 같은지 확인한다. 그런 다음 revision을 먼저 read-only 검사한다:
+```bash
+ONMARU_E5_ONNX_DIR=/path/to/onmaru-e5-onnx-int8 \\
+  uv run python scripts/ingest_catalog_from_postgres.py \\
+    --input-jsonl ./catalog-10000.jsonl --spool-only \\
+    --revision-id "$PILOT_REVISION" --batch-size 16 \\
+    --spool-path "./$PILOT_REVISION.sqlite"
+```
+
+실패 manifest가 비어 있고 spool의 문서·청크·임베딩 수와 manifest를 확인한 다음 SQLite 파일을 Lightsail로 복사한다. Lightsail에서 AI corpus writer DSN을 one-off 환경변수로 전달하고, 먼저 read-only 검사 후 `--apply`로 적재한다:
+
+```bash
+scp "./$PILOT_REVISION.sqlite" "$LIGHTSAIL_HOST:$CORPUS_TRANSFER_DIR/"
+docker compose --profile ai-engine run --rm \\
+  -e ONMARU_AI_DB_DSN \\
+  -v "$CORPUS_TRANSFER_DIR:/transfer:ro" "$AI_ENGINE_SERVICE" \\
+  python scripts/stage_corpus_spool.py --revision-id "$PILOT_REVISION" \\
+    --spool-path "/transfer/$PILOT_REVISION.sqlite"
+```
+
+위 dry-run 출력의 profile, 건수, manifest hash를 기록한다. 같은 명령에 `--apply`를 추가하면 새 revision을 DB에 적재한다. 이 절차는 활성 corpus pointer를 변경하지 않으며 활성화는 별도 게이트다.
+
+```bash
+# `AI_ENGINE_SERVICE=staging-ai-engine` in staging, `ai-engine` in production.
+docker volume create onmaru-ai-corpus-stage
+docker compose --profile ai-engine run --rm \
+  -v onmaru-ai-corpus-stage:/app/.onmaru-corpus-staging \
+  -e ONMARU_AI_DB_DSN -e ONMARU_AI_CATALOG_READ_DSN \
+  "$AI_ENGINE_SERVICE" \
+  python scripts/ingest_catalog_from_postgres.py \
+  --revision-id "$STAGING_E5_REVISION" \
+  --spool-path "/app/.onmaru-corpus-staging/$STAGING_E5_REVISION.sqlite"
+```
+
+이 호출 전에 one-off runner environment로 `ONMARU_AI_DB_DSN=$AI_CORPUS_WRITE_DSN`, `ONMARU_AI_CATALOG_READ_DSN=$CATALOG_READ_DSN`을 전달한다. `docker compose run -e NAME` passthrough를 사용하고 DSN을 CLI 인자로 넣지 않는다. E5 artifact는 검토·병합된 image에 포함되어 있어야 한다.
+
+`--resume`은 같은 named volume과 같은 spool path를 유지하며 재실행할 때만 추가한다. 스풀은 장소별 청크/벡터를 저장하므로 운영 재색인 전에 named volume의 여유 공간을 확인하고, staged DB revision 검증 및 rollback 보존이 끝난 뒤에만 해당 spool 파일을 삭제한다.
+
+적재 완료 후 `ai.corpus_revisions`의 profile이 `multilingual-e5-small-384-onnx-int8@614241f622f5`인지, 저장된 문서·청크·embedding 수와 실제 count가 같은지 확인한다. 그런 다음 revision을 먼저 read-only 검사한다:
 
 ```bash
 docker compose --profile ai-engine run --rm -e ONMARU_AI_DB_DSN "$AI_ENGINE_SERVICE" \
   python scripts/activate_corpus_revision.py \
-  --revision-id "$STAGING_GEMINI_REVISION" \
-  --confirm-revision "$STAGING_GEMINI_REVISION"
+     --revision-id "$STAGING_E5_REVISION" \
+     --confirm-revision "$STAGING_E5_REVISION"
 ```
 
-read-only 결과를 검토한 뒤에만 같은 명령에 `--apply`를 추가해 활성화한다. activator는 정확한 revision 재확인, Gemini profile, 상태, count 정합성, revocation heartbeat를 점검하고 저장소의 optimistic concurrency 검사로 pointer를 전환한다. 기존 active revision은 rollback 판단이 끝날 때까지 보존한다.
+read-only 결과를 검토한 뒤에만 같은 명령에 `--apply`를 추가해 활성화한다. activator는 정확한 revision 재확인, E5 ONNX profile, 상태, count 정합성, revocation heartbeat를 점검하고 저장소의 optimistic concurrency 검사로 pointer를 전환한다. 기존 active revision은 rollback 판단이 끝날 때까지 보존한다.
 
-Gemini API 비용·지연 또는 데이터 정책 때문에 E5를 유지하기로 결정한다면, 실제 고정 모델 artifact를 로드하고 profile identity를 검증하는 E5 `EmbeddingBackend`를 먼저 구현·테스트해야 한다. 현재 Plan/Execute에는 E5 backend가 없으므로 E5 유지 상태에서 dense route를 켜면 안 된다.
+Revision이 바뀌면 reviewed facts의 `revisionId`, `chunkId`, offsets도 새 revision과 대조해야 한다. 원문/청크 내용이 같다는 이유만으로 기존 fact row를 자동 복사하거나 승인으로 간주하지 않는다. 사람 검수 결과와 exact span을 확인해 별도 JSONL로 재적재한다.
 
 ## `003_reviewed_facts.sql` 적용과 fact 검수
 
@@ -125,6 +177,59 @@ Gemini API 비용·지연 또는 데이터 정책 때문에 E5를 유지하기�
 3. 동일 trace/run으로 `CLARIFY_OR_SCOPE`(execute 0회), `SQL_ONLY + NO_MATCH`, pinned IDs가 있어도 `placeIds=null`인 일반 추천, 그리고 SQL_ONLY/LEXICAL_ONLY/DENSE_ONLY/HYBRID/SQL_PLUS_RETRIEVAL 5개 route를 실제 Spring↔AI HTTP로 검증한다.
 4. 각 route에서 승인·제외·revocation 필터, grounding/evidence, timeout/fallback, 기존 board/state 보존, 로그상 corpus/profile/config version을 확인한다. `SQL_PLUS_RETRIEVAL`의 Spring 장소 응답은 corpus evidence로 직접 사용하지 않으며, 같은 Postgres snapshot에서 해당 장소 ID에 연결된 승인 fact와 exact source span을 찾은 경우에만 generation에 전달한다. 검수 fact가 없으면 빈 evidence 결과가 정상 fail-closed 동작이다. 기능·품질·지연·메모리 결과를 기록한다.
 5. 검증 결과를 BE와 AI Engine 양쪽 PR에 연결한다. 그 다음 별도 rollout 승인에 따라 staging flag부터 단계적으로 변경한다. 운영 flag는 staging 결과, rollback rehearsal, 배포 승인 전까지 false로 유지한다.
+
+적재가 중단되면 같은 revision과 spool 경로를 지정해 `--resume`을 추가한다. 스풀은 catalog active revision과 최초 수집 timestamp를 고정하므로 원천 catalog revision이 바뀌면 기존 스풀을 거부한다. 운영 적재 전 별도 staging replica에서 전체 23,573건 dry-run을 마치고 spool 크기·시간·manifest hash를 기록한다.
+
+## pg_search 0.27.0 migration과 한국어 query
+
+DB image에 설치된 확장 버전을 확인한 뒤 AI migration role로 migration을 적용한다. migration은 extension을 설치하지 않으며 잘못된 버전에서 실패한다. 인덱스 빌드 트랜잭션은 `maintenance_work_mem=32MB`로 제한하고 migration 끝에서 두 테이블을 `ANALYZE`한다. 320MB 운영 DB에서는 staging 동등 환경에서 빌드 RSS와 잠금 시간을 확인한 후 적용한다:
+
+```bash
+psql "$AI_MIGRATION_DSN" -v ON_ERROR_STOP=1 \
+  -f migrations/ai/004_pg_search_bm25.sql
+```
+
+성공 로그에 `ANALYZE` 및 `COMMIT`이 포함되어야 한다. 인덱스 생성 도중 실패하면 transaction 전체가 rollback되므로 로그와 DB index 목록을 확인한 뒤 재시도한다.
+
+검증은 PostgreSQL 17 + pg_search 0.27.0 운영과 같은 image에서 한다:
+
+```sql
+SELECT extversion FROM pg_extension WHERE extname='pg_search';
+SELECT c.chunk_id, pdb.score(c.search_key) AS score
+FROM ai.chunks c
+WHERE c.revision_id='<active_revision>'
+  AND c.search_text @@@ pdb.parse('한옥')
+ORDER BY pdb.score(c.search_key) DESC, c.chunk_id
+LIMIT 20;
+EXPLAIN (ANALYZE, BUFFERS)
+SELECT c.chunk_id, pdb.score(c.search_key) AS score
+FROM ai.chunks c
+WHERE c.revision_id='<active_revision>'
+  AND c.search_text @@@ pdb.parse('한옥')
+ORDER BY pdb.score(c.search_key) DESC, c.chunk_id
+LIMIT 20;
+```
+
+`한옥` 결과가 없거나 plan에서 `chunks_search_bm25_idx`가 사용되지 않으면 lexical route를 켜지 않는다. 실제 version과 ngram index definition은 Engine repository가 시작 시 확인한다.
+
+사람 검수 queue의 exact span 후보는 다음 read-only exporter로 만들 수 있다. 출력의 모든 row는 `NEEDS_HUMAN_REVIEW`이며 `load_reviewed_facts.py` 입력이 아니다. 콘텐츠 담당자는 의미·종류·시간성·관계·승인자를 검토하고 loader 계약에 맞는 승인 JSONL을 별도로 작성해야 한다:
+
+```bash
+docker compose --profile ai-engine run --rm -e ONMARU_AI_DB_DSN \
+  "$AI_ENGINE_SERVICE" python scripts/export_reviewed_fact_candidates.py \
+    --revision-id "$ACTIVE_E5_REVISION" \
+    --output /tmp/review-candidates.jsonl
+```
+
+적재 후 활성 코퍼스 버전과 운영 준비도를 조회한다:
+
+```bash
+docker compose --profile ai-engine run --rm -e ONMARU_AI_DB_DSN \
+  "$AI_ENGINE_SERVICE" python scripts/print_active_runtime_versions.py
+```
+
+출력이 stale heartbeat 또는 no reviewed facts로 종료되면 Spring `.env`에 값을 복사하거나 feature flag를 켜지 않는다. 정상 출력의 네 값(`CORPUS_REVISION`, `CONFIG_HASH`, `QUESTION_DICTIONARY_VERSION`, `SOURCE_REVOCATION_SEQUENCE`)을 Spring 운영 owner가 설정하고 readiness 응답과 대조한다. Heartbeat는 Spring revocation source가 sequence를 확인한 뒤 60초 주기로 갱신해야 하며 AI Engine이 대신 heartbeat를 써서는 안 된다.
+
 
 ## 남은 blocker
 

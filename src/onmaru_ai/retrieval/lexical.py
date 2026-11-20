@@ -26,6 +26,8 @@ from onmaru_ai.storage.postgres import CorpusSnapshot
 
 BM25_LIMIT = 20
 SUPPORTED_INDEX_VERSION = "ko-bm25-v1"
+SUPPORTED_PG_SEARCH_VERSION = "0.27.0"
+BM25_INDEX_NAME = "chunks_search_bm25_idx"
 _NON_NAME = re.compile(r"[^0-9a-z가-힣]")
 
 
@@ -80,41 +82,102 @@ class PostgresLexicalChunkRepository:
     def load(
         self, snapshot: CorpusSnapshot, request: LexicalRequest
     ) -> tuple[LexicalChunk, ...]:
+        self._assert_extension(snapshot)
+        if request.index_version != self._index_version:
+            raise LexicalIndexError("BM25_INDEX_VERSION_MISMATCH")
+        raise LexicalIndexError("BM25_TOPK_REQUIRED")
+
+    def search_topk(
+        self, snapshot: CorpusSnapshot, request: LexicalRequest, *, limit: int
+    ) -> tuple[tuple[LexicalChunk, float], ...]:
+        self._assert_extension(snapshot)
+        if request.index_version != self._index_version:
+            raise LexicalIndexError("BM25_INDEX_VERSION_MISMATCH")
+        index = snapshot.connection.execute(
+            "SELECT indexdef FROM pg_indexes WHERE schemaname='ai' AND indexname=%s",
+            (BM25_INDEX_NAME,),
+        ).fetchone()
+        if (
+            index is None
+            or "ngram" not in str(index["indexdef"]).lower()
+            or "search_text" not in str(index["indexdef"]).lower()
+        ):
+            raise LexicalIndexError("BM25_INDEX_UNAVAILABLE_OR_MISCONFIGURED")
+
+        filters = request.filters
+        region_codes = None if filters.region_codes is None else list(filters.region_codes)
+        category_codes = (
+            None if filters.category_codes is None else list(filters.category_codes)
+        )
+        place_ids = None if filters.place_ids is None else list(filters.place_ids)
+        rows = snapshot.connection.execute(
+            """SELECT c.chunk_id, d.source_id AS place_id, d.place_id AS corpus_place_id,
+                      d.source_type, d.source_id, d.source_revision,
+                      c.revision_id AS corpus_revision, d.region_code, d.category_code,
+                      c.search_text AS text, d.title, pdb.score(c.search_key) AS score
+                 FROM ai.chunks c
+                 JOIN ai.documents d USING (revision_id, document_id)
+                WHERE c.revision_id=%s AND d.eligibility_status='PUBLIC'
+                  AND c.search_text @@@ pdb.parse(%s)
+                  AND (%s::text[] IS NULL OR d.region_code=ANY(%s::text[]))
+                  AND (%s::text[] IS NULL OR d.category_code=ANY(%s::text[]))
+                  AND (%s::text[] IS NULL OR d.source_id=ANY(%s::text[]))
+                  AND d.source_id <> ALL(%s::text[])
+                  AND NOT EXISTS (
+                      SELECT 1 FROM ai.place_revocations p WHERE p.place_id=d.place_id
+                  )
+                  AND NOT EXISTS (
+                      SELECT 1 FROM ai.source_revocations s
+                       WHERE (s.source_type,s.source_id,s.source_revision)=
+                             (d.source_type,d.source_id,d.source_revision)
+                  )
+                ORDER BY pdb.score(c.search_key) DESC, c.chunk_id
+                LIMIT %s""",
+            (
+                snapshot.versions.corpus_revision,
+                request.query,
+                region_codes,
+                region_codes,
+                category_codes,
+                category_codes,
+                place_ids,
+                place_ids,
+                list(filters.excluded_place_ids),
+                max(1, min(BM25_LIMIT, limit)),
+            ),
+        )
+        result: list[tuple[LexicalChunk, float]] = []
+        for row in rows:
+            result.append(
+                (
+                    LexicalChunk(
+                        chunk_id=str(row["chunk_id"]),
+                        place_id=str(row["place_id"]),
+                        corpus_place_id=str(row["corpus_place_id"]),
+                        source_type=str(row["source_type"]),
+                        source_id=str(row["source_id"]),
+                        source_revision=str(row["source_revision"]),
+                        corpus_revision=str(row["corpus_revision"]),
+                        region_code=str(row["region_code"]),
+                        category_code=str(row["category_code"]),
+                        text=str(row["text"]),
+                        exact_names=(str(row["title"]),),
+                        public=True,
+                    ),
+                    float(row["score"]),
+                )
+            )
+        return tuple(result)
+
+    @staticmethod
+    def _assert_extension(snapshot: CorpusSnapshot) -> None:
         extension = snapshot.connection.execute(
             "SELECT extversion FROM pg_extension WHERE extname='pg_search'"
         ).fetchone()
         if extension is None:
             raise LexicalIndexError("BM25_EXTENSION_UNAVAILABLE")
-        if request.index_version != self._index_version:
-            raise LexicalIndexError("BM25_INDEX_VERSION_MISMATCH")
-        rows = snapshot.connection.execute(
-            """SELECT c.chunk_id, d.source_id AS place_id,
-                      d.place_id AS corpus_place_id, d.source_type, d.source_id,
-                      d.source_revision, c.revision_id AS corpus_revision,
-                      d.region_code, d.category_code, c.search_text AS text,
-                      d.title, d.eligibility_status
-                 FROM ai.chunks c
-                 JOIN ai.documents d USING (revision_id, document_id)
-                WHERE c.revision_id=%s AND d.eligibility_status='PUBLIC'""",
-            (snapshot.versions.corpus_revision,),
-        )
-        return tuple(
-            LexicalChunk(
-                chunk_id=str(row["chunk_id"]),
-                place_id=str(row["place_id"]),
-                source_type=str(row["source_type"]),
-                corpus_place_id=str(row["corpus_place_id"]),
-                source_id=str(row["source_id"]),
-                source_revision=str(row["source_revision"]),
-                corpus_revision=str(row["corpus_revision"]),
-                region_code=str(row["region_code"]),
-                category_code=str(row["category_code"]),
-                text=str(row["text"]),
-                exact_names=(str(row["title"]),),
-                public=row["eligibility_status"] == "PUBLIC",
-            )
-            for row in rows
-        )
+        if str(extension["extversion"]) != SUPPORTED_PG_SEARCH_VERSION:
+            raise LexicalIndexError("BM25_EXTENSION_VERSION_MISMATCH")
 
 
 class LexicalSearchAdapter:
@@ -135,17 +198,22 @@ class LexicalSearchAdapter:
         started = self._clock_ns()
         if request.versions != snapshot.versions:
             raise LexicalIndexError("CORPUS_SNAPSHOT_VERSION_MISMATCH")
-        chunks = tuple(
-            chunk
-            for chunk in self._repository.load(snapshot, request)
-            if self._eligible(chunk, request, snapshot)
-        )
-        query_tokens = self._tokenizer.tokenize(request.query)
-        tokenized = tuple(self._tokenizer.tokenize(chunk.text) for chunk in chunks)
-        scores = self._scorer.score(query_tokens, tokenized)
+        search_topk = getattr(self._repository, "search_topk", None)
+        if callable(search_topk):
+            scored_chunks = list(search_topk(snapshot, request, limit=BM25_LIMIT))
+        else:
+            chunks = tuple(
+                chunk
+                for chunk in self._repository.load(snapshot, request)
+                if self._eligible(chunk, request, snapshot)
+            )
+            query_tokens = self._tokenizer.tokenize(request.query)
+            tokenized = tuple(self._tokenizer.tokenize(chunk.text) for chunk in chunks)
+            scores = self._scorer.score(query_tokens, tokenized)
+            scored_chunks = list(zip(chunks, scores, strict=True))
         query_name = _normalize_name(request.query, self._tokenizer)
         ranked = []
-        for chunk, score in zip(chunks, scores, strict=True):
+        for chunk, score in scored_chunks:
             exact = any(
                 _name_matches(query_name, _normalize_name(name, self._tokenizer))
                 for name in chunk.exact_names

@@ -103,7 +103,13 @@ class EvidenceGenerator:
                 GeminiFailureCode.AI_INVALID_RESPONSE: Fallback.INVALID_OUTPUT,
                 GeminiFailureCode.CANCELLED: Fallback.CANCELLED,
             }[error.code]
-            return _fallback(data, fallback)
+            fallback_result = _fallback(data, fallback)
+            return GenerationResult(
+                fallback_result.proposal,
+                fallback_result.fallback,
+                fallback_result.held_claim_count,
+                error.retry_after,
+            )
         try:
             output = ModelProposal.model_validate(result.proposal)
             places, summary, held = validate_output(output, data)

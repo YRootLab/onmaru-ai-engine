@@ -11,6 +11,12 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import Protocol
 
+from onmaru_ai.providers.gemini.models import (
+    GeminiFailureCode,
+    GeminiProviderError,
+    retry_after_seconds,
+)
+
 
 class EmbeddingError(RuntimeError):
     """Embedding execution violated the pinned profile or resource boundary."""
@@ -33,6 +39,15 @@ E5_SMALL_384 = EmbeddingProfile(
     profile_id="multilingual-e5-small-384@614241f622f5",
     model_id="intfloat/multilingual-e5-small",
     model_commit="614241f622f53c4eeff9890bdc4f31cfecc418b3",
+    dimensions=384,
+    passage_prefix="passage: ",
+    query_prefix="query: ",
+)
+
+E5_SMALL_ONNX_INT8_384 = EmbeddingProfile(
+    profile_id="multilingual-e5-small-384-onnx-int8@614241f622f5",
+    model_id="intfloat/multilingual-e5-small",
+    model_commit="614241f622f53c4eeff9890bdc4f31cfecc418b3:onnx-dynamic-int8-v1",
     dimensions=384,
     passage_prefix="passage: ",
     query_prefix="query: ",
@@ -170,9 +185,14 @@ class GeminiEmbeddingBackend:
         with httpx.Client(**kwargs) as client:  # type: ignore[arg-type]
             response = client.post(
                 url,
-                params={"key": self._api_key},
+                headers={"x-goog-api-key": self._api_key},
                 json=payload,
             )
+            if response.status_code == 429:
+                raise GeminiProviderError(
+                    GeminiFailureCode.AI_QUOTA_EXCEEDED,
+                    retry_after=retry_after_seconds(response.headers),
+                )
             response.raise_for_status()
             data = response.json()
 
