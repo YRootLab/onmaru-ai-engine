@@ -83,3 +83,56 @@ Current ad hoc request (Plan/Execute first-open preparation, 2026-11-20):
 - Human gate/order: stage E5 corpus → apply/verify BM25 migration → activate revision → export candidate facts → human review and load via existing reviewed-fact loader → verify heartbeat and nonzero approved facts → copy the four exact version values from `scripts/print_active_runtime_versions.py` to Spring `.env` → exercise E2E → only then separately enable the feature flag. Cross-encoder remains deferred pending measured quality/latency/memory evidence.
 - Verification: full `uv run --group dev pytest -q` → 1125 passed, 43 skipped; `uv run --group dev mypy src/onmaru_ai` clean; touched-file Ruff and `git diff --check` clean. Docker image built (`onmaru-ai-engine:local-e5-full`, 202,077,553 bytes). Under `--memory=512m --cpus=1`, cold first query returned 384 normalized dimensions in 1,131ms with peak RSS 315,464KB. Candidate-export and runtime-version CLI help commands both run in the image. Exact pg_search image integration and production DB tasks remain unverified/unavailable as stated.
 - External limit: this workspace has no AI catalog/runtime DB DSNs. No production catalog scan, vector generation/upload, migration, activation, reviewed-fact import, Spring `.env` update, or flag change was performed. Production work remains a gated operator step after credentials/connectivity are provisioned. pg_search SQL has not been executed against the exact production 0.27.0 image in this workspace.
+
+## Active handoff — 10k local ONNX pilot and operational continuation (2026-11-20)
+
+- PR: [#95](https://github.com/YRootLab/onmaru-ai-engine/pull/95), branch `feature/local-e5-embeddings`, latest pushed commit `40e9101` (follow-up plan commit is already on branch; check current PR head before continuing). PR is open and reported mergeable; do not assume it is merged or CI-clean without refreshing GitHub.
+- User intent: use the existing Lightsail `onmaru` catalog as the source, perform embedding inference on the local workstation with the pinned E5 ONNX INT8 artifact, then stage vectors into the AI schema. The user said staging is not necessary for this pilot; still use a new revision and do not switch the active pointer until explicit readiness gates pass.
+- Confirmed role split: `ONMARU_AI_CATALOG_READ_DSN` uses `onmaru_readonly_login` for the five catalog tables; `ONMARU_AI_DB_DSN` must use the AI corpus writer/migration role for corpus staging, never the runtime role. These DSNs are not present in this local session. Lightsail Compose hostname `postgres:5432` is private to its Compose network; AWS auth and local SSH config were absent, and Postgres has no host port published. Never put DSN/password values in this file or chat.
+- Existing production corpus is FP32 profile `multilingual-e5-small-384@614241f622f5`; local ONNX INT8 profile is distinct (`multilingual-e5-small-384-onnx-int8@614241f622f5`). Do not mix vectors or append to the active revision. Local seed has only 1,080 records and is not a substitute for the requested 10,000 catalog rows.
+- ONNX artifact has been built with Docker and copied to `/tmp/onmaru-e5-onnx-int8` on the current workstation. Manifest checks and query/passage sample inference passed (384 dimensions, unit norm). This artifact is temporary and is not committed; regenerate with `docker build --target model-builder -t onmaru-e5-export:local .` and extract `/opt/onmaru/e5` if it is missing.
+- Added in PR #95: `scripts/export_catalog_jsonl.py` (bounded read-only catalog export), `--input-jsonl --spool-only` in `scripts/ingest_catalog_from_postgres.py` (local inference without DB connections), `scripts/stage_corpus_spool.py` (read-only validation by default; DB write requires `--apply`), and local transfer instructions in the Plan/Execute runbook. Latest validation after these additions: `uv run pytest -q` → 1128 passed, 43 skipped; `uv run ruff check src scripts tests` passed; `git diff --check` passed.
+
+### Exact continuation sequence
+
+1. Refresh PR #95 state, checks, and head SHA. Merge/release the approved code before relying on the new scripts in an AI Engine image. Keep AI Plan/Execute flag false.
+2. On Lightsail, use the repo's approved Compose environment and one-off AI Engine container to export exactly 10,000 rows with read-only catalog access. Set the secret-backed environment variables from host `.env` without printing them:
+
+   ```bash
+   export ONMARU_AI_CATALOG_READ_DSN="postgresql://${ONMARU_DB_READONLY_USER}:${ONMARU_DB_READONLY_PASSWORD}@postgres:5432/${ONMARU_POSTGRES_DB}"
+   docker compose --profile ai-engine run --rm -e ONMARU_AI_CATALOG_READ_DSN \
+     -v "$CORPUS_TRANSFER_DIR:/transfer" "$AI_ENGINE_SERVICE" \
+     python scripts/export_catalog_jsonl.py --limit 10000 \
+       --output /transfer/catalog-10000.jsonl
+   ```
+
+   Require exporter exit 0 and exactly 10,000 JSONL lines. Transfer the file to the workstation using the organization's approved secure file transfer. If current deployed image lacks this PR's exporter, use a reviewed one-off image built from the PR head; do not add the read-only credential to the long-running service.
+
+3. On the workstation, use a new unique revision (example `rev-local-e5-pilot-20261120a`) and the JSONL snapshot. Do not set Gemini credentials for embedding:
+
+   ```bash
+   ONMARU_E5_ONNX_DIR=/tmp/onmaru-e5-onnx-int8 \
+     uv run python scripts/ingest_catalog_from_postgres.py \
+       --input-jsonl ./catalog-10000.jsonl --spool-only \
+       --revision-id "$PILOT_REVISION" --batch-size 16 \
+       --spool-path "./$PILOT_REVISION.sqlite"
+   ```
+
+   If command exits 3, inspect `<spool>.failures.jsonl`, rerun with the same input/revision/spool plus `--resume`, and require zero outstanding failures. Check counts, profile ID, source revision consistency, and manifest hash. Never stage a partial spool.
+
+4. Transfer the closed SQLite spool to Lightsail. With the one-off corpus-writer DSN (`onmaru_ai_migration_login`) and the reviewed image, validate first (no write), inspect printed revision/profile/counts/hash, then stage only after matching the local spool evidence:
+
+   ```bash
+   docker compose --profile ai-engine run --rm -e ONMARU_AI_DB_DSN \
+     -v "$CORPUS_TRANSFER_DIR:/transfer:ro" "$AI_ENGINE_SERVICE" \
+     python scripts/stage_corpus_spool.py --revision-id "$PILOT_REVISION" \
+       --spool-path "/transfer/$PILOT_REVISION.sqlite"
+   ```
+
+   Approved write command adds `--apply` to the same invocation. Verify DB revision state, exact profile, and document/chunk/embedding counts against spool before continuing. The staging command must not activate the revision.
+
+5. Apply `migrations/ai/004_pg_search_bm25.sql` as migration role only after reviewing 320MB DB headroom/backup/lock plan; migration pins `maintenance_work_mem=32MB` and runs `ANALYZE ai.documents; ANALYZE ai.chunks;`. Verify pg_search 0.27.0, index definition, Korean `한옥` top-K, SQL filter pushdown, EXPLAIN plan, RSS, and runtime. Do not infer production safety from the memory setting alone.
+
+6. Launch remains blocked by the user's production facts: `ai.reviewed_facts=0` and `ai.revocation_state.heartbeat_at` stale at 2026-11-09. Content owner must review/approve exact facts before `scripts/load_reviewed_facts.py --apply`; BE/source-revocation owner must restore its heartbeat. Then run `scripts/print_active_runtime_versions.py`, synchronize all four values (`CORPUS_REVISION`, `CONFIG_HASH`, `QUESTION_DICTIONARY_VERSION`, `SOURCE_REVOCATION_SEQUENCE`) into staging Spring, verify quota 429/Retry-After parsing and SSE terminal failure, and run live Spring↔Engine E2E. Never enable production flag until those gates and a separate rollout approval pass.
+
+- Status at handoff: no 10k catalog JSONL export, embedding run, AI schema stage, BM25 migration, ANALYZE, corpus activation, reviewed-fact import, Spring env update, or feature-flag change has occurred. Next concrete input needed by the workstation operator is the securely transferred 10k JSONL snapshot; no credentials need to be sent to the AI agent.
