@@ -6,6 +6,7 @@ import hashlib
 import json
 import math
 from functools import lru_cache
+from importlib import import_module
 from pathlib import Path
 from typing import Any
 
@@ -53,6 +54,7 @@ class OnnxE5EmbeddingBackend:
             import numpy as np
             import onnxruntime as ort  # type: ignore[import-untyped]
 
+            self._tokenizer: Any = None
             self._token_id_map: Any = None
             options = ort.SessionOptions()
             options.intra_op_num_threads = max(1, intra_op_threads)
@@ -62,7 +64,7 @@ class OnnxE5EmbeddingBackend:
                 str(model_path), sess_options=options, providers=["CPUExecutionProvider"]
             )
             try:
-                import sentencepiece as spm  # type: ignore[import-not-found]
+                spm = import_module("sentencepiece")
 
                 self._tokenizer = spm.SentencePieceProcessor(model_file=str(tokenizer_path))
                 self._token_id_map = np.fromfile(token_id_map_path, dtype="<i4")
@@ -71,9 +73,9 @@ class OnnxE5EmbeddingBackend:
                 self._pad_token_id = int(manifest["pad_token_id"])
                 self._tokenizer_kind = "sentencepiece"
             except ImportError:
-                from tokenizers import Tokenizer  # type: ignore[import-untyped]
+                tokenizers = import_module("tokenizers")
 
-                self._tokenizer = Tokenizer.from_file(str(tokenizer_json_path))
+                self._tokenizer = tokenizers.Tokenizer.from_file(str(tokenizer_json_path))
                 fast_pad_id = self._tokenizer.token_to_id("<pad>")
                 if fast_pad_id is None:
                     raise EmbeddingError("E5_ONNX_TOKENIZER_CONTRACT_MISMATCH") from None
