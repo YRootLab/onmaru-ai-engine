@@ -10,7 +10,10 @@ import sys
 from dataclasses import asdict
 from pathlib import Path
 
-from scripts.ingest_catalog_from_postgres import iter_catalog_items
+try:
+    from scripts.ingest_catalog_from_postgres import iter_catalog_items
+except ModuleNotFoundError:
+    from ingest_catalog_from_postgres import iter_catalog_items
 
 
 def main(argv: list[str] | None = None) -> int:
