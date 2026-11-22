@@ -70,6 +70,7 @@ class Harness:
         self.delay = False
         self.fail = False
         self.fail_plan = False
+        self.quota = False
         self.grant = QueryGrant(
             grant_id="grant-1",
             run_id=self.data["payload"]["runId"],
@@ -107,6 +108,13 @@ class Harness:
             await asyncio.sleep(1)
         if self.fail:
             raise RuntimeError("secret semantic query")
+        if self.quota:
+            from onmaru_ai.providers.gemini.models import (
+                GeminiFailureCode,
+                GeminiProviderError,
+            )
+
+            raise GeminiProviderError(GeminiFailureCode.AI_QUOTA_EXCEEDED, retry_after=23)
         return ExecutionResult.model_validate(
             {
                 "schemaVersion": "ai-execute-result.v1",
@@ -401,6 +409,16 @@ def test_payload_error_does_not_echo_sensitive_fields() -> None:
     assert response.status_code == 422
     assert "secret user text" not in response.text
     assert h.effects == []
+
+
+def test_execute_maps_gemini_quota_to_429_with_retry_after() -> None:
+    h = Harness()
+    assert h.post_plan().status_code == 200
+    h.quota = True
+    response = h.post_execute()
+    assert response.status_code == 429
+    assert response.json()["code"] == "AI_QUOTA_EXCEEDED"
+    assert response.headers["retry-after"] == "23"
 
 
 def test_concurrent_execute_only_dispatches_once() -> None:

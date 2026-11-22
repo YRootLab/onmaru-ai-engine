@@ -4,6 +4,7 @@ from typing import Any
 
 import pytest
 
+from onmaru_ai.embedding import E5_SMALL_ONNX_INT8_384
 from scripts.activate_corpus_revision import activate_candidate_revision
 
 
@@ -18,11 +19,11 @@ class _Cursor:
 class _Connection:
     def __init__(self, row: dict[str, Any] | None = None) -> None:
         self.row = row or {
-            "revision_id": "rev-gemini-1",
+            "revision_id": "rev-e5-1",
             "manifest_hash": "sha256:" + "a" * 64,
             "state": "VALIDATED",
             "gc_state": "LIVE",
-            "embedding_profile_id": "gemini-embedding-001-384@v1",
+            "embedding_profile_id": E5_SMALL_ONNX_INT8_384.profile_id,
             "document_count": 3,
             "chunk_count": 3,
             "embedding_count": 3,
@@ -53,7 +54,7 @@ def test_activation_defaults_to_validation_only() -> None:
     connection, store = _Connection(), _Store()
 
     metadata = activate_candidate_revision(
-        connection, store, "rev-gemini-1", confirm_revision="rev-gemini-1", apply=False
+        connection, store, "rev-e5-1", confirm_revision="rev-e5-1", apply=False
     )
 
     assert metadata["actual_embedding_count"] == 3
@@ -64,7 +65,7 @@ def test_activation_defaults_to_validation_only() -> None:
 def test_activation_requires_exact_revision_confirmation() -> None:
     with pytest.raises(ValueError, match="confirmation"):
         activate_candidate_revision(
-            _Connection(), _Store(), "rev-gemini-1", confirm_revision="rev-other", apply=True
+            _Connection(), _Store(), "rev-e5-1", confirm_revision="rev-other", apply=True
         )
 
 
@@ -72,11 +73,11 @@ def test_activation_applies_only_after_all_checks_pass() -> None:
     store = _Store()
 
     activate_candidate_revision(
-        _Connection(), store, "rev-gemini-1", confirm_revision="rev-gemini-1", apply=True
+        _Connection(), store, "rev-e5-1", confirm_revision="rev-e5-1", apply=True
     )
 
     assert store.activations == [{
-        "revision_id": "rev-gemini-1",
+        "revision_id": "rev-e5-1",
         "manifest_hash": "sha256:" + "a" * 64,
         "expected_active": "rev-old",
         "expected_revocation_sequence": 12,
@@ -86,7 +87,7 @@ def test_activation_applies_only_after_all_checks_pass() -> None:
 @pytest.mark.parametrize(
     "updates",
     [
-        {"embedding_profile_id": "multilingual-e5-small-384@614241f622f5"},
+        {"embedding_profile_id": "gemini-embedding-001-384@v1"},
         {"state": "ACTIVE"},
         {"actual_embedding_count": 1},
         {"current_sequence": 13},
@@ -101,7 +102,7 @@ def test_activation_rejects_ineligible_revision(
 
     with pytest.raises(ValueError):
         activate_candidate_revision(
-            _Connection(row), store, "rev-gemini-1", confirm_revision="rev-gemini-1", apply=True
+            _Connection(row), store, "rev-e5-1", confirm_revision="rev-e5-1", apply=True
         )
 
     assert store.activations == []

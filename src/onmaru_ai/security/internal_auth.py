@@ -196,13 +196,18 @@ def install_internal_auth(
         llm_proposal = None
         llm_attempted = journey_llm is not None and bool(body.query.strip())
         if journey_llm is not None and llm_attempted and body.candidate_refs:
-            llm_proposal = await journey_llm.generate(
-                query=body.query,
-                candidate_refs=body.candidate_refs,
-                request_id=body.request_id,
-                evidence_refs=rag_context.evidence_refs,
-                evidence_contexts=rag_context.evidence_contexts,
-            )
+            try:
+                llm_proposal = await journey_llm.generate(
+                    query=body.query,
+                    candidate_refs=body.candidate_refs,
+                    request_id=body.request_id,
+                    evidence_refs=rag_context.evidence_refs,
+                    evidence_contexts=rag_context.evidence_contexts,
+                )
+            except GeminiProviderError as error:
+                if error.code is not GeminiFailureCode.AI_QUOTA_EXCEEDED:
+                    raise
+                return _baseline_response(body, rag_context, "AI_QUOTA_EXCEEDED")
         if llm_proposal is not None:
             return _proposal_response(body, llm_proposal, rag_context)
         if journey_llm is None:
@@ -253,7 +258,10 @@ def install_internal_auth(
                             raise GeminiProviderError(GeminiFailureCode.AI_INVALID_RESPONSE)
                 raise GeminiProviderError(GeminiFailureCode.AI_INVALID_RESPONSE)
             except GeminiProviderError as error:
-                yield _sse("error", {"code": error.code.value})
+                payload: dict[str, object] = {"code": error.code.value}
+                if error.retry_after is not None:
+                    payload["retryAfterSeconds"] = error.retry_after
+                yield _sse("error", payload)
             except Exception:
                 yield _sse("error", {"code": "AI_SERVICE_UNAVAILABLE"})
 
@@ -305,6 +313,7 @@ def _baseline_response(
         reason = "NO_CANDIDATES"
         response: dict[str, object] = {
             "schemaVersion": "internal.ai.v1",
+            "engine": "BASELINE",
             "runId": body.run_id,
             "orderedRefs": [],
             "outcome": "NO_RESULTS",
@@ -315,6 +324,7 @@ def _baseline_response(
         ordered = list(dict.fromkeys(body.candidate_refs))[:limit]
         response = {
             "schemaVersion": "internal.ai.v1",
+            "engine": "BASELINE",
             "runId": body.run_id,
             "orderedRefs": ordered,
             "outcome": "PROPOSAL" if ordered else "NO_RESULTS",

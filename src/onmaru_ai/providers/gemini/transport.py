@@ -53,7 +53,11 @@ class HttpxGeminiTransport:
             body = response.json()
         except ValueError:
             body = response.text
-        return GeminiTransportResponse(status_code=response.status_code, body=body)
+        return GeminiTransportResponse(
+            status_code=response.status_code,
+            body=body,
+            headers={key: value for key, value in response.headers.items()},
+        )
 
     async def stream(
         self, request: GeminiTransportRequest
@@ -86,7 +90,11 @@ class HttpxGeminiTransport:
             timeout=request.timeout_seconds,
         ) as response:
             if response.status_code != 200:
-                yield GeminiTransportResponse(response.status_code, {})
+                yield GeminiTransportResponse(
+                    response.status_code,
+                    {},
+                    {key: value for key, value in response.headers.items()},
+                )
                 return
             if response.headers.get("content-encoding", "identity").lower() != "identity":
                 raise GeminiProviderError(GeminiFailureCode.AI_INVALID_RESPONSE)

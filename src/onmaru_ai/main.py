@@ -115,8 +115,8 @@ def create_app(
         from onmaru_ai.corpus.revocation_feed import SpringRevocationFeedClient
         from onmaru_ai.corpus.revocation_poller import SourceRevocationPoller
 
-        # The general runtime role is read-only. Revocation sync has narrowly scoped
-        # write permissions and must never silently fall back to the runtime DSN.
+        # Keep revocation writes on a purpose-provisioned role; never couple this
+        # service to the broader runtime or corpus-migration database credentials.
         revocation_ledger = RevocationLedger(revocation_sync_dsn)
         revocation_poller = SourceRevocationPoller(
             revocation_ledger,
@@ -138,27 +138,24 @@ def create_app(
         if rag_activation_log is None:
             rag_activation_log = PostgresRagActivationLog(db_dsn.strip())
         if rag_retriever is None:
-            query_embedder = None
-            try:
-                gemini_key = provider.get("gemini.api-key").current.strip()
-                if gemini_key:
-                    from onmaru_ai.embedding import GEMINI_EMBEDDING_384, GeminiEmbeddingBackend
+            from onmaru_ai.embedding import (
+                E5_SMALL_ONNX_INT8_384,
+                EmbeddingService,
+                load_e5_backend,
+            )
 
-                    embed_backend = GeminiEmbeddingBackend(
-                        gemini_key,
-                        task_type="RETRIEVAL_QUERY",
-                        timeout_seconds=2.5,
-                    )
+            model_dir = source_env.get("ONMARU_E5_ONNX_DIR", "").strip()
+            if not model_dir:
+                raise ValueError("ONMARU_E5_ONNX_DIR is required for database retrieval")
+            embed_backend = EmbeddingService(
+                load_e5_backend(model_dir), profile=E5_SMALL_ONNX_INT8_384
+            )
 
-                    def _embed_query(text: str) -> tuple[float, ...]:
-                        return embed_backend.encode((text,))[0]
+            def _embed_query(text: str) -> tuple[float, ...]:
+                return embed_backend.embed_query(text)
 
-                    query_embedder = _embed_query
-                    query_profile_id = GEMINI_EMBEDDING_384.profile_id
-                else:
-                    query_profile_id = "gemini-embedding-001-384@v1"
-            except Exception:
-                query_profile_id = "gemini-embedding-001-384@v1"
+            query_embedder = _embed_query
+            query_profile_id = E5_SMALL_ONNX_INT8_384.profile_id
             rag_retriever = PostgresRagEvidenceRetriever(
                 db_dsn.strip(),
                 query_embedder=query_embedder,

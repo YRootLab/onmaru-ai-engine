@@ -13,7 +13,7 @@ from typing import Any
 import psycopg
 from psycopg.rows import dict_row
 
-from onmaru_ai.embedding import GEMINI_EMBEDDING_384
+from onmaru_ai.embedding import E5_SMALL_ONNX_INT8_384
 from onmaru_ai.storage.postgres import PostgresCorpusStore
 
 logger = logging.getLogger("activate_corpus_revision")
@@ -54,7 +54,7 @@ def activate_candidate_revision(
         row["revision_id"] != revision_id
         or row["state"] not in {"BUILDING", "VALIDATED"}
         or row["gc_state"] != "LIVE"
-        or row["embedding_profile_id"] != GEMINI_EMBEDDING_384.profile_id
+        or row["embedding_profile_id"] != E5_SMALL_ONNX_INT8_384.profile_id
         or not row["heartbeat_healthy"]
         or row["active_sequence"] != row["current_sequence"]
         or row["document_count"] <= 0
