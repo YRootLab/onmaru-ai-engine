@@ -16,7 +16,29 @@ AI Engine `ai-engine` 컨테이너에는 다음 설정을 전달한다.
 
 현재 Plan/Execute의 query embedding은 코드에 `gemini-embedding-001-384@v1`로 고정되어 있고 profile override env는 없다. 따라서 활성 corpus도 같은 profile이어야 dense route가 동작한다. profile 선택을 임의의 Compose env로 흉내 내지 않는다. 앱 컨테이너에는 database 내부 network 연결을 허용하되 DB port를 host에 공개하지 않는다. migration 계정은 Compose의 AI Engine runtime env로 전달하지 않는다.
 
-`ONMARU_AI_REVOCATION_SYNC_DSN`에는 corpus migration owner를 재사용하지 않는다. 별도 role에는 `ai.revocation_state`와 `ai.active_corpus`의 필요한 `SELECT`/`UPDATE`, revocation event/blocklist 테이블의 `SELECT`/`INSERT`/`DELETE`, snapshot staging 테이블의 `SELECT`/`INSERT`/`UPDATE`/`DELETE`만 부여한다. `ONMARU_AI_DB_DSN`은 계속 읽기 전용이다. 별도 sync credential을 배포하지 않으면 앱은 의도적으로 readiness를 통과하지 않는다.
+`ONMARU_AI_REVOCATION_SYNC_DSN`은 corpus migration owner와 분리한다. AI migration `005_source_revocation_bootstrap.sql` 적용 후 DB 관리자 계정으로 아래 별도 그룹과 login을 준비하고, 비밀번호는 Compose `.env`/secret store에서 주입한다. 운영 DB에 이미 migration role과 runtime role이 있으므로 기존 두 역할은 재사용하지 않는다.
+
+```sql
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='onmaru_ai_revocation_sync') THEN
+    CREATE ROLE onmaru_ai_revocation_sync NOLOGIN;
+  END IF;
+END
+$$;
+CREATE ROLE onmaru_ai_revocation_sync_login LOGIN PASSWORD '<새 랜덤 비밀번호>';
+GRANT onmaru_ai_revocation_sync TO onmaru_ai_revocation_sync_login;
+GRANT USAGE ON SCHEMA ai TO onmaru_ai_revocation_sync;
+GRANT SELECT, UPDATE ON ai.revocation_state, ai.active_corpus
+  TO onmaru_ai_revocation_sync;
+GRANT SELECT, INSERT, DELETE ON ai.revocation_events,
+  ai.source_revocations, ai.place_revocations TO onmaru_ai_revocation_sync;
+GRANT SELECT, INSERT, UPDATE, DELETE ON ai.revocation_snapshot_staging_state,
+  ai.revocation_snapshot_staging_events, ai.revocation_snapshot_staging_places
+  TO onmaru_ai_revocation_sync;
+```
+
+BE의 `infra/lightsail/.env`에는 `ONMARU_DB_AI_REVOCATION_SYNC_USER`와 새 `ONMARU_DB_AI_REVOCATION_SYNC_PASSWORD`를 넣고 AI 전용 DSN을 compose가 컨테이너에 전달하게 한다. `ONMARU_AI_DB_DSN`은 계속 읽기 전용이다. sync credential 또는 최초 snapshot/heartbeat가 준비되지 않으면 앱은 의도적으로 readiness를 통과하지 않는다.
 
 ## Embedding profile 결정
 
