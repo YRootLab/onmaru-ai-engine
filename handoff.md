@@ -71,3 +71,9 @@ Open risk or decision:
 
 Ad hoc requests captured this session:
 - Implement W14/#15 with strict TDD, actual-stage-only emission, stable retry ordinal, bounded failure isolation, focused/full checks, self-review, and a reviewable commit.
+
+## Approved design direction — source revocation synchronization (2026-11-23)
+
+- User selected BE durable outbox + AI Engine poller. The design spec is in `docs/superpowers/specs/2026-11-23-source-revocation-outbox-poller-design.md`; it is awaiting user review before implementation.
+- Created BE Issue [#875](https://github.com/YRootLab/OnMaru-backend/issues/875) for the durable ordered source revocation feed. Existing AI Engine Issue #93 remains the runtime heartbeat/reviewed-facts gate.
+- The design keeps direct production deployment as the requested path; staging is not a prerequisite. It does not bypass human-reviewed facts, source-feed catch-up, version agreement, BM25 readiness, or Plan/Execute E2E.
