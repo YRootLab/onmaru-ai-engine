@@ -212,6 +212,30 @@ LIMIT 20;
 
 `한옥` 결과가 없거나 plan에서 `chunks_search_bm25_idx`가 사용되지 않으면 lexical route를 켜지 않는다. 실제 version과 ngram index definition은 Engine repository가 시작 시 확인한다.
 
+## 운영 DB 직행 적재 (staging 생략)
+
+staging 없이 운영 DB에 새 코퍼스를 직접 적재하려면 아래 순서를 따른다. 이 경로는 새로운 revision을 **비활성 상태로 추가**하는 절차다. 기존 active revision과 `ai.active_corpus` 포인터는 바꾸지 않는다. 검토·병합되지 않은 브랜치 코드를 운영에서 실행하지 말고, PR #95의 승인된 image/script와 PR #97의 승인된 migration을 사용한다.
+
+현재 검증된 candidate는 `/tmp/onmaru-rev-local-e5-20261120.sqlite`이며, revision `rev-local-e5-20261120`, profile `multilingual-e5-small-384-onnx-int8@614241f622f5`, documents/chunks/embeddings 각각 23,573건, manifest `sha256:80a770775b14ccd6b86ced79f0ca445cdf3c0344f0d7a34fd18d9a4aaf9de228`, 파일 SHA-256 `fe1fffaf227c8e05b47a364a956665a369c9d4d00edb9acda8a107883ef282df`다. 23,600건 union spool은 구 revision 전용 27건을 포함하므로 사용하지 않는다.
+
+1. 운영 직전 DB snapshot/백업을 만들고 복구 절차를 확인한다. 현재 확인된 운영 기준은 DB 642MB, 루트 디스크 여유 34GB, PostgreSQL 컨테이너 메모리 제한 320MiB다. DB 메모리/디스크, Spring·AI 컨테이너 메모리, `ai.active_corpus`, 동일 revision 존재 여부를 다시 확인하고 낮은 트래픽의 변경 시간대를 정한다. 운영 백업이나 복구 경로를 확인할 수 없으면 중단한다.
+2. spool을 전송 디렉터리에 복사하고 전송 전후 SHA-256이 위 값과 동일한지 확인한다. 이전 export나 `-full.sqlite` 파일을 선택하지 않는다.
+3. 승인된 AI Engine one-off image에서 먼저 기본 read-only 검증을 실행한다. 출력 revision/profile/count/manifest가 위 값과 하나라도 다르면 중단한다. DB 접속은 AI corpus writer인 `onmaru_ai_migration_login`을 쓰고, 실행 중인 서비스에는 writer credential을 추가하지 않는다.
+
+   ```bash
+   docker compose --profile ai-engine run --rm -e ONMARU_AI_DB_DSN \
+     -v "$CORPUS_TRANSFER_DIR:/transfer:ro" "$AI_ENGINE_SERVICE" \
+     python scripts/stage_corpus_spool.py --revision-id rev-local-e5-20261120 \
+       --spool-path /transfer/onmaru-rev-local-e5-20261120.sqlite
+   ```
+
+4. 검증 출력이 일치하고 백업/복구·변경 시간대 확인이 끝난 경우에만 같은 명령에 `--apply`를 추가한다. loader는 revision 전체를 하나의 DB transaction으로 적재하고, 동일 manifest가 이미 있으면 재삽입하지 않으며, 기존 active 포인터를 변경하지 않는다. 실패하면 transaction rollback을 확인하고 같은 revision의 부분 행이 남지 않았는지 read-only로 검사한다.
+5. DB에서 revision 상태, 세 테이블 각각 23,573건, embedding profile, manifest hash를 read-only로 대조한다. active pointer가 기존 `rev-20261115025249` 그대로인지 확인한다.
+6. BM25 적용은 PR #97 승인·병합 후 별도 작업으로 한다. 현재 migration은 `ai.chunks`에 stored generated column을 추가하고 unique/BM25 인덱스를 만든 뒤 두 테이블을 `ANALYZE`한다. 이 DDL은 `CREATE INDEX CONCURRENTLY`가 아니며 table lock이 생긴다. 운영 시간대와 트래픽을 확인하고, migration 동안 DB 컨테이너의 320MiB 상한 및 RSS를 관찰한다. 작업 전후 DB/index 크기, memory, error log, `ANALYZE` 성공 여부와 한국어 query/top-K/EXPLAIN을 기록한다. 실패 시 전체 transaction rollback과 index 부재를 확인한다.
+7. corpus 활성화는 별도 변경이다. `ai.reviewed_facts >= 1`, 최근 60초 내 정상 revocation heartbeat, version 동기화, 승인된 검색/Plan-Execute E2E가 모두 확인되기 전에는 `activate_corpus_revision.py --apply`를 실행하거나 Spring feature flag를 켜지 않는다. 현재 facts 0건과 stale heartbeat 상태에서는 적재와 BM25 인덱스가 성공해도 서비스 오픈은 차단된다.
+
+이 직행 절차는 staging의 검색 품질·성능 검증을 대체하지 않으므로, 운영 DB에서 `한옥` 등 고정 query set을 수행할 때는 읽기 부하와 결과를 기록한다. 운영에서 품질이나 자원 문제가 발견되면 새 revision을 활성화하지 않고 기존 active revision을 유지한다.
+
 사람 검수 queue의 exact span 후보는 다음 read-only exporter로 만들 수 있다. 출력의 모든 row는 `NEEDS_HUMAN_REVIEW`이며 `load_reviewed_facts.py` 입력이 아니다. 콘텐츠 담당자는 의미·종류·시간성·관계·승인자를 검토하고 loader 계약에 맞는 승인 JSONL을 별도로 작성해야 한다:
 
 ```bash
