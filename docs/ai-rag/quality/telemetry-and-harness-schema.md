@@ -30,7 +30,7 @@ FastAPI는 plan/execute 두 내부 요청의 허용된 `runId`를 echo하고, �
 
 `errorCode`는 닫힌 enum으로 시작한다: `AUTH_REJECTED`, `SCHEMA_MISMATCH`, `VERSION_MISMATCH`, `PLAN_REJECTED`, `CONCEPT_LOSS`, `DB_TIMEOUT`, `DB_ERROR`, `EMBEDDING_ERROR`, `DIMENSION_MISMATCH`, `MODEL_TIMEOUT`, `MODEL_ERROR`, `INVALID_SCORE`, `SOURCE_REVOKED`, `EVIDENCE_EMPTY`, `PROVIDER_RATE_LIMIT`, `PROVIDER_TIMEOUT`, `PROVIDER_ERROR`, `RESPONSE_SCHEMA_INVALID`, `CLAIM_UNSUPPORTED`, `FINAL_POLICY_REJECTED`, `PERSISTENCE_ERROR`, `DELIVERY_INTERRUPTED`, `UNKNOWN`. 자유 오류 문구나 예외 전문은 schema 밖이다. `UNKNOWN` 비율을 관측해 코드 추가를 검토한다. `recovery`는 `NONE`, `OTHER_RETRIEVER`, `RRF_ORDER`, `VERIFIED_BASELINE`, `CLARIFICATION`, `FAILED_CLOSED` 중 하나다. 실제 사용자 결과와 무관한 임의 복구 코드를 agent가 변경할 수 없다.
 
-단계별 `durationMs`는 단조 시계로 측정한다. 현재 BM25와 vector는 순차 실행되므로 각각의 단계 시간과 retrieval wall time을 모두 기록한다. DB client·provider HTTP의 자동 span은 단계 span의 자식으로 두고, SQL 전문·검색 표현·prompt/응답 본문은 기록하지 않는다. stage artifact에는 정수 후보 수·근거 수·허용/보류 claim 수와 고정 version/hash만 둔다. trace span의 속성 allowlist와 metric label 제한은 [관측 계약](../operations/observability-contract.md)을 따른다.
+단계별 `durationMs`는 단조 시계로 측정한다. 병렬 BM25/vector의 duration을 합산해 `retrieval` wall time으로 쓰지 않는다. DB client·provider HTTP의 자동 span은 단계 span의 자식으로 두고, SQL 전문·검색 표현·prompt/응답 본문은 기록하지 않는다. stage artifact에는 정수 후보 수·근거 수·허용/보류 claim 수와 고정 version/hash만 둔다. trace span의 속성 allowlist와 metric label 제한은 [관측 계약](../operations/observability-contract.md)을 따른다.
 
 ## 3. Trace·metric·artifact의 연결
 

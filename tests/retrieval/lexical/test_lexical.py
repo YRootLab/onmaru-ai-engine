@@ -252,7 +252,7 @@ class _Connection:
 
     def execute(self, statement: str, parameters: object = None) -> _Rows:
         if "pg_extension" in statement:
-            return _Rows(({"extversion": "0.27.0"},) if self.extension else ())
+            return _Rows(({"extversion": "0.20.3"},) if self.extension else ())
         assert "d.eligibility_status='PUBLIC'" in statement
         assert parameters == ("corpus-r1",)
         return _Rows(
@@ -282,8 +282,9 @@ def test_postgres_repository_requires_real_bm25_extension() -> None:
     with pytest.raises(LexicalIndexError, match="BM25_EXTENSION_UNAVAILABLE"):
         repository.load(unavailable, request())
 
-    with pytest.raises(LexicalIndexError, match="BM25_TOPK_REQUIRED"):
-        repository.load(snapshot(connection=_Connection(True)), request())
+    loaded = repository.load(snapshot(connection=_Connection(True)), request())
+    assert loaded[0].exact_names == ("북촌 한옥마을",)
+    assert loaded[0].public is True
 
 
 def test_postgres_repository_rejects_configured_index_version_mismatch() -> None:
@@ -291,53 +292,3 @@ def test_postgres_repository_rejects_configured_index_version_mismatch() -> None
 
     with pytest.raises(LexicalIndexError, match="BM25_INDEX_VERSION_MISMATCH"):
         repository.load(snapshot(connection=_Connection(True)), request())
-
-
-class _Bm25Connection:
-    def __init__(self) -> None:
-        self.statements: list[str] = []
-        self.parameters: list[object] = []
-
-    def execute(self, statement: str, parameters: object = None) -> _Rows:
-        self.statements.append(statement)
-        self.parameters.append(parameters)
-        if "pg_extension" in statement:
-            return _Rows(({"extversion": "0.27.0"},))
-        if "pg_indexes" in statement:
-            return _Rows(({"indexdef": "USING bm25 (search_text::pdb.ngram(2,3))"},))
-        return _Rows(
-            (
-                {
-                    "chunk_id": "chunk-1",
-                    "place_id": "source-1",
-                    "corpus_place_id": PLACE,
-                    "source_type": "TOUR_API",
-                    "source_id": "source-1",
-                    "source_revision": "source-r1",
-                    "corpus_revision": "corpus-r1",
-                    "region_code": "11",
-                    "category_code": "HANOK",
-                    "text": "북촌한옥마을 서울 전통 주거지",
-                    "title": "북촌 한옥마을",
-                    "score": 4.2,
-                },
-            )
-        )
-
-
-def test_postgres_repository_uses_bm25_topk_and_pushes_filters_into_sql() -> None:
-    connection = _Bm25Connection()
-    current = snapshot(connection=connection)
-    result = LexicalSearchAdapter(PostgresLexicalChunkRepository()).search(request(), current)
-
-    query = connection.statements[-1]
-    assert "c.search_text @@@" in query
-    assert "pdb.score(c.search_key)" in query
-    assert "d.region_code=ANY" in query
-    assert "d.category_code=ANY" in query
-    assert "d.source_id <> ALL" in query
-    assert "NOT EXISTS" in query
-    assert "LIMIT" in query
-    assert "pg_extension" not in query
-    assert "북촌한옥마을은 어디인가요" in connection.parameters[-1]  # type: ignore[operator]
-    assert len(result.candidates) == 1

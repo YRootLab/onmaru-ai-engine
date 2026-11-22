@@ -15,7 +15,6 @@ from onmaru_ai.contracts.models import (
     CandidateSet,
     RetrievalStatus,
 )
-from onmaru_ai.providers.gemini.models import GeminiFailureCode, GeminiProviderError
 from onmaru_ai.storage.postgres import CorpusSnapshot
 
 logger = logging.getLogger(__name__)
@@ -165,11 +164,6 @@ class HybridRetrievalCoordinator:
                             "indexVersion": "ko-bm25-v1",
                         }), snapshot
                     )
-            except GeminiProviderError as error:
-                if error.code is GeminiFailureCode.AI_QUOTA_EXCEEDED:
-                    raise
-                logger.warning("Lexical search error: %s", error)
-                lexical_error = True
             except Exception as e:
                 logger.warning("Lexical search error: %s", e)
                 lexical_error = True
@@ -178,11 +172,6 @@ class HybridRetrievalCoordinator:
             try:
                 if self._dense_searcher is not None:
                     dense_set = self._dense_candidates(plan, snapshot)
-            except GeminiProviderError as error:
-                if error.code is GeminiFailureCode.AI_QUOTA_EXCEEDED:
-                    raise
-                logger.warning("Dense search error: %s", error)
-                dense_error = True
             except Exception as e:
                 logger.warning("Dense search error: %s", e)
                 dense_error = True
@@ -442,16 +431,4 @@ class HybridRetrievalCoordinator:
 
 def _corpus_region(code: str) -> str:
     normalized = code.strip().lower()
-    suffix = normalized.removeprefix("kr-datalab-")
-    if suffix == normalized:
-        suffix = normalized.removeprefix("kr-")
-        if suffix == normalized:
-            return normalized
-    if len(suffix) == 5 and suffix.isdigit():
-        prefix = suffix[:2]
-    elif len(suffix) == 2 and suffix.isdigit():
-        prefix = suffix
-    else:
-        return normalized
-    corpus_prefix = "42" if prefix == "51" else prefix
-    return f"KR-{corpus_prefix}"
+    return normalized[:5] if len(normalized) > 5 and normalized.startswith("kr-") else normalized

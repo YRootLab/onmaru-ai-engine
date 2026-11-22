@@ -44,7 +44,7 @@ Grafana에서는 실패·지연 metric의 집계 panel에서 허용된 구조화
 
 span 속성 allowlist는 `deployment.environment`, `service.name`, `run.engine`, `route`, `failureStage`, `degradedReason`, `configHash`, `corpusRevision`, `dictionaryVersion`, `embeddingProfile`, `rankerVersion`, `promptVersion`, `providerModelVersion`, `candidateCount`, `uniquePlaceCount`, `evidenceCount`, `claimAcceptedCount`, `claimHeldCount`, `tokenInput`, `tokenOutput`, `costEstimateMicros`다. `runId`·후보/청크 ID는 필요한 **trace 또는 접근 제한 artifact**에만 두고 metric label에 넣지 않는다. 원문 질의, 회원 ID, 대화 요약, prompt·LLM 출력·청크 본문, 주소/정밀 위치, access token은 내보내지 않는다. 일반 자동 계측의 request/response body 포착도 꺼 두고 합성 개인정보 fixture로 누출 여부를 검사한다.
 
-각 단계는 시작/끝 시각·상태를 가지며 오류는 정규화된 코드로 기록한다. 현재 hybrid 구현은 BM25 span 다음 vector span을 순차 실행한다. 2GB 목표 환경에서 DB 연결 수·CPU 경쟁·p95를 측정하기 전에는 병렬 실행으로 기술하지 않는다. 한 경로 실패와 reranker timeout은 전체 trace 오류로 덮지 않고 해당 span의 실패 및 root의 `degradedReason`으로 남긴다. trace가 표본에서 빠져도 아래 집계 metric은 수집해야 한다. 임의 sampling 정책으로 실패 trace 보존을 보장할 수 없다면 실패 원인의 영속 artifact를 별도로 남기고 trace 누락률을 표시한다.
+각 단계는 시작/끝 시각·상태를 가지며 오류는 정규화된 코드로 기록한다. BM25와 vector는 형제 span으로 병렬 실행한다. 한 경로 실패와 reranker timeout은 전체 trace 오류로 덮지 않고 해당 span의 실패 및 root의 `degradedReason`으로 남긴다. trace가 표본에서 빠져도 아래 집계 metric은 수집해야 한다. 임의 sampling 정책으로 실패 trace 보존을 보장할 수 없다면 실패 원인의 영속 artifact를 별도로 남기고 trace 누락률을 표시한다.
 
 ## Metric 계약
 
@@ -80,7 +80,7 @@ metric label에는 `runId`, `traceId`, `memberId`, `placeId`, `chunkId`, source 
 ## 활성화 순서와 완료 증거
 
 1. 현재 Spring/FastAPI의 OTLP 설정과 기존 Prometheus metrics 수집 경로를 staging에서 확인한다. Spring의 OTLP metrics 전송은 Compose에서 꺼져 있으므로 **기존 `/actuator/prometheus` scrape가 실제 운영 수집 경로인지 먼저 확인**한다. 동일 metric을 scrape와 OTLP 양쪽으로 중복 수집하지 않도록 한 경로를 선택하고, 합성 run의 trace·metric이 Grafana에서 검색되는지 확인한다.
-2. Spring↔FastAPI parent-child trace, 순차 BM25/vector span, 실패·fallback·SSE 재연결, corpus sync를 fixture로 검증한다. 병렬 변경은 2GB staging p95·connection·CPU 비교를 별도 결과로 남긴 뒤 반영한다. `runId`를 metric label에 쓰지 않는지 확인한다.
+2. Spring↔FastAPI parent-child trace, 병렬 BM25/vector span, 실패·fallback·SSE 재연결, corpus sync를 fixture로 검증한다. `runId`를 metric label에 쓰지 않는지 확인한다.
 3. exporter 차단·429·부분 수락·프로세스 종료 시험에서 사용자 응답 불변, trace 유실 계수 증가, 필수 감사 원장 보존을 확인한다. 백엔드에서 trace를 조회할 수 없는데 전송 ACK만 있는 상태는 합격이 아니다.
 4. 2GB 혼합 부하에서 계측 전후 CPU/RSS/지연과 Grafana 사용량·예상 비용을 비교한다. 수집률·유실률·보존 기간과 비용 상한이 승인되면 선택한 운영 metrics/trace 경로에 RAG 계측을 단계적으로 연결한다.
 

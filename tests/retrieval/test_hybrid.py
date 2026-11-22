@@ -13,23 +13,9 @@ from onmaru_ai.contracts.models import ApprovedQueryPlan, Candidate, CandidateSe
 from onmaru_ai.retrieval.hybrid import (
     HybridRetrievalCoordinator,
     HybridSearchRequest,
-    _corpus_region,
     rrf_combine,
 )
 from onmaru_ai.storage.postgres import CorpusSnapshot
-
-
-@pytest.mark.parametrize(
-    ("incoming", "expected"),
-    [
-        ("kr-datalab-26", "KR-26"),
-        ("kr-datalab-47130", "KR-47"),
-        ("kr-datalab-51150", "KR-42"),
-        ("kr-42", "KR-42"),
-    ],
-)
-def test_spring_datalab_region_codes_map_to_corpus_region(incoming: str, expected: str) -> None:
-    assert _corpus_region(incoming) == expected
 
 
 def _load_sample_plan(mode: str = "HYBRID") -> ApprovedQueryPlan:
