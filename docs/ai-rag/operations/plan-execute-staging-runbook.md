@@ -9,11 +9,14 @@ AI Engine `ai-engine` 컨테이너에는 다음 설정을 전달한다.
 | 변수 | 필요 여부 | 의미 |
 |---|---|---|
 | `ONMARU_AI_DB_DSN` | Plan/Execute 사용 시 필수 | `ai` schema 읽기와 retrieval에 사용할 **runtime role** 접속 문자열. migration role credential을 넣지 않는다. 기존 alias `ONMARU_DB_URL`도 읽지만 Compose 계약은 `ONMARU_AI_DB_DSN`으로 통일한다. |
+| `ONMARU_AI_REVOCATION_SYNC_DSN` | DB 연결을 사용하는 상시 AI Engine에서 필수 | revocation snapshot/event와 heartbeat를 반영할 전용 sync role 접속 문자열. runtime DSN으로 대체하지 않는다. 이 값이 없거나 poller가 현재 watermark를 따라잡지 못하면 `/ready`는 503이다. |
 | `ONMARU_SECRET_GEMINI_API_KEY_CURRENT` | 현재 app 시작 시 필수 | secret provider의 `gemini.api-key` 값. Plan/Execute 생성 및 Gemini query embedding에 쓰인다. |
 | `ONMARU_SPRING_BASE_URL` | 배포에서 필수 권장 | Spring 내부 origin. 기본값은 `http://staging-api:8080`이므로 운영 Compose는 반드시 명시한다. |
 | `ONMARU_GEMINI_MODEL_NAME` | 선택 | grounded claim 생성 모델명. 기본값은 `gemini-2.5-flash`; 배포 전 실제 지원 모델과 비용 설정을 확인한다. |
 
 현재 Plan/Execute의 query embedding은 코드에 `gemini-embedding-001-384@v1`로 고정되어 있고 profile override env는 없다. 따라서 활성 corpus도 같은 profile이어야 dense route가 동작한다. profile 선택을 임의의 Compose env로 흉내 내지 않는다. 앱 컨테이너에는 database 내부 network 연결을 허용하되 DB port를 host에 공개하지 않는다. migration 계정은 Compose의 AI Engine runtime env로 전달하지 않는다.
+
+`ONMARU_AI_REVOCATION_SYNC_DSN`에는 corpus migration owner를 재사용하지 않는다. 별도 role에는 `ai.revocation_state`와 `ai.active_corpus`의 필요한 `SELECT`/`UPDATE`, revocation event/blocklist 테이블의 `SELECT`/`INSERT`/`DELETE`, snapshot staging 테이블의 `SELECT`/`INSERT`/`UPDATE`/`DELETE`만 부여한다. `ONMARU_AI_DB_DSN`은 계속 읽기 전용이다. 별도 sync credential을 배포하지 않으면 앱은 의도적으로 readiness를 통과하지 않는다.
 
 ## Embedding profile 결정
 

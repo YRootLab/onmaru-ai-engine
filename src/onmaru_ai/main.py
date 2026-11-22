@@ -105,14 +105,19 @@ def create_app(
 
     revocation_poller = None
     revocation_ledger = None
-    if (source_env.get("ONMARU_AI_DB_DSN") or source_env.get("ONMARU_DB_URL") or "").strip():
+    runtime_db_dsn = (
+        source_env.get("ONMARU_AI_DB_DSN") or source_env.get("ONMARU_DB_URL") or ""
+    ).strip()
+    revocation_sync_dsn = source_env.get("ONMARU_AI_REVOCATION_SYNC_DSN", "").strip()
+    revocation_sync_dsn_missing = bool(runtime_db_dsn) and not revocation_sync_dsn
+    if runtime_db_dsn and revocation_sync_dsn:
         from onmaru_ai.corpus.revocation import RevocationLedger
         from onmaru_ai.corpus.revocation_feed import SpringRevocationFeedClient
         from onmaru_ai.corpus.revocation_poller import SourceRevocationPoller
 
-        revocation_ledger = RevocationLedger(
-            (source_env.get("ONMARU_AI_DB_DSN") or source_env.get("ONMARU_DB_URL") or "").strip()
-        )
+        # The general runtime role is read-only. Revocation sync has narrowly scoped
+        # write permissions and must never silently fall back to the runtime DSN.
+        revocation_ledger = RevocationLedger(revocation_sync_dsn)
         revocation_poller = SourceRevocationPoller(
             revocation_ledger,
             SpringRevocationFeedClient(
@@ -273,6 +278,12 @@ def create_app(
             return JSONResponse(
                 status_code=503,
                 content={"status": "not_ready", "reason": "plan_execute_service_unwired"},
+            )
+
+        if revocation_sync_dsn_missing:
+            return JSONResponse(
+                status_code=503,
+                content={"status": "not_ready", "reason": "source_revocation_sync_dsn_missing"},
             )
 
         if db_dsn and revocation_poller is not None and not await revocation_poller.ready():

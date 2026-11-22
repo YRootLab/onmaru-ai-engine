@@ -43,6 +43,24 @@ def test_readiness_returns_200_when_wired() -> None:
     assert resp.json() == {"status": "ready"}
 
 
+def test_readiness_requires_dedicated_revocation_sync_dsn() -> None:
+    client = TestClient(
+        create_app(
+            secret_provider=FakeSecretProvider(),
+            plan_execute_service=_ready_service(),
+            environ={"ONMARU_AI_DB_DSN": "postgresql://runtime-role/db"},
+        )
+    )
+
+    response = client.get("/ready")
+
+    assert response.status_code == 503
+    assert response.json() == {
+        "status": "not_ready",
+        "reason": "source_revocation_sync_dsn_missing",
+    }
+
+
 def test_readiness_fails_503_when_disabled() -> None:
     client = TestClient(
         create_app(
