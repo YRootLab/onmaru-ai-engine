@@ -65,3 +65,10 @@ Open risk or decision:
 
 Ad hoc requests captured this session:
 - Implement W14/#15 with strict TDD, actual-stage-only emission, stable retry ordinal, bounded failure isolation, focused/full checks, self-review, and a reviewable commit.
+
+Current work (durable source revocation sync, 2026-11-23):
+- AI implementation tracked by [#99](https://github.com/YRootLab/onmaru-ai-engine/issues/99); paired BE implementation tracked by [BE #875](https://github.com/YRootLab/OnMaru-backend/issues/875). Approved design is BE transactional outbox + AI Engine ordered poller.
+- AI branch: `feature/93-plan-execute-production` in `.worktrees/feature/plan-execute-production`. Adds migration `005_source_revocation_bootstrap.sql`, strict authenticated Spring feed client, durable snapshot staging/install, ordered polling, and readiness gating. It does not generate or load reviewed facts.
+- BE branch: `feature/875-source-revocation-feed` in `/Users/yangseunghyeon/orca/workspaces/OnMaruBE/feature-875-source-revocation-feed`. Adds transactional source-revocation outbox, snapshot/page endpoints, and a dynamic source watermark for current versions.
+- Verification: AI DB integration on local PostgreSQL with pg_search 0.27.0 + pgvector 0.8.7: 11 passed; Ruff and mypy passed. BE migration registry checksum policy passed; focused Gradle reports show publisher PostgreSQL integration, controller auth, and dynamic watermark tests each passed (the Gradle process did not terminate cleanly after writing results; rerun before merge).
+- Production is untouched. Keep `ONMARU_AI_PLAN_EXECUTE_ENABLED=false`: production needs reviewed_facts >=1 approved by a person, applied AI/BE migrations, current revocation snapshot/heartbeat, BM25 PR #97 merged and applied, version synchronization, and live E2E. Existing #95/#96/#97 and docs PR #98 remain open.

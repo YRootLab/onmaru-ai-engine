@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import os
 import sys
@@ -102,6 +103,25 @@ def create_app(
     owns_client = http_client is None
     source_env = os.environ if environ is None else environ
 
+    revocation_poller = None
+    revocation_ledger = None
+    if (source_env.get("ONMARU_AI_DB_DSN") or source_env.get("ONMARU_DB_URL") or "").strip():
+        from onmaru_ai.corpus.revocation import RevocationLedger
+        from onmaru_ai.corpus.revocation_feed import SpringRevocationFeedClient
+        from onmaru_ai.corpus.revocation_poller import SourceRevocationPoller
+
+        revocation_ledger = RevocationLedger(
+            (source_env.get("ONMARU_AI_DB_DSN") or source_env.get("ONMARU_DB_URL") or "").strip()
+        )
+        revocation_poller = SourceRevocationPoller(
+            revocation_ledger,
+            SpringRevocationFeedClient(
+                get_spring_base_url(environ),
+                lambda: provider.get("internal-ai.service-token").current,
+                client,
+            ),
+        )
+
     # Wire PostgreSQL RAG components if configured and not explicitly provided
     db_dsn = source_env.get("ONMARU_AI_DB_DSN") or source_env.get("ONMARU_DB_URL")
     if db_dsn and db_dsn.strip():
@@ -157,13 +177,24 @@ def create_app(
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-        yield
-        if owns_client:
-            await client.aclose()
+        stop_poller = asyncio.Event()
+        poller_task = (
+            asyncio.create_task(revocation_poller.run(stop_poller), name="source-revocation-poller")
+            if revocation_poller is not None else None
+        )
+        try:
+            yield
+        finally:
+            if poller_task is not None:
+                stop_poller.set()
+                await poller_task
+            if owns_client:
+                await client.aclose()
 
     app = FastAPI(title="OnMaru AI", lifespan=lifespan)
     app.state.plan_execute_service = plan_execute_service
     app.state.http_client = client
+    app.state.source_revocation_poller = revocation_poller
     install_observability(app, telemetry_sink or create_telemetry_sink())
     install_internal_auth(
         app,
@@ -242,6 +273,12 @@ def create_app(
             return JSONResponse(
                 status_code=503,
                 content={"status": "not_ready", "reason": "plan_execute_service_unwired"},
+            )
+
+        if db_dsn and revocation_poller is not None and not await revocation_poller.ready():
+            return JSONResponse(
+                status_code=503,
+                content={"status": "not_ready", "reason": "source_revocation_not_ready"},
             )
 
         # Check HTTP client ready
