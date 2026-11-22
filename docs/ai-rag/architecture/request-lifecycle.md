@@ -64,7 +64,7 @@ FastAPI execute 응답은 `configHash`, `corpusRevision`, `sourceRevocationSeque
 
 ## 검색과 확정의 세부 순서
 
-1. Spring이 공개·지역·분류·고정/제외 필터의 현재 상한을 승인한다. FastAPI는 활성 corpus revision의 동일 구조화 필터, `retrievalExpression`, 비식별 `semanticQuery`로 한국어 BM25 상위 20, dense 상위 20을 **병렬** 검색한다. 이름·검수 별칭 exact/prefix는 canonical ID 식별에 활용한다. 추천·교체에서는 각 경로가 장소당 최대 3개, 같은 source revision당 최대 2개 청크만 남기되 20개를 채우려면 더 깊이 스캔한다. 설명은 대상 장소, 비교는 명시된 두 장소를 각각 검색하여 이 다양성 제한을 적용하지 않는다.
+1. Spring이 공개·지역·분류·고정/제외 필터의 현재 상한을 승인한다. FastAPI는 활성 corpus revision의 동일 구조화 필터, `retrievalExpression`, 비식별 `semanticQuery`로 한국어 BM25 상위 20을 검색한 다음 dense 상위 20을 검색한다. 현재 구현은 순차 실행이며, 2GB 목표 환경에서 DB 연결 수·CPU 경쟁·p95를 측정하기 전에는 병렬 실행으로 바꾸지 않는다. 이름·검수 별칭 exact/prefix는 canonical ID 식별에 활용한다. 추천·교체에서는 각 경로가 장소당 최대 3개, 같은 source revision당 최대 2개 청크만 남기되 20개를 채우려면 더 깊이 스캔한다. 설명은 대상 장소, 비교는 명시된 두 장소를 각각 검색하여 이 다양성 제한을 적용하지 않는다.
 2. 중복 청크를 합치고 `1/(60+bm25Rank) + 1/(60+vectorRank)`로 결합한다. 추천·교체는 RRF 상위 30개를 뽑기 전에 장소당 최대 3개를 적용하고, 가능한 서로 다른 장소 최소 5곳을 먼저 확보한다. 조건에 맞는 장소가 5곳 미만이면 실제 수를 기록한다. 설명·비교는 대상별 근거를 보존한다. reranker가 최대 30개를 재정렬한 뒤 장소당 최대 2개, 전체 최대 12개 근거를 선택한다. 별칭 exact hit는 canonical ID 매핑 후 dedup한다. reranker 오류·timeout은 같은 후보의 RRF 순서로 복귀하고 degraded 상태를 기록한다. `pg_trgm`을 BM25로 표기하지 않는다.
 3. 근거가 0개면 LLM을 호출하지 않고 `THIN_RESULTS` 또는 기본 탐색으로 끝낸다. 후보가 1~2곳이면 확인된 수만 답하고 부족 이유를 붙인다. 근거가 있어도 현재 공개 조건을 위반하면 그 항목을 버린다.
 4. FastAPI는 후보·근거 ID의 allowlist 안에서만 제안한다. 문장별 `claims[{text,evidenceIds}]`를 반환하고 Spring은 각 claim의 근거가 같은 장소·활성 revision에 속하는지 검증한다. 의미상 지지 여부를 기계적으로 확증할 수 없으므로 검증되지 않은 사실 문장은 보류하고, 초기 출시의 자동 검사와 사람 검수 평가를 함께 적용한다. citation은 서버 evidence registry에서 만든다.
