@@ -16,7 +16,7 @@ AI Engine `ai-engine` 컨테이너에는 다음 설정을 전달한다.
 
 현재 Plan/Execute의 query embedding은 코드에 `gemini-embedding-001-384@v1`로 고정되어 있고 profile override env는 없다. 따라서 활성 corpus도 같은 profile이어야 dense route가 동작한다. profile 선택을 임의의 Compose env로 흉내 내지 않는다. 앱 컨테이너에는 database 내부 network 연결을 허용하되 DB port를 host에 공개하지 않는다. migration 계정은 Compose의 AI Engine runtime env로 전달하지 않는다.
 
-`ONMARU_AI_REVOCATION_SYNC_DSN`은 corpus migration owner와 분리한다. AI migration `005_source_revocation_bootstrap.sql` 적용 후 DB 관리자 계정으로 아래 별도 그룹과 login을 준비하고, 비밀번호는 Compose `.env`/secret store에서 주입한다. 운영 DB에 이미 migration role과 runtime role이 있으므로 기존 두 역할은 재사용하지 않는다.
+`ONMARU_AI_REVOCATION_SYNC_DSN`은 corpus migration owner와 분리한다. AI migration `005_source_revocation_bootstrap.sql` 적용 후 DB 관리자 계정으로 아래 별도 그룹과 login을 준비한다. 운영 DB에 이미 migration role과 runtime role이 있으므로 기존 두 역할은 재사용하지 않는다. Sync DSN은 AI 전용 Compose 변수로 선택 전달되므로 AI가 꺼져 있는 기존 Spring/DB 작업은 이 값이 없어도 동작한다.
 
 ```sql
 DO $$
@@ -38,7 +38,32 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON ai.revocation_snapshot_staging_state,
   TO onmaru_ai_revocation_sync;
 ```
 
-BE의 `infra/lightsail/.env`에는 `ONMARU_DB_AI_REVOCATION_SYNC_USER`와 새 `ONMARU_DB_AI_REVOCATION_SYNC_PASSWORD`를 넣고 AI 전용 DSN을 compose가 컨테이너에 전달하게 한다. `ONMARU_AI_DB_DSN`은 계속 읽기 전용이다. sync credential 또는 최초 snapshot/heartbeat가 준비되지 않으면 앱은 의도적으로 readiness를 통과하지 않는다.
+운영 `.env`의 `ONMARU_AI_REVOCATION_SYNC_DSN`에는 위 login의 URL-encoded DSN을 설정한다. BE의 `infra/lightsail/compose.yaml`이 이 변수만 AI Engine 컨테이너로 전달한다. 기존 DB 볼륨에는 bootstrap init script가 재실행되지 않으므로, 운영자는 위 SQL을 기존 DB에서 직접 적용해야 한다. `ONMARU_AI_DB_DSN`은 계속 읽기 전용이다. sync credential 또는 최초 snapshot/heartbeat가 준비되지 않으면 앱은 의도적으로 readiness를 통과하지 않는다.
+
+## 운영 DB migration과 Spring 버전 동기화
+
+관련 BE/AI PR이 `develop`에 병합되고 승인된 운영 image를 고정한 뒤, 백업 확인과 운영 반영 승인을 받고 아래 순서로 적용한다. 기존 active corpus와 `ONMARU_AI_PLAN_EXECUTE_ENABLED=false`는 유지한다.
+
+1. AI migration role로 BM25 PR #97의 `004_pg_search_bm25.sql`을 적용한다. migration은 transaction 안에서 `maintenance_work_mem=32MB`, `pdb.ngram(2,3)` 인덱스 생성, `ANALYZE ai.documents; ANALYZE ai.chunks;`를 수행한다. 인덱스 빌드 중 RSS/디스크/시간을 기록하고, 운영 이미지가 `pg_search 0.27.0`인지 확인한다.
+2. 같은 migration role로 `005_source_revocation_bootstrap.sql`을 적용하고 위 전용 sync group/login 및 최소 GRANT를 설정한다. AI 컨테이너를 배포해 BE watermark snapshot이 설치되고 `/ready`가 200이 되는지 확인한다. heartbeat가 stale이면 version sync를 진행하지 않는다.
+3. AI 이미지의 read-only runtime role로 활성 corpus와 네 version 값을 조회한다:
+
+   ```bash
+   docker compose --profile ai-engine run --rm ai-engine \
+     python scripts/runtime_version.py
+   ```
+
+   출력은 다음 4개 `KEY=VALUE` 행이다. active corpus가 없거나 heartbeat가 stale하거나 AI/active revocation sequence가 다르면 스크립트는 값을 내지 않고 종료 코드 2로 끝난다.
+
+   ```text
+   CORPUS_REVISION=...
+   CONFIG_HASH=...
+   QUESTION_DICTIONARY_VERSION=...
+   SOURCE_REVOCATION_SEQUENCE=...
+   ```
+
+4. 이 값을 Spring 운영 `.env`의 `ONMARU_AI_CORPUS_REVISION`, `ONMARU_AI_CONFIG_HASH`, `ONMARU_AI_QUESTION_DICTIONARY_VERSION`, `ONMARU_AI_SOURCE_REVOCATION_SEQUENCE`에 그대로 반영하고 Spring을 재기동한다. `QUESTION_DICTIONARY_VERSION`이 `questions-1`이 아니면 BE `DefaultPlanAuthorityGate`의 고정 검증도 함께 바꾼 뒤 해당 BE release를 운영한다.
+5. 최신 corpus revision 활성화, 사람 검수 승인 `ai.reviewed_facts >= 1`, freshness가 유지되는 revocation heartbeat, 버전 일치, 운영 BM25 검색/필터/top-K 확인이 모두 충족되어야 Plan/Execute E2E와 별도 feature-flag 승인으로 넘어간다.
 
 ## Embedding profile 결정
 
