@@ -1,5 +1,6 @@
 import asyncio
 from datetime import UTC, datetime
+from typing import Literal
 
 import httpx
 import pytest
@@ -86,7 +87,7 @@ async def test_poller_survives_database_failure_while_marking_unhealthy() -> Non
             raise AssertionError("polling must stop after ledger state fails")
 
     class StopAfterOneWait(asyncio.Event):
-        async def wait(self) -> bool:
+        async def wait(self) -> Literal[True]:
             self.set()
             return True
 
