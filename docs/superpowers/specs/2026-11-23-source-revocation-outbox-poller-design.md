@@ -45,6 +45,10 @@ sequenceDiagram
 
 BE stores a global monotonic sequence and append-only events for `PLACE` and `SOURCE_REVISION` revocations. A committed event is written in the same transaction as the publication or rights-state change that makes the source unavailable.
 
+For the existing Tour API catalog path, the publication hook is `JdbcTourApiCatalogPublisher.publishRevision(Connection, ...)`: it marks the new dataset revision published and advances `catalog_active_datasets` in the caller's transaction. The BE implementation must compare that prior active revision with the newly published revision there, and append revocations in that same transaction for public identities withdrawn from the new active set. Any other path that changes publication or source rights must use the same outbox transaction contract; the inventory of those paths is an implementation acceptance item, not an assumption that the KTO publisher is the only path.
+
+Identity mapping must match the AI documents already loaded by `scripts/ingest_catalog_from_postgres.py`: `source_type=TOUR_API`, `source_id=public_id` (for example, `p-tourapi-…`), and `source_revision=active catalog dataset revision UUID rendered as text`; `place_id` is that same `public_id`. Do not substitute BE's internal `source_ref_id` UUID. A source-revision withdrawal therefore targets the exact `(TOUR_API, public_id, dataset_revision_uuid)` tuple for each affected public place. If the source's legal or publication state is revoked at whole-source scope, BE emits the corresponding per-place events for all affected identities (and a `PLACE` event where the entire place must be blocked), so the existing AI blocklist can enforce it without silently changing identity semantics.
+
 The sequence must be gap-free for committed events because AI's current ledger rejects a sequence gap. Allocate it by locking and incrementing a transactional counter row in the publication transaction; do not use a PostgreSQL sequence whose values can be consumed by rolled-back transactions.
 
 The private API provides:
@@ -59,7 +63,7 @@ Use the existing internal service authentication and private app network. A wate
 
 AI Engine has one durable poller using the existing Spring base URL and service token. It uses the shared corpus write lock so multiple pollers cannot update the ledger concurrently.
 
-On first installation or after an AI DB restore, the poller imports the BE snapshot and reconciles its blocklists against every AI corpus revision that is still `LIVE`. It records the snapshot watermark only after all snapshot pages, identity checks, and blocklist writes commit atomically. It then requests events after that watermark.
+On first installation or after an AI DB restore, the poller imports the BE snapshot and reconciles its blocklists against every AI corpus revision that is still `LIVE`. Snapshot pages are first downloaded into durable local staging keyed by `snapshotId`; page count, checksums, scope, and shared watermark are verified before publication. A new atomic `RevocationLedger.bootstrap(snapshot, watermark)` operation then installs the reconciled blocklists and checkpoint in one AI DB transaction. The existing `RevocationLedger.apply()` only accepts the next contiguous sequence and cannot be used to jump directly to a snapshot watermark. The bootstrap must reject a watermark lower than the durable local cursor unless an explicit restore/recovery procedure has first marked the old ledger unhealthy. It then requests events after that watermark. Network fetching does not hold a long-running AI database transaction open.
 
 For incremental operation, the poller:
 
@@ -82,7 +86,7 @@ The existing operator version check remains useful at initial activation: compar
 - BE publication succeeds but AI is offline: the outbox retains events; heartbeat ages out and retrieval stays closed until replay completes.
 - Duplicate page/retry: AI verifies the duplicate event identity and does not advance twice.
 - Gap or watermark regression: AI marks its ledger unhealthy and does not heartbeat; an operator must reconcile from a new consistent snapshot if replay cannot repair it.
-- AI database restore: keep heartbeat stale until the pinned BE snapshot plus all events through the current watermark are applied.
+- AI database restore: keep heartbeat stale until the pinned BE snapshot plus all events through the current watermark are applied. If the BE snapshot cannot establish the complete historical rights baseline, do not bootstrap or heartbeat; backfill the source history first.
 - Partial snapshot/page failure: discard the incomplete bootstrap transaction and leave the old state unhealthy; do not accept a partial blocklist.
 - Poller overlap: serialize with the corpus write lock and use a durable cursor in `revocation_state`.
 
