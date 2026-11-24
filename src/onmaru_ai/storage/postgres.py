@@ -374,7 +374,7 @@ def _read_bundle(
             **{
                 key: value
                 for key, value in item.items()
-                if key not in ("revision_id", "search_tsv")
+                if key not in ("revision_id", "search_tsv", "search_key")
             }
         )
         for item in connection.execute(
