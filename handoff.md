@@ -230,3 +230,10 @@ Production candidate staging is complete, but Plan/Execute is not ready to enabl
 - Independent code review requested before release/DDL. Do not claim production ready from unit or disposable DB tests alone. Runtime compatibility, real source feed, source heartbeat, fact approval, search evaluation, version sync and live E2E gates remain required.
 - Integration PR: https://github.com/YRootLab/onmaru-ai-engine/pull/101 (base develop). Independent review found a P1 false-positive readiness gate. Added bounded read-only runtime corpus probe requiring active E5/live corpus, positive corpus counts, approved facts, pg_search 0.27.0, valid BM25 index, installed runtime snapshot, matching revocation sequence and fresh runtime heartbeat. This is additional to sync-poller readiness.
 - Readiness follow-up verification: initial full suite 1,138 passed / 52 skipped; actual disposable DB probe test 4 passed. Re-run after final runtime revocation predicates; hosted PR verify remains required for final pushed head.
+
+## User-approved production fact — 2026-11-24
+
+- User explicitly reviewed and approved the Gyeongbokgung historical sentence in this conversation. Approved artifact: `artifacts/fact-review/rev-local-e5-20261120.approved.jsonl`; reviewer `user-yangseunghyeon`, approval timestamp recorded at artifact preparation.
+- Applied one APPROVED fact to the inactive production E5 revision via bounded single-transaction owner SQL with exact span, PUBLIC eligibility and current persisted place/source blocklist predicates. `INSERT 0 1`, SELECT confirmed approved status, COMMIT succeeded. Loader was not used because it only accepts active revisions; no active pointer was changed to bypass that restriction.
+- Current persisted blocklist check does not establish fresh source-feed synchronization. Revocation deployment/sync, migrations, release, quality/live E2E and activation gates remain outstanding. Do not claim Plan/Execute is operational yet.
+- PR #101 at ce02ad0: hosted verify passed. Approved fact artifact/log update follows that head.
