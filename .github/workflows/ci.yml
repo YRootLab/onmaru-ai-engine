@@ -44,6 +44,11 @@ jobs:
           cmp evals/report.schema.json "$RUNNER_TEMP/ai-eval-report.schema.json"
       - name: Build container image
         run: docker build --tag onmaru-ai-engine:${{ github.sha }} .
+      - name: Smoke-test final runtime and E5 under production memory limit
+        run: >-
+          docker run --rm --memory=512m --cpus=0.5
+          onmaru-ai-engine:${{ github.sha }}
+          python scripts/check_runtime_image.py
 
   publish:
     if: >-

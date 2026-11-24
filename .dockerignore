@@ -18,3 +18,5 @@ scripts/*
 !scripts/export_e5_onnx.py
 !scripts/export_reviewed_fact_candidates.py
 !scripts/print_active_runtime_versions.py
+
+!scripts/check_runtime_image.py
