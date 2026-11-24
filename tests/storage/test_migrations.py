@@ -57,7 +57,8 @@ def test_migrations_are_atomic_idempotent_and_checksum_verified(
 
     db.execute("DROP SCHEMA ai CASCADE")
     directory = Path(__file__).resolve().parents[2] / "migrations/ai"
-    assert apply_migrations(db, directory) == ("001_corpus.sql", "002_rag_activation.sql")
+    expected = tuple(path.name for path in sorted(directory.glob("[0-9][0-9][0-9]_*.sql")))
+    assert apply_migrations(db, directory) == expected
     assert apply_migrations(db, directory) == ()
     (tmp_path / "001_corpus.sql").write_text("-- changed historical migration")
     with pytest.raises(MigrationError, match="CHECKSUM_MISMATCH"):
@@ -67,7 +68,7 @@ def test_migrations_are_atomic_idempotent_and_checksum_verified(
     with pytest.raises(psycopg.errors.DivisionByZero):
         apply_migrations(db, tmp_path)
     assert db.execute("SELECT to_regclass('ai.uncommitted')").fetchone() == (None,)
-    assert db.execute("SELECT count(*) FROM ai.schema_migrations").fetchone() == (1,)
+    assert db.execute("SELECT count(*) FROM ai.schema_migrations").fetchone() == (len(expected),)
 
 
 def test_runtime_role_cannot_change_active_pointer_or_create_objects(

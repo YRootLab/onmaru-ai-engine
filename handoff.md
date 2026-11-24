@@ -219,3 +219,12 @@ Production candidate staging is complete, but Plan/Execute is not ready to enabl
 6. **Synchronize and exercise Plan/Execute.** After the corpus, reviewed-fact, and revocation gates pass, run `scripts/print_active_runtime_versions.py`; copy its four outputs (`CORPUS_REVISION`, `CONFIG_HASH`, `QUESTION_DICTIONARY_VERSION`, `SOURCE_REVOCATION_SEQUENCE`) into the production Spring environment and restart through the deployment procedure. First run live smoke/E2E checks with the feature flag controlled; verify normal completion, quota 429 + `Retry-After`, safe baseline/explicit failure, and SSE `run.terminal(FAILED)`. Enable `ONMARU_AI_PLAN_EXECUTE_ENABLED=true` only after these checks and an explicit rollout decision.
 
 **Do not perform now:** no reviewed-fact insert without human approval; no manual heartbeat update; no BM25 migration until compatible AI image and migration ownership are resolved; no corpus activation or feature-flag enable while any readiness gate is false. Keep `ONMARU_AI_PLAN_EXECUTE_ENABLED=false` until the sequence above is verified.
+
+## Production launch integration — 2026-11-24
+
+- User authorized completing integration, fact preparation and production operation, explicitly including direct SSH for this session. Tracks #76 and #99.
+- Merged local BM25 migration/search branch into the existing E5 + durable revocation integration. Preserved original root-workspace edits.
+- Fresh combined suite: 1,135 passed / 52 skipped. Ruff source/tests/scripts passed; mypy source (104 files) passed. Disposable local production-equivalent pg_search storage/lifecycle suite: 58 passed after correcting obsolete migration-count and invalid-vector test expectations.
+- Fresh SSH audit confirms inactive `rev-local-e5-20261120` BUILDING with 23,573 documents/embeddings; existing active revision remains `rev-20261115025249`. Reviewed facts remain zero. No production mutation performed in this continuation.
+- Prepared `artifacts/fact-review/rev-local-e5-20261120.draft.jsonl`. Live DB recheck confirmed PUBLIC eligibility and exact source substring for the Gyeongbokgung candidate. This is DRAFT, not an approved loader artifact; user content approval requested separately and remains pending.
+- Independent code review requested before release/DDL. Do not claim production ready from unit or disposable DB tests alone. Runtime compatibility, real source feed, source heartbeat, fact approval, search evaluation, version sync and live E2E gates remain required.

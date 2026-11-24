@@ -277,6 +277,6 @@ def test_postgres_routes_return_empty_for_hard_filter_miss(search_case: SearchCa
 def test_pgvector_query_dimension_mismatch_fails_closed(search_case: SearchCase) -> None:
     with (
         search_case.store.snapshot() as snapshot,
-        pytest.raises(VectorSearchError, match="DIMENSION_MISMATCH"),
+        pytest.raises(VectorSearchError, match="INVALID_VECTOR"),
     ):
         _vector_searcher(output_dimensions=3).search(snapshot, "북촌 한옥마을")
