@@ -28,8 +28,10 @@ from onmaru_ai.contracts import (
     Versions,
 )
 from onmaru_ai.generation import EvidenceGenerator, GenerationInput
+from onmaru_ai.generation.models import GenerationFallback
 from onmaru_ai.orchestration import OrchestrationEngine
 from onmaru_ai.progress import CallbackProgressSink
+from onmaru_ai.providers.gemini.models import GeminiFailureCode, GeminiProviderError
 from onmaru_ai.query import CatalogEntry, QueryPlanner
 from onmaru_ai.security.plan_validator import QueryGrant
 
@@ -231,6 +233,10 @@ class ProductionEvidenceGenerator:
             "verifiedFacts": verified_facts,
         })
         result = await self._provider.generate(data, timeout_seconds=self._timeout_seconds)
+        if result.fallback == GenerationFallback.PROVIDER_RATE_LIMITED:
+            raise GeminiProviderError(
+                GeminiFailureCode.AI_QUOTA_EXCEEDED, retry_after=result.retry_after
+            )
         return result.proposal
 
 
@@ -299,9 +305,9 @@ def create_production_plan_execute_service(
     # Issue #63: Wire real retrieval coordinator, reranker, and evidence selector
     # allowing HYBRID, SQL_PLUS_RETRIEVAL, LEXICAL_ONLY, DENSE_ONLY routes.
     from onmaru_ai.embedding import (
-        GEMINI_EMBEDDING_384,
+        E5_SMALL_ONNX_INT8_384,
         EmbeddingService,
-        GeminiEmbeddingBackend,
+        load_e5_backend,
     )
     from onmaru_ai.retrieval.evidence import EvidenceSelector
     from onmaru_ai.retrieval.hybrid import HybridRetrievalCoordinator
@@ -332,10 +338,15 @@ def create_production_plan_execute_service(
     ))
     generator = ProductionEvidenceGenerator(generation_provider)
     current_versions_factory = versions_factory or active_versions
-    vector_searcher = VectorSearcher(EmbeddingService(
-        GeminiEmbeddingBackend(gemini_key, task_type="RETRIEVAL_QUERY", timeout_seconds=2.5),
-        profile=GEMINI_EMBEDDING_384,
-    ))
+    model_dir = source_env.get("ONMARU_E5_ONNX_DIR", "").strip()
+    if not model_dir:
+        raise ValueError("Plan/Execute requires ONMARU_E5_ONNX_DIR")
+    vector_searcher = VectorSearcher(
+        EmbeddingService(
+            load_e5_backend(model_dir),
+            profile=E5_SMALL_ONNX_INT8_384,
+        )
+    )
 
     retrieval_coordinator = HybridRetrievalCoordinator(
         lexical_searcher=LexicalSearchAdapter(PostgresLexicalChunkRepository()),

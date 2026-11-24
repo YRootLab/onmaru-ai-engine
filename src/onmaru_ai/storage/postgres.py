@@ -5,6 +5,7 @@ import math
 from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
 from dataclasses import asdict, dataclass
+from itertools import islice
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -121,6 +122,80 @@ class PostgresCorpusStore:
             )
         return True
 
+    def stage_spool(self, spool: Any) -> bool:
+        """Validate and insert a disk-backed corpus spool with bounded Python memory."""
+        revision = _validate_spool(spool)
+        document_count, _chunk_count, _embedding_count = spool.counts()
+        with psycopg.connect(self._dsn, row_factory=dict_row) as connection:
+            _lock(connection)
+            existing = connection.execute(
+                "SELECT manifest_hash FROM ai.corpus_revisions WHERE revision_id=%s",
+                (revision.revision_id,),
+            ).fetchone()
+            if existing is not None:
+                if existing["manifest_hash"] != revision.manifest_hash:
+                    raise CorpusStorageError("REVISION_CONFLICT")
+                return False
+            _insert(
+                connection,
+                "corpus_revisions",
+                {
+                    "revision_id": revision.revision_id,
+                    "manifest_hash": revision.manifest_hash,
+                    "manifest": Jsonb(json.loads(revision.canonical_manifest())),
+                    "source_revision": revision.source_revision,
+                    "state": "BUILDING",
+                    "embedding_profile_id": revision.embedding_profile_id,
+                    "chunker_version": revision.chunker_version,
+                    "dictionary_version": revision.dictionary_version,
+                    "config_hash": revision.config_hash,
+                    "document_count": document_count,
+                    "chunk_count": revision.chunk_count,
+                    "embedding_count": revision.embedding_count,
+                },
+            )
+            _insert_many_iter(
+                connection,
+                "documents",
+                (
+                    {"revision_id": revision.revision_id, **asdict(item)}
+                    for item in spool.documents()
+                ),
+            )
+            _insert_many_iter(
+                connection,
+                "chunks",
+                ({"revision_id": revision.revision_id, **asdict(item)} for item in spool.chunks()),
+            )
+            _insert_many_iter(
+                connection,
+                "embeddings",
+                (
+                    {
+                        "revision_id": revision.revision_id,
+                        "chunk_id": item.chunk_id,
+                        "embedding_profile_id": item.embedding_profile_id,
+                        "embedding": json.dumps(item.values, allow_nan=False),
+                        "normalized": True,
+                    }
+                    for item in spool.embeddings()
+                ),
+            )
+            _insert(
+                connection,
+                "corpus_sync_runs",
+                {
+                    "run_id": uuid4(),
+                    "revision_id": revision.revision_id,
+                    "manifest_hash": revision.manifest_hash,
+                    "state": "SUCCEEDED",
+                    "document_count": document_count,
+                    "chunk_count": revision.chunk_count,
+                    "embedding_count": revision.embedding_count,
+                },
+            )
+        return True
+
     def activate(
         self,
         revision_id: str,
@@ -192,10 +267,9 @@ class PostgresCorpusStore:
                     raise CorpusStorageError("ROLLBACK_UNAVAILABLE")
             elif row["state"] not in ("BUILDING", "VALIDATED"):
                 raise CorpusStorageError("REVISION_NOT_STAGED")
-            revision, documents, chunks, embeddings = _read_bundle(connection, row)
+            revision = _validate_database_bundle(connection, row)
             if revision.manifest_hash != manifest_hash:
                 raise CorpusStorageError("MANIFEST_MISMATCH")
-            _validate(revision, documents, chunks, embeddings)
             if connection.execute(
                 """SELECT 1 FROM ai.documents d WHERE d.revision_id=%s AND (
                     EXISTS (SELECT 1 FROM ai.place_revocations p WHERE p.place_id=d.place_id)
@@ -336,6 +410,29 @@ def _insert_many(
             cursor.executemany(stmt, batch)
 
 
+def _insert_many_iter(
+    connection: Database,
+    table: str,
+    rows: Iterator[dict[str, object]],
+    chunk_size: int = 250,
+) -> None:
+    iterator = iter(rows)
+    first = next(iterator, None)
+    if first is None:
+        return
+    keys = list(first)
+    stmt = sql.SQL("INSERT INTO ai.{} ({}) VALUES ({})").format(
+        sql.Identifier(table),
+        sql.SQL(",").join(map(sql.Identifier, keys)),
+        sql.SQL(",").join(sql.Placeholder() for _ in keys),
+    )
+    with connection.cursor() as cursor:
+        batch = [first]
+        while batch:
+            cursor.executemany(stmt, [tuple(row[key] for key in keys) for row in batch])
+            batch = list(islice(iterator, chunk_size))
+
+
 def _read_bundle(
     connection: Database, row: dict[str, Any]
 ) -> tuple[
@@ -374,7 +471,7 @@ def _read_bundle(
             **{
                 key: value
                 for key, value in item.items()
-                if key not in ("revision_id", "search_tsv")
+                if key not in ("revision_id", "search_tsv", "search_key")
             }
         )
         for item in connection.execute(
@@ -464,3 +561,192 @@ def _validate(
             or abs(math.sqrt(sum(value * value for value in embedding.values)) - 1) > 0.0001
         ):
             raise CorpusStorageError("INVALID_EMBEDDING")
+
+
+def _validate_spool(spool: Any) -> Revision:
+    """Stream validation over a SQLite spool; only identifiers and one row are retained."""
+    revision: Revision = spool.revision()
+    expected = dict(revision.document_hashes)
+    document_ids: set[UUID] = set()
+    if len(expected) != len(revision.document_hashes):
+        raise CorpusStorageError("PARTIAL_LOAD_OR_DUPLICATE")
+    Versions.model_validate(
+        {
+            "corpusRevision": revision.revision_id,
+            "configHash": revision.config_hash,
+            "questionDictionaryVersion": revision.dictionary_version,
+            "sourceRevocationSequence": 0,
+        }
+    )
+    for document in spool.documents():
+        if (
+            document.document_id in document_ids
+            or document.document_id not in expected
+            or not document.normalized_text.strip()
+            or document.eligibility_status != "PUBLIC"
+            or document.content_hash != text_hash(document.normalized_text)
+            or expected[document.document_id] != document.digest()
+        ):
+            raise CorpusStorageError("DOCUMENT_HASH_OR_ELIGIBILITY_MISMATCH")
+        document_ids.add(document.document_id)
+    if document_ids != set(expected):
+        raise CorpusStorageError("PARTIAL_LOAD_OR_DUPLICATE")
+
+    chunk_ids: set[UUID] = set()
+    ordinals: set[tuple[UUID, int]] = set()
+    chunk_document_ids: set[UUID] = set()
+    chunk_count = 0
+    for chunk in spool.chunks():
+        document = spool.get_document(chunk.document_id)
+        if document is None:
+            raise CorpusStorageError("DOCUMENT_FK_MISMATCH")
+        if (
+            chunk.chunk_id in chunk_ids
+            or (chunk.document_id, chunk.ordinal) in ordinals
+            or chunk.ordinal < 0
+            or not 0 <= chunk.start_offset < chunk.end_offset
+            or chunk.end_offset > len(document.normalized_text)
+            or document.normalized_text[chunk.start_offset : chunk.end_offset] != chunk.chunk_text
+            or not chunk.chunk_text.strip()
+            or not chunk.search_text.strip()
+            or chunk.content_hash != text_hash(chunk.chunk_text)
+        ):
+            raise CorpusStorageError("CHUNK_HASH_OFFSET_OR_DUPLICATE")
+        chunk_ids.add(chunk.chunk_id)
+        ordinals.add((chunk.document_id, chunk.ordinal))
+        chunk_document_ids.add(chunk.document_id)
+        chunk_count += 1
+    if chunk_document_ids != document_ids or chunk_count != revision.chunk_count:
+        raise CorpusStorageError("DOCUMENT_WITHOUT_CHUNKS_OR_PARTIAL_LOAD")
+
+    embedding_count = 0
+    for embedding in spool.embeddings():
+        if (
+            embedding.chunk_id not in chunk_ids
+            or embedding.embedding_profile_id != revision.embedding_profile_id
+            or len(embedding.values) != 384
+            or not all(math.isfinite(value) for value in embedding.values)
+            or abs(math.sqrt(sum(value * value for value in embedding.values)) - 1) > 0.0001
+        ):
+            raise CorpusStorageError("INVALID_EMBEDDING")
+        embedding_count += 1
+    if embedding_count != revision.embedding_count or embedding_count != chunk_count:
+        raise CorpusStorageError("PARTIAL_LOAD_OR_DUPLICATE")
+    return revision
+
+
+def _validate_database_bundle(connection: Database, row: dict[str, Any]) -> Revision:
+    """Validate a staged revision using server-side cursors and bounded row batches."""
+    manifest = dict(row["manifest"])
+    manifest["document_hashes"] = tuple(
+        (UUID(key), value) for key, value in manifest["document_hashes"]
+    )
+    revision = Revision(**manifest)
+    for key in (
+        "source_revision",
+        "embedding_profile_id",
+        "chunker_version",
+        "dictionary_version",
+        "config_hash",
+        "chunk_count",
+        "embedding_count",
+    ):
+        if row[key] != getattr(revision, key):
+            raise CorpusStorageError("REVISION_METADATA_MISMATCH")
+    expected = dict(revision.document_hashes)
+    if row["document_count"] != len(expected):
+        raise CorpusStorageError("REVISION_METADATA_MISMATCH")
+    Versions.model_validate(
+        {
+            "corpusRevision": revision.revision_id,
+            "configHash": revision.config_hash,
+            "questionDictionaryVersion": revision.dictionary_version,
+            "sourceRevocationSequence": 0,
+        }
+    )
+
+    document_ids: set[UUID] = set()
+    with connection.cursor(name="validate_ai_documents") as cursor:
+        cursor.execute("SELECT * FROM ai.documents WHERE revision_id=%s", (revision.revision_id,))
+        while documents := cursor.fetchmany(250):
+            for item in documents:
+                document = Document(
+                    **{key: value for key, value in item.items() if key != "revision_id"}
+                )
+                if (
+                    document.document_id in document_ids
+                    or document.document_id not in expected
+                    or not document.normalized_text.strip()
+                    or document.eligibility_status != "PUBLIC"
+                    or document.content_hash != text_hash(document.normalized_text)
+                    or expected[document.document_id] != document.digest()
+                ):
+                    raise CorpusStorageError("DOCUMENT_HASH_OR_ELIGIBILITY_MISMATCH")
+                document_ids.add(document.document_id)
+    if document_ids != set(expected):
+        raise CorpusStorageError("PARTIAL_LOAD_OR_DUPLICATE")
+
+    chunk_ids: set[UUID] = set()
+    chunk_document_ids: set[UUID] = set()
+    ordinals: set[tuple[UUID, int]] = set()
+    chunk_count = 0
+    with connection.cursor(name="validate_ai_chunks") as cursor:
+        cursor.execute(
+            """SELECT c.chunk_id,c.document_id,c.ordinal,c.start_offset,c.end_offset,
+                      c.chunk_text,c.content_hash,c.search_text,d.normalized_text
+                 FROM ai.chunks c JOIN ai.documents d USING (revision_id,document_id)
+                WHERE c.revision_id=%s""",
+            (revision.revision_id,),
+        )
+        while chunks := cursor.fetchmany(250):
+            for item in chunks:
+                chunk_id = item["chunk_id"]
+                document_id = item["document_id"]
+                start = item["start_offset"]
+                end = item["end_offset"]
+                if (
+                    chunk_id in chunk_ids
+                    or (document_id, item["ordinal"]) in ordinals
+                    or document_id not in document_ids
+                    or item["ordinal"] < 0
+                    or not 0 <= start < end
+                    or end > len(item["normalized_text"])
+                    or item["normalized_text"][start:end] != item["chunk_text"]
+                    or not item["chunk_text"].strip()
+                    or not item["search_text"].strip()
+                    or item["content_hash"] != text_hash(item["chunk_text"])
+                ):
+                    raise CorpusStorageError("CHUNK_HASH_OFFSET_OR_DUPLICATE")
+                chunk_ids.add(chunk_id)
+                chunk_document_ids.add(document_id)
+                ordinals.add((document_id, item["ordinal"]))
+                chunk_count += 1
+    if (
+        chunk_document_ids != document_ids
+        or chunk_count != revision.chunk_count
+        or len(chunk_ids) != chunk_count
+    ):
+        raise CorpusStorageError("DOCUMENT_WITHOUT_CHUNKS_OR_PARTIAL_LOAD")
+
+    embedding_count = 0
+    with connection.cursor(name="validate_ai_embeddings") as cursor:
+        cursor.execute(
+            """SELECT chunk_id,embedding_profile_id,embedding::text AS embedding
+                 FROM ai.embeddings WHERE revision_id=%s""",
+            (revision.revision_id,),
+        )
+        while embeddings := cursor.fetchmany(250):
+            for item in embeddings:
+                values = tuple(float(value) for value in json.loads(item["embedding"]))
+                if (
+                    item["chunk_id"] not in chunk_ids
+                    or item["embedding_profile_id"] != revision.embedding_profile_id
+                    or len(values) != 384
+                    or not all(math.isfinite(value) for value in values)
+                    or abs(math.sqrt(sum(value * value for value in values)) - 1) > 0.0001
+                ):
+                    raise CorpusStorageError("INVALID_EMBEDDING")
+                embedding_count += 1
+    if embedding_count != revision.embedding_count or embedding_count != chunk_count:
+        raise CorpusStorageError("PARTIAL_LOAD_OR_DUPLICATE")
+    return revision

@@ -4,7 +4,11 @@ from pathlib import Path
 import psycopg
 import pytest
 
-MIGRATION = Path(__file__).resolve().parents[3] / "migrations" / "ai" / "001_corpus.sql"
+MIGRATION_DIR = Path(__file__).resolve().parents[3] / "migrations" / "ai"
+MIGRATIONS = (
+    MIGRATION_DIR / "001_corpus.sql",
+    MIGRATION_DIR / "005_source_revocation_bootstrap.sql",
+)
 
 
 @pytest.fixture
@@ -23,7 +27,8 @@ def dsn() -> str:
 def db(dsn: str) -> Iterator[psycopg.Connection[tuple[object, ...]]]:
     with psycopg.connect(dsn, autocommit=True) as connection:
         connection.execute("DROP SCHEMA IF EXISTS ai CASCADE")
-        with connection.transaction():
-            connection.execute(MIGRATION.read_text())
+        for migration in MIGRATIONS:
+            with connection.transaction():
+                connection.execute(migration.read_text())
         yield connection
         connection.execute("DROP SCHEMA ai CASCADE")

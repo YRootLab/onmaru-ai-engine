@@ -1,12 +1,14 @@
-from dataclasses import replace
+import json
+from dataclasses import asdict, replace
 from datetime import UTC, datetime
+from typing import Any, cast
 from uuid import UUID
 
 import psycopg
 import pytest
 
 from onmaru_ai.storage.models import Chunk, Document, Embedding, Revision, text_hash
-from onmaru_ai.storage.postgres import CorpusStorageError, PostgresCorpusStore
+from onmaru_ai.storage.postgres import CorpusStorageError, PostgresCorpusStore, _read_bundle
 
 DOCUMENT = UUID("00000000-0000-0000-0000-000000000001")
 CHUNK = UUID("00000000-0000-0000-0000-000000000002")
@@ -86,6 +88,53 @@ def test_stage_is_invisible_until_atomic_activation(store: PostgresCorpusStore) 
         assert snapshot.embedding_profile_id == "e5-small-384"
         count = snapshot.connection.execute("SELECT count(*) AS n FROM ai.chunks").fetchone()
         assert count is not None and count["n"] == 1
+
+
+def test_read_bundle_ignores_bm25_search_key() -> None:
+    revision, documents, chunks, embeddings = bundle("r1")
+    rows = [
+        [asdict(documents[0]) | {"revision_id": "r1"}],
+        [
+            asdict(chunks[0])
+            | {
+                "revision_id": "r1",
+                "search_tsv": None,
+                "search_key": f"r1:{chunks[0].chunk_id}",
+            }
+        ],
+        [
+            {
+                "chunk_id": embeddings[0].chunk_id,
+                "embedding_profile_id": embeddings[0].embedding_profile_id,
+                "embedding": json.dumps(embeddings[0].values),
+            }
+        ],
+    ]
+
+    class FakeConnection:
+        def execute(self, _query: str, _params: tuple[str, ...]) -> list[dict[str, Any]]:
+            return rows.pop(0)
+
+    row = {
+        "manifest": json.loads(revision.canonical_manifest()),
+        "source_revision": revision.source_revision,
+        "embedding_profile_id": revision.embedding_profile_id,
+        "chunker_version": revision.chunker_version,
+        "dictionary_version": revision.dictionary_version,
+        "config_hash": revision.config_hash,
+        "chunk_count": revision.chunk_count,
+        "embedding_count": revision.embedding_count,
+        "document_count": len(documents),
+    }
+
+    parsed_revision, parsed_documents, parsed_chunks, parsed_embeddings = _read_bundle(
+        cast(Any, FakeConnection()), row
+    )
+
+    assert parsed_revision == revision
+    assert parsed_documents == documents
+    assert parsed_chunks == chunks
+    assert parsed_embeddings == embeddings
 
 
 @pytest.mark.parametrize(

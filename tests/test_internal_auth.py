@@ -370,6 +370,7 @@ def test_accepts_current_internal_token_and_propagates_correlation_headers() -> 
         "orderedRefs": ["place-a", "place-b"],
         "outcome": "PROPOSAL",
         "degradedReason": "LLM_DISABLED",
+        "engine": "BASELINE",
     }
     assert response.headers["X-Request-Id"] == "req-ai-001"
     assert response.headers["X-Run-Id"] == "run-ai-001"
@@ -594,8 +595,11 @@ def test_rag_opt_in_without_revision_falls_back_when_server_flag_is_off() -> Non
 
 
 class JourneyStreamTransport:
-    def __init__(self, failure: GeminiFailureCode | None = None) -> None:
+    def __init__(
+        self, failure: GeminiFailureCode | None = None, retry_after: int | None = None
+    ) -> None:
         self.failure = failure
+        self.retry_after = retry_after
         self.proposal = {
             "narration": "전주의 한옥을 둘러봐요.",
             "orderedRefs": ["place:allowed", "place:invalid"],
@@ -606,6 +610,12 @@ class JourneyStreamTransport:
 
     async def generate(self, request: GeminiTransportRequest) -> GeminiTransportResponse:
         del request
+        if self.failure:
+            return GeminiTransportResponse(
+                429,
+                {"error": "provider-secret"},
+                {} if self.retry_after is None else {"Retry-After": str(self.retry_after)},
+            )
         return self._chunk(json.dumps(self.proposal, ensure_ascii=False))
 
     async def stream(
@@ -614,7 +624,11 @@ class JourneyStreamTransport:
         del request
         yield self._chunk('{"narration":"전주의 한옥을 둘러봐요.')
         if self.failure:
-            yield GeminiTransportResponse(429, {"error": "provider-secret"})
+            yield GeminiTransportResponse(
+                429,
+                {"error": "provider-secret"},
+                {} if self.retry_after is None else {"Retry-After": str(self.retry_after)},
+            )
             return
         raw = json.dumps(self.proposal, ensure_ascii=False, separators=(",", ":"))
         yield self._chunk(raw[len('{"narration":"전주의 한옥을 둘러봐요.') :])
@@ -625,13 +639,15 @@ class JourneyStreamTransport:
         )
 
 
-def streaming_app(failure: GeminiFailureCode | None = None) -> FastAPI:
+def streaming_app(
+    failure: GeminiFailureCode | None = None, retry_after: int | None = None
+) -> FastAPI:
     app = FastAPI()
     sink = InMemoryTelemetrySink()
     install_observability(app, sink)
     adapter = GeminiAdapter(
         GeminiConfig("journey-test", "gemini-test", 2048, GeminiPricing(0, 0)),
-        JourneyStreamTransport(failure),
+        JourneyStreamTransport(failure, retry_after),
         api_key="provider-secret",
         telemetry_sink=sink,
     )
@@ -700,6 +716,37 @@ def test_internal_stream_sanitizes_partial_provider_failure_without_proposal() -
     assert "provider-secret" not in response.text
 
 
+def test_internal_stream_includes_safe_retry_delay_in_quota_error_event() -> None:
+    response = asyncio.run(
+        post_stream(streaming_app(GeminiFailureCode.AI_QUOTA_EXCEEDED, retry_after=19), token())
+    )
+    events = parse_internal_events(response)
+    assert events[-1] == (
+        "error",
+        {"code": "AI_QUOTA_EXCEEDED", "retryAfterSeconds": 19},
+    )
+
+
+def test_internal_nonstream_quota_returns_baseline_with_explicit_reason() -> None:
+    response = asyncio.run(
+        post_proposal(
+            token(),
+            app=streaming_app(GeminiFailureCode.AI_QUOTA_EXCEEDED, retry_after=11),
+            body={
+                "schemaVersion": "internal.ai.v1",
+                "requestId": "req-ai-001",
+                "runId": "run-ai-001",
+                "candidateCount": 2,
+                "query": "한옥 추천",
+                "candidateRefs": ["place-a", "place-b"],
+            },
+        )
+    )
+    assert response.status_code == 202
+    assert response.json()["degradedReason"] == "AI_QUOTA_EXCEEDED"
+    assert response.json()["engine"] == "BASELINE"
+
+
 def test_internal_stream_auth_and_contract_validation_precede_streaming() -> None:
     forbidden = asyncio.run(post_stream(streaming_app(), token(scope="journey.read")))
     assert forbidden.status_code == 403
@@ -757,6 +804,7 @@ def test_legacy_proposal_without_candidate_refs_reports_no_candidates() -> None:
         "orderedRefs": [],
         "outcome": "NO_RESULTS",
         "degradedReason": "NO_CANDIDATES",
+        "engine": "BASELINE",
     }
 
 

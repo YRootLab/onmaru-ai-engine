@@ -3,8 +3,6 @@ from __future__ import annotations
 import asyncio
 from datetime import UTC, datetime, timedelta
 
-from test_sync import FixtureSpringCorpusClient, document, manifest
-
 from onmaru_ai.corpus.index import (
     CorpusIndexService,
     DeterministicEmbeddingProvider,
@@ -19,6 +17,7 @@ from onmaru_ai.corpus.sync import (
     InMemoryCorpusStore,
     SyncStatus,
 )
+from tests.corpus.test_sync import FixtureSpringCorpusClient, document, manifest
 
 NOW = datetime(2026, 9, 16, 4, 0, tzinfo=UTC)
 
