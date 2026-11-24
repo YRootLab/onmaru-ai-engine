@@ -1,5 +1,6 @@
 .git
 .venv
+.onmaru-corpus-staging
 __pycache__
 .pytest_cache
 .mypy_cache
@@ -14,3 +15,6 @@ scripts/*
 !scripts/ingest_to_postgres.py
 !scripts/load_reviewed_facts.py
 !scripts/activate_corpus_revision.py
+!scripts/export_e5_onnx.py
+!scripts/export_reviewed_fact_candidates.py
+!scripts/print_active_runtime_versions.py

@@ -2,25 +2,29 @@
 """Ingest active KTO catalog places + TourAPI detail overviews directly from PostgreSQL
 into the AI schema (`ai.corpus_revisions`, `ai.documents`, `ai.chunks`, `ai.embeddings`).
 
-Uses Gemini `gemini-embedding-001` (384-D, L2-normalized) for corpus ingestion. A missing
-API key is an error. `--hash-only` is reserved for local dry-runs and cannot stage or activate
-a corpus revision.
+Uses a locally provisioned, pinned E5 ONNX artifact for corpus embeddings. A missing
+ONMARU_E5_ONNX_DIR is an error.
+`--hash-only` is reserved for local dry-runs and cannot stage or activate a corpus revision.
 """
 
 from __future__ import annotations
 
 import argparse
+import json
 import logging
 import os
 import sys
 import time
+from collections.abc import Iterator
 from datetime import UTC, datetime
+from pathlib import Path
 
 import psycopg
 from psycopg.rows import dict_row
 
 from onmaru_ai.corpus.batch_ingest import IngestItem, build_corpus_bundle
 from onmaru_ai.corpus.embedding_selection import select_embedding_backend
+from onmaru_ai.corpus.staging_spool import CorpusStagingSpool
 from onmaru_ai.embedding import (
     EmbeddingService,
 )
@@ -76,6 +80,14 @@ _REGION_PATTERNS: tuple[tuple[tuple[str, ...], str], ...] = (
 def resolve_region_code(explicit_code: str, address: str) -> str:
     explicit = explicit_code.strip().upper()
     if explicit:
+        suffix = explicit.removeprefix("KR-DATALAB-")
+        if suffix == explicit:
+            suffix = explicit.removeprefix("KR-")
+        if len(suffix) == 5 and suffix.isdigit():
+            prefix = suffix[:2]
+            return f"KR-{'42' if prefix == '51' else prefix}"
+        if len(suffix) == 2 and suffix.isdigit():
+            return f"KR-{'42' if suffix == '51' else suffix}"
         return explicit
     clean_addr = " ".join(address.split())
     if clean_addr.startswith("닫기 "):
@@ -89,43 +101,67 @@ def resolve_region_code(explicit_code: str, address: str) -> str:
     return "KR-11"
 
 
-def fetch_catalog_items(dsn: str, *, limit: int | None = None) -> list[IngestItem]:
+def _item_from_row(row: dict[str, object]) -> IngestItem:
+    public_id = str(row["public_id"]).strip()
+    name = str(row["name"]).strip()
+    category = str(row["category"]).strip()
+    address = str(row["address"]).strip()
+    region_code = resolve_region_code(str(row["region_code"] or ""), address)
+    detail_ov = str(row["detail_overview"] or "").strip()
+    version_ov = str(row["version_overview"] or "").strip()
+    parts = [name]
+    if address:
+        parts.append(f"위치: {address}")
+    if detail_ov:
+        parts.append(detail_ov)
+    if version_ov and version_ov not in detail_ov:
+        parts.append(version_ov)
+    return IngestItem(
+        place_id=public_id,
+        title=name,
+        body="\n".join(parts),
+        region_code=region_code,
+        category_code=category,
+        source_type="TOUR_API",
+        source_id=public_id,
+        source_revision=str(row["source_revision"] or "rev-catalog"),
+        license_code="KOGL-1",
+    )
+
+
+def iter_catalog_items(
+    dsn: str, *, limit: int | None = None, fetch_size: int = 256
+) -> Iterator[IngestItem]:
     query = _CATALOG_QUERY if limit is None else f"{_CATALOG_QUERY}\nLIMIT {int(limit)}"
-    items: list[IngestItem] = []
-    with psycopg.connect(dsn, row_factory=dict_row) as conn:
-        rows = conn.execute(query).fetchall()
-    for row in rows:
-        public_id = str(row["public_id"]).strip()
-        name = str(row["name"]).strip()
-        category = str(row["category"]).strip()
-        address = str(row["address"]).strip()
-        region_code = resolve_region_code(str(row["region_code"] or ""), address)
-        detail_ov = str(row["detail_overview"] or "").strip()
-        version_ov = str(row["version_overview"] or "").strip()
+    with (
+        psycopg.connect(dsn, row_factory=dict_row) as conn,
+        conn.cursor(name="onmaru_catalog_stream") as cursor,
+    ):
+        cursor.execute(query)
+        while rows := cursor.fetchmany(max(1, fetch_size)):
+            for row in rows:
+                yield _item_from_row(row)
 
-        parts = [name]
-        if address:
-            parts.append(f"위치: {address}")
-        if detail_ov:
-            parts.append(detail_ov)
-        if version_ov and version_ov not in detail_ov:
-            parts.append(version_ov)
-        body = "\n".join(parts)
 
-        items.append(
-            IngestItem(
-                place_id=public_id,
-                title=name,
-                body=body,
-                region_code=region_code,
-                category_code=category,
-                source_type="TOUR_API",
-                source_id=public_id,
-                source_revision=str(row["source_revision"] or "rev-catalog"),
-                license_code="KOGL-1",
-            )
-        )
+def fetch_catalog_items(dsn: str, *, limit: int | None = None) -> list[IngestItem]:
+    """Compatibility helper for small local/test inventories."""
+    items = list(iter_catalog_items(dsn, limit=limit))
     return items
+
+
+def iter_catalog_jsonl(path: Path) -> Iterator[IngestItem]:
+    with path.open(encoding="utf-8") as source:
+        for line_number, line in enumerate(source, start=1):
+            if not line.strip():
+                continue
+            try:
+                record = json.loads(line)
+                if isinstance(record, dict) and "public_id" in record:
+                    yield _item_from_row(record)
+                else:
+                    yield IngestItem(**record)
+            except (TypeError, ValueError, json.JSONDecodeError) as error:
+                raise ValueError(f"invalid catalog JSONL at line {line_number}") from error
 
 
 def main() -> int:
@@ -137,35 +173,50 @@ def main() -> int:
         help="Use deterministic hash backend instead of Gemini semantic embeddings.",
     )
     parser.add_argument("--limit", type=int, default=None, help="Optional max rows to read.")
-    parser.add_argument("--batch-size", type=int, default=100, help="Embedding batch size (<=100).")
+    parser.add_argument(
+        "--input-jsonl",
+        type=Path,
+        default=None,
+        help="Use a catalog JSONL snapshot instead of a database read.",
+    )
+    parser.add_argument(
+        "--spool-only",
+        action="store_true",
+        help="Generate local embeddings and spool without PostgreSQL access.",
+    )
+    parser.add_argument("--batch-size", type=int, default=16, help="Embedding batch size (<=100).")
+    parser.add_argument("--spool-path", type=Path, default=None, help="Disk-backed resume spool.")
+    parser.add_argument(
+        "--resume", action="store_true", help="Resume an existing spool for this revision."
+    )
+    parser.add_argument(
+        "--failure-manifest",
+        type=Path,
+        default=None,
+        help="JSONL file tracking per-place failures; resume retries failed places.",
+    )
     parser.add_argument("--dry-run", action="store_true", help="Skip Postgres write.")
     args = parser.parse_args()
 
     dsn = os.environ.get("ONMARU_AI_DB_DSN") or os.environ.get("ONMARU_DB_URL")
-    if not dsn:
+    if not args.spool_only and not args.dry_run and not dsn:
         logger.error("No PostgreSQL DSN provided. Set ONMARU_AI_DB_DSN or ONMARU_DB_URL.")
         return 1
-    catalog_dsn = os.environ.get("ONMARU_AI_CATALOG_READ_DSN") or dsn
+    catalog_dsn = os.environ.get("ONMARU_AI_CATALOG_READ_DSN")
+    if args.input_jsonl is None:
+        catalog_dsn = catalog_dsn or dsn
+        if not catalog_dsn:
+            logger.error("Set ONMARU_AI_CATALOG_READ_DSN or pass --input-jsonl.")
+            return 1
 
     batch_size = max(1, min(100, args.batch_size))
     revision_id = args.revision_id or f"rev-{datetime.now(UTC).strftime('%Y%m%d%H%M%S')}"
 
-    logger.info("Reading active KTO catalog from PostgreSQL...")
-    items = fetch_catalog_items(catalog_dsn, limit=args.limit)
-    logger.info("Loaded %d active KTO catalog items.", len(items))
-    if not items:
-        logger.warning("No catalog items found.")
-        return 0
-
-    api_key = (
-        os.environ.get("ONMARU_SECRET_GEMINI_API_KEY_CURRENT")
-        or os.environ.get("GEMINI_API_KEY")
-        or ""
-    ).strip()
+    model_dir = os.environ.get("ONMARU_E5_ONNX_DIR", "").strip()
 
     try:
         backend, profile = select_embedding_backend(
-            api_key=api_key,
+            model_dir=model_dir,
             hash_only=args.hash_only,
             dry_run=args.dry_run,
         )
@@ -173,12 +224,6 @@ def main() -> int:
         logger.error("%s", exc)
         return 2
 
-    logger.info(
-        "Building corpus bundle revision=%s profile=%s batch_size=%d...",
-        revision_id,
-        profile.profile_id,
-        batch_size,
-    )
     embedding_service = EmbeddingService(
         backend,
         profile=profile,
@@ -186,34 +231,129 @@ def main() -> int:
         timeout_seconds=120.0,
     )
 
+    spool_path = args.spool_path or Path(".onmaru-corpus-staging") / f"{revision_id}.sqlite"
+    if spool_path.exists() != args.resume:
+        logger.error("Spool existence must match --resume; no database writes were made.")
+        return 2
+
     started = time.perf_counter()
-    result, revision, docs, chunks, embeddings = build_corpus_bundle(
-        revision_id=revision_id,
-        items=items,
-        embedding_service=embedding_service,
-        embed_batch_size=batch_size,
+    accepted = filtered = 0
+    processed = 0
+    failure_manifest = args.failure_manifest or spool_path.with_suffix(
+        spool_path.suffix + ".failures.jsonl"
     )
-    elapsed = time.perf_counter() - started
-    logger.info(
-        "Built bundle in %.1fs: input=%d accepted=%d filtered=%d chunks=%d embeddings=%d",
-        elapsed,
-        result.total_input,
-        result.accepted_documents,
-        result.filtered_out_categories,
-        result.total_chunks,
-        result.total_embeddings,
-    )
+    with CorpusStagingSpool(spool_path, revision_id) as spool:
+        logger.info(
+            "Streaming catalog revision=%s profile=%s batch_size=%d checkpointed=%d...",
+            revision_id,
+            profile.profile_id,
+            batch_size,
+            spool.counts()[0],
+        )
+        source_items = (
+            iter_catalog_jsonl(args.input_jsonl)
+            if args.input_jsonl is not None
+            else iter_catalog_items(str(catalog_dsn), limit=args.limit)
+        )
+        for item in source_items:
+            processed += 1
+            spool.bind_catalog_revision(item.source_revision)
+            if spool.has_place(item.place_id):
+                continue
+            try:
+                result, item_revision, documents, chunks, embeddings = build_corpus_bundle(
+                    revision_id=revision_id,
+                    items=[item],
+                    embedding_service=embedding_service,
+                    now=spool.run_timestamp,
+                    embed_batch_size=batch_size,
+                )
+                accepted += result.accepted_documents
+                filtered += result.filtered_out_categories
+                if documents:
+                    spool.append(item.place_id, item_revision, documents, chunks, embeddings)
+                _remove_failure(failure_manifest, item.place_id)
+            except Exception as exc:
+                _record_failure(failure_manifest, item.place_id, exc)
+                logger.exception(
+                    "Skipping failed catalog place %s; recorded in %s",
+                    item.place_id,
+                    failure_manifest,
+                )
+            if processed % 250 == 0:
+                logger.info("Scanned=%d checkpointed_places=%d", processed, spool.counts()[0])
 
-    if args.dry_run:
-        logger.info("Dry run enabled; skipping Postgres staging.")
-        return 0
+        documents_count, chunks_count, embeddings_count = spool.counts()
+        outstanding = _failure_count(failure_manifest)
+        if outstanding:
+            logger.error(
+                "%d catalog places remain failed; rerun with --resume to retry. "
+                "No DB staging performed. Manifest: %s",
+                outstanding,
+                failure_manifest,
+            )
+            return 3
+        if documents_count == 0:
+            logger.warning("No catalog items were accepted; nothing to stage.")
+            return 0
+        revision = spool.revision()
+        elapsed = time.perf_counter() - started
+        logger.info(
+            "Spool ready in %.1fs: scanned=%d accepted=%d filtered=%d chunks=%d embeddings=%d",
+            elapsed,
+            processed,
+            documents_count,
+            filtered,
+            chunks_count,
+            embeddings_count,
+        )
+        if args.dry_run or args.spool_only:
+            logger.info("Spool-only mode enabled; PostgreSQL staging skipped.")
+            return 0
 
-    store = PostgresCorpusStore(dsn)
-    logger.info("Staging revision %s into ai schema...", revision_id)
-    staged = store.stage(revision, docs, chunks, embeddings)
-    logger.info("Stage complete (inserted=%s, manifest_hash=%s).", staged, revision.manifest_hash)
+        if dsn is None:
+            logger.error("No PostgreSQL DSN provided for staging.")
+            return 1
+        store = PostgresCorpusStore(dsn)
+        logger.info("Streaming staged revision %s into ai schema...", revision_id)
+        staged = store.stage_spool(spool)
+        logger.info(
+            "Stage complete (inserted=%s, manifest_hash=%s).", staged, revision.manifest_hash
+        )
 
     return 0
+
+
+def _failure_count(path: Path) -> int:
+    if not path.exists():
+        return 0
+    return sum(1 for line in path.read_text(encoding="utf-8").splitlines() if line.strip())
+
+
+def _record_failure(path: Path, place_id: str, error: Exception) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    failures: dict[str, dict[str, str]] = {}
+    if path.exists():
+        for line in path.read_text(encoding="utf-8").splitlines():
+            if line.strip():
+                record = json.loads(line)
+                failures[str(record["place_id"])] = record
+    failures[place_id] = {"place_id": place_id, "error_type": type(error).__name__}
+    serialized = "".join(
+        json.dumps(row, ensure_ascii=False) + "\n" for row in failures.values()
+    )
+    path.write_text(serialized, encoding="utf-8")
+
+
+def _remove_failure(path: Path, place_id: str) -> None:
+    if not path.exists():
+        return
+    rows = [line for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    kept = [line for line in rows if str(json.loads(line).get("place_id")) != place_id]
+    if kept:
+        path.write_text("\n".join(kept) + "\n", encoding="utf-8")
+    else:
+        path.unlink()
 
 
 if __name__ == "__main__":

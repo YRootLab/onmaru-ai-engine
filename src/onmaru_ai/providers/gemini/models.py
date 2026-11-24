@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Any
 
@@ -15,8 +15,9 @@ class GeminiFailureCode(StrEnum):
 
 
 class GeminiProviderError(RuntimeError):
-    def __init__(self, code: GeminiFailureCode) -> None:
+    def __init__(self, code: GeminiFailureCode, *, retry_after: int | None = None) -> None:
         self.code = code
+        self.retry_after = retry_after
         super().__init__(code.value)
 
 
@@ -63,6 +64,16 @@ class GeminiTransportRequest:
 class GeminiTransportResponse:
     status_code: int
     body: Any
+    headers: Mapping[str, str] = field(default_factory=dict)
+
+
+def retry_after_seconds(headers: Mapping[str, str]) -> int | None:
+    """Return a bounded delta-seconds Retry-After value; ignore dates and invalid input."""
+    value = next((v for k, v in headers.items() if k.lower() == "retry-after"), "")
+    if not value.isascii() or not value.isdecimal():
+        return None
+    seconds = int(value)
+    return seconds if 0 < seconds <= 3600 else None
 
 
 @dataclass(frozen=True)

@@ -27,7 +27,19 @@ from onmaru_ai.storage.postgres import CorpusSnapshot
 
 
 @pytest.mark.anyio
-async def test_runtime_integration_flow_with_spring_mock() -> None:
+async def test_runtime_integration_flow_with_spring_mock(monkeypatch: pytest.MonkeyPatch) -> None:
+    from onmaru_ai import embedding
+
+    class FakeE5Backend:
+        model_id = embedding.E5_SMALL_ONNX_INT8_384.model_id
+        model_commit = embedding.E5_SMALL_ONNX_INT8_384.model_commit
+        dimensions = embedding.E5_SMALL_ONNX_INT8_384.dimensions
+
+        def encode(self, texts: tuple[str, ...]) -> tuple[tuple[float, ...], ...]:
+            vector = (1.0,) + (0.0,) * (self.dimensions - 1)
+            return tuple(vector for _ in texts)
+
+    monkeypatch.setattr(embedding, "load_e5_backend", lambda _path: FakeE5Backend())
     now = datetime.now(UTC)
     run_id = "45e6a7f5-31bc-469d-9e30-6f510a1dc497"
     trace_id = "1" * 32
@@ -94,14 +106,17 @@ async def test_runtime_integration_flow_with_spring_mock() -> None:
                     "corpusRevision": "corpus-1", "configHash": "sha256:" + "a" * 64,
                     "questionDictionaryVersion": "questions-1", "sourceRevocationSequence": 7,
                 }),
-                embedding_profile_id="test-profile",
+                embedding_profile_id=embedding.E5_SMALL_ONNX_INT8_384.profile_id,
                 revoked_places=frozenset(), revoked_sources=frozenset(),
                 connection=CatalogConnection(),  # type: ignore[arg-type]
             )
 
     app = create_app(
         secret_provider=FakeSecretProvider(),
-        environ={"ONMARU_SPRING_BASE_URL": "http://mock-spring:8080"},
+        environ={
+            "ONMARU_SPRING_BASE_URL": "http://mock-spring:8080",
+            "ONMARU_E5_ONNX_DIR": "/fake/e5",
+        },
         http_client=mock_spring_client,
         plan_execute_corpus_store=CorpusStore(),
     )

@@ -21,6 +21,21 @@ from onmaru_ai.main import create_app
 from onmaru_ai.rag import InMemoryRagActivationLog
 
 
+def _fake_e5_backend() -> object:
+    from onmaru_ai.embedding import E5_SMALL_ONNX_INT8_384
+
+    class Backend:
+        model_id = E5_SMALL_ONNX_INT8_384.model_id
+        model_commit = E5_SMALL_ONNX_INT8_384.model_commit
+        dimensions = E5_SMALL_ONNX_INT8_384.dimensions
+
+        def encode(self, texts: tuple[str, ...]) -> tuple[tuple[float, ...], ...]:
+            vector = (1.0,) + (0.0,) * (self.dimensions - 1)
+            return tuple(vector for _ in texts)
+
+    return Backend()
+
+
 def test_default_create_app_wires_production_components() -> None:
     app = create_app(secret_provider=FakeSecretProvider())
     assert hasattr(app.state, "plan_execute_service")
@@ -41,6 +56,29 @@ def test_readiness_returns_200_when_wired() -> None:
     resp = client.get("/ready")
     assert resp.status_code == 200
     assert resp.json() == {"status": "ready"}
+
+
+def test_readiness_requires_dedicated_revocation_sync_dsn(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ONMARU_E5_ONNX_DIR", "/unused/test-model")
+    monkeypatch.setattr("onmaru_ai.embedding.load_e5_backend", lambda _: _fake_e5_backend())
+    client = TestClient(
+        create_app(
+            secret_provider=FakeSecretProvider(),
+            plan_execute_service=_ready_service(),
+            environ={
+                "ONMARU_AI_DB_DSN": "postgresql://runtime-role/db",
+                "ONMARU_E5_ONNX_DIR": "/unused/test-model",
+            },
+        )
+    )
+
+    response = client.get("/ready")
+
+    assert response.status_code == 503
+    assert response.json() == {
+        "status": "not_ready",
+        "reason": "source_revocation_sync_dsn_missing",
+    }
 
 
 def test_readiness_fails_503_when_disabled() -> None:
@@ -140,14 +178,20 @@ def test_readiness_fails_503_when_spring_url_invalid() -> None:
     assert resp.json()["reason"] == "invalid_spring_base_url"
 
 @pytest.mark.anyio
-async def test_composition_root_wires_retrieval_components() -> None:
+async def test_composition_root_wires_retrieval_components(monkeypatch: pytest.MonkeyPatch) -> None:
     provider = FakeSecretProvider()
     client = httpx.AsyncClient()
+    from onmaru_ai import embedding
+
+    monkeypatch.setattr(embedding, "load_e5_backend", lambda _path: _fake_e5_backend())
     try:
         service = create_production_plan_execute_service(
             secret_provider=provider,
             http_client=client,
-            environ={"ONMARU_SPRING_BASE_URL": "http://127.0.0.1:8080"},
+            environ={
+                "ONMARU_SPRING_BASE_URL": "http://127.0.0.1:8080",
+                "ONMARU_E5_ONNX_DIR": "/fake/e5",
+            },
             corpus_store=object(),
         )
         assert service is not None
@@ -156,13 +200,18 @@ async def test_composition_root_wires_retrieval_components() -> None:
         await client.aclose()
 
 
-def test_production_evidence_generator_uses_shared_client_and_12s_timeout() -> None:
+def test_production_evidence_generator_uses_shared_client_and_12s_timeout(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     from onmaru_ai.composition import ProductionEvidenceGenerator
     from onmaru_ai.generation import EvidenceGenerator
 
     provider = FakeSecretProvider()
     client = httpx.AsyncClient()
     captured: dict[str, object] = {}
+    from onmaru_ai import embedding
+
+    monkeypatch.setattr(embedding, "load_e5_backend", lambda _path: _fake_e5_backend())
 
     original_init = ProductionEvidenceGenerator.__init__
 
@@ -182,7 +231,10 @@ def test_production_evidence_generator_uses_shared_client_and_12s_timeout() -> N
             create_production_plan_execute_service(
                 secret_provider=provider,
                 http_client=client,
-                environ={"ONMARU_SPRING_BASE_URL": "http://127.0.0.1:8080"},
+                environ={
+                    "ONMARU_SPRING_BASE_URL": "http://127.0.0.1:8080",
+                    "ONMARU_E5_ONNX_DIR": "/fake/e5",
+                },
                 corpus_store=object(),
             )
         assert captured["timeout_seconds"] == 12.0

@@ -23,7 +23,7 @@ from typing import Any
 import psycopg
 from psycopg.rows import dict_row
 
-from onmaru_ai.embedding import GEMINI_EMBEDDING_384, GeminiEmbeddingBackend
+from onmaru_ai.embedding import E5_SMALL_ONNX_INT8_384, EmbeddingService, load_e5_backend
 from onmaru_ai.evals.harness_judge import (
     GroundednessCaseInput,
     HarnessEvalThresholds,
@@ -178,14 +178,18 @@ async def _run_eval_async(args: argparse.Namespace) -> tuple[dict[str, Any], int
     ).strip()
 
     query_embedder = None
-    query_profile = GEMINI_EMBEDDING_384.profile_id
-    if api_key and not args.lexical_only:
-        embed_backend = GeminiEmbeddingBackend(
-            api_key, task_type="RETRIEVAL_QUERY", timeout_seconds=5.0
+    query_profile = E5_SMALL_ONNX_INT8_384.profile_id
+    if not args.lexical_only:
+        model_dir = os.environ.get("ONMARU_E5_ONNX_DIR", "").strip()
+        if not model_dir:
+            logger.error("ONMARU_E5_ONNX_DIR is required unless --lexical-only is selected.")
+            return {"error": "NO_LOCAL_EMBEDDING_MODEL"}, 2
+        embed_backend = EmbeddingService(
+            load_e5_backend(model_dir), profile=E5_SMALL_ONNX_INT8_384
         )
 
         def _embed_q(text: str) -> tuple[float, ...]:
-            return embed_backend.encode((text,))[0]
+            return embed_backend.embed_query(text)
 
         query_embedder = _embed_q
 

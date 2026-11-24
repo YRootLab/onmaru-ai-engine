@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import os
 import sys
@@ -102,6 +103,30 @@ def create_app(
     owns_client = http_client is None
     source_env = os.environ if environ is None else environ
 
+    revocation_poller = None
+    revocation_ledger = None
+    runtime_db_dsn = (
+        source_env.get("ONMARU_AI_DB_DSN") or source_env.get("ONMARU_DB_URL") or ""
+    ).strip()
+    revocation_sync_dsn = source_env.get("ONMARU_AI_REVOCATION_SYNC_DSN", "").strip()
+    revocation_sync_dsn_missing = bool(runtime_db_dsn) and not revocation_sync_dsn
+    if runtime_db_dsn and revocation_sync_dsn:
+        from onmaru_ai.corpus.revocation import RevocationLedger
+        from onmaru_ai.corpus.revocation_feed import SpringRevocationFeedClient
+        from onmaru_ai.corpus.revocation_poller import SourceRevocationPoller
+
+        # Keep revocation writes on a purpose-provisioned role; never couple this
+        # service to the broader runtime or corpus-migration database credentials.
+        revocation_ledger = RevocationLedger(revocation_sync_dsn)
+        revocation_poller = SourceRevocationPoller(
+            revocation_ledger,
+            SpringRevocationFeedClient(
+                get_spring_base_url(environ),
+                lambda: provider.get("internal-ai.service-token").current,
+                client,
+            ),
+        )
+
     # Wire PostgreSQL RAG components if configured and not explicitly provided
     db_dsn = source_env.get("ONMARU_AI_DB_DSN") or source_env.get("ONMARU_DB_URL")
     if db_dsn and db_dsn.strip():
@@ -113,27 +138,24 @@ def create_app(
         if rag_activation_log is None:
             rag_activation_log = PostgresRagActivationLog(db_dsn.strip())
         if rag_retriever is None:
-            query_embedder = None
-            try:
-                gemini_key = provider.get("gemini.api-key").current.strip()
-                if gemini_key:
-                    from onmaru_ai.embedding import GEMINI_EMBEDDING_384, GeminiEmbeddingBackend
+            from onmaru_ai.embedding import (
+                E5_SMALL_ONNX_INT8_384,
+                EmbeddingService,
+                load_e5_backend,
+            )
 
-                    embed_backend = GeminiEmbeddingBackend(
-                        gemini_key,
-                        task_type="RETRIEVAL_QUERY",
-                        timeout_seconds=2.5,
-                    )
+            model_dir = source_env.get("ONMARU_E5_ONNX_DIR", "").strip()
+            if not model_dir:
+                raise ValueError("ONMARU_E5_ONNX_DIR is required for database retrieval")
+            embed_backend = EmbeddingService(
+                load_e5_backend(model_dir), profile=E5_SMALL_ONNX_INT8_384
+            )
 
-                    def _embed_query(text: str) -> tuple[float, ...]:
-                        return embed_backend.encode((text,))[0]
+            def _embed_query(text: str) -> tuple[float, ...]:
+                return embed_backend.embed_query(text)
 
-                    query_embedder = _embed_query
-                    query_profile_id = GEMINI_EMBEDDING_384.profile_id
-                else:
-                    query_profile_id = "gemini-embedding-001-384@v1"
-            except Exception:
-                query_profile_id = "gemini-embedding-001-384@v1"
+            query_embedder = _embed_query
+            query_profile_id = E5_SMALL_ONNX_INT8_384.profile_id
             rag_retriever = PostgresRagEvidenceRetriever(
                 db_dsn.strip(),
                 query_embedder=query_embedder,
@@ -157,13 +179,24 @@ def create_app(
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-        yield
-        if owns_client:
-            await client.aclose()
+        stop_poller = asyncio.Event()
+        poller_task = (
+            asyncio.create_task(revocation_poller.run(stop_poller), name="source-revocation-poller")
+            if revocation_poller is not None else None
+        )
+        try:
+            yield
+        finally:
+            if poller_task is not None:
+                stop_poller.set()
+                await poller_task
+            if owns_client:
+                await client.aclose()
 
     app = FastAPI(title="OnMaru AI", lifespan=lifespan)
     app.state.plan_execute_service = plan_execute_service
     app.state.http_client = client
+    app.state.source_revocation_poller = revocation_poller
     install_observability(app, telemetry_sink or create_telemetry_sink())
     install_internal_auth(
         app,
@@ -243,6 +276,27 @@ def create_app(
                 status_code=503,
                 content={"status": "not_ready", "reason": "plan_execute_service_unwired"},
             )
+
+        if revocation_sync_dsn_missing:
+            return JSONResponse(
+                status_code=503,
+                content={"status": "not_ready", "reason": "source_revocation_sync_dsn_missing"},
+            )
+
+        if db_dsn and revocation_poller is not None and not await revocation_poller.ready():
+            return JSONResponse(
+                status_code=503,
+                content={"status": "not_ready", "reason": "source_revocation_not_ready"},
+            )
+
+        if db_dsn:
+            from onmaru_ai.storage.readiness import runtime_corpus_ready
+
+            if not await asyncio.to_thread(runtime_corpus_ready, db_dsn):
+                return JSONResponse(
+                    status_code=503,
+                    content={"status": "not_ready", "reason": "corpus_runtime_not_ready"},
+                )
 
         # Check HTTP client ready
         if client.is_closed:
