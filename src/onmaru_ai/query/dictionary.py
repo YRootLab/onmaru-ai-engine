@@ -86,6 +86,10 @@ def match_mentions(text: str, catalog: tuple[CatalogEntry, ...]) -> tuple[Mentio
             aliases.setdefault((word, entry.kind), []).append(entry.code)
     candidates: list[Mention] = []
     for (alias, kind), codes in aliases.items():
+        # A literal alias absent from the query cannot match the escaped pattern.
+        # Avoid compiling the entire public catalog on every bounded request.
+        if alias not in text:
+            continue
         pattern = re.compile(r"(?<![\w])" + re.escape(alias) + PARTICLES + BOUNDARY)
         candidates.extend(Mention(m.start(), m.end(), kind, tuple(dict.fromkeys(codes)))
                           for m in pattern.finditer(text))
