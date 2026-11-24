@@ -289,6 +289,15 @@ def create_app(
                 content={"status": "not_ready", "reason": "source_revocation_not_ready"},
             )
 
+        if db_dsn:
+            from onmaru_ai.storage.readiness import runtime_corpus_ready
+
+            if not await asyncio.to_thread(runtime_corpus_ready, db_dsn):
+                return JSONResponse(
+                    status_code=503,
+                    content={"status": "not_ready", "reason": "corpus_runtime_not_ready"},
+                )
+
         # Check HTTP client ready
         if client.is_closed:
             return JSONResponse(
