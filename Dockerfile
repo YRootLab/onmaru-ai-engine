@@ -18,17 +18,15 @@ COPY scripts/export_e5_onnx.py ./scripts/export_e5_onnx.py
 RUN uv sync --frozen --no-dev --group embedding-export --no-editable \
     && uv run --no-sync python scripts/export_e5_onnx.py --output /opt/onmaru/e5
 
-FROM python:3.12-slim-trixie AS runner
+FROM cgr.dev/chainguard/wolfi-base@sha256:6ab86c5e059da41ff1454b6f69ecd7422b94af41969f4e231aa23244e47d4a81 AS runner
 WORKDIR /app
 
-RUN apt-get update \
-    && apt-get upgrade -y \
-    && apt-get install -y --no-install-recommends ca-certificates \
-    && rm -rf /var/lib/apt/lists/* \
-    && python -m pip install --no-cache-dir --upgrade pip "setuptools>=83.0.0" \
-    && python -m pip uninstall --yes pip \
-    && groupadd --system onmaru \
-    && useradd --system --gid onmaru --home-dir /app --no-create-home onmaru
+RUN apk add --no-cache python-3.12 ca-certificates libstdc++ libgomp \
+    && mkdir -p /usr/local/bin \
+    && ln -s /usr/bin/python3.12 /usr/local/bin/python3.12 \
+    && ln -s /usr/bin/python3.12 /usr/local/bin/python \
+    && addgroup -S onmaru \
+    && adduser -S -G onmaru -h /app onmaru
 
 COPY --from=builder --chown=onmaru:onmaru /workspace/.venv /app/.venv
 COPY --from=model-builder --chown=onmaru:onmaru /opt/onmaru/e5 /opt/onmaru/e5
