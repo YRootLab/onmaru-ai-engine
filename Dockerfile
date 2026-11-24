@@ -25,6 +25,7 @@ RUN apk add --no-cache python-3.12 ca-certificates libstdc++ libgomp \
     && mkdir -p /usr/local/bin \
     && ln -s /usr/bin/python3.12 /usr/local/bin/python3.12 \
     && ln -s /usr/bin/python3.12 /usr/local/bin/python \
+    && ln -s /usr/bin/python3.12 /usr/local/bin/python3 \
     && addgroup -S onmaru \
     && adduser -S -G onmaru -h /app onmaru
 
