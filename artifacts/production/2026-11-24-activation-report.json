@@ -1,0 +1,44 @@
+{
+  "verifiedAt": "2026-11-24T06:55:35.244612+00:00",
+  "activeSlot": "green",
+  "springSHA": "4eaf6fd67dacabd9a1d5ac6881ea8668440b196c",
+  "springImage": "ghcr.io/yrootlab/onmaru-backend/spring-api@sha256:f160b4e146da93bd3d4ff4a72f49f5006290d0b100687eb8adfb6d515b6a8c22",
+  "aiImage": "ghcr.io/yrootlab/onmaru-ai-engine/ai-engine@sha256:c0706bb4a03e995f4a49ea06c4c97f870c4188f5ebdc469782963dcfd1260c74",
+  "springConfig": {
+    "ONMARU_AI_PLAN_EXECUTE_ENABLED": "true",
+    "ONMARU_AI_CORPUS_REVISION": "rev-local-e5-20261120",
+    "ONMARU_AI_CONFIG_HASH": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+    "ONMARU_AI_QUESTION_DICTIONARY_VERSION": "questions-1",
+    "ONMARU_AI_SOURCE_REVOCATION_SEQUENCE": "27"
+  },
+  "healthy": true,
+  "oomKilled": false,
+  "corpus": {
+    "revision": "rev-local-e5-20261120",
+    "activeSequence": 27,
+    "sequence": 27,
+    "snapshotWatermark": 27,
+    "heartbeatAgeSeconds": 6,
+    "documents": 23573,
+    "chunks": 23573,
+    "embeddings": 23573,
+    "approvedFacts": 1,
+    "bm25Valid": true
+  },
+  "privateSmoke": {
+    "plan": 200,
+    "route": "HYBRID",
+    "execute": 200,
+    "proposal": true,
+    "evidence": true,
+    "elapsedSeconds": 13.53,
+    "replay": 409
+  },
+  "publicSmoke": {
+    "csrf": 200,
+    "guestList": 200,
+    "guestAiCreate": 401,
+    "policy": "ExplorationController.admitAiRun intentionally requires MEMBER; authenticated business E2E not run"
+  },
+  "legacyRagEnabled": "false"
+}

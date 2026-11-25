@@ -56,7 +56,9 @@ DEFAULT_CATALOG_ENTRIES: tuple[CatalogEntry, ...] = (
     CatalogEntry(code="kr-43", kind="REGION", display_label="충북", synonyms=("충청북도",)),
     CatalogEntry(code="kr-44", kind="REGION", display_label="충남", synonyms=("충청남도",)),
     CatalogEntry(
-        code="kr-45", kind="REGION", display_label="전북",
+        code="kr-45",
+        kind="REGION",
+        display_label="전북",
         synonyms=("전북특별자치도", "전라북도"),
     ),
     CatalogEntry(code="kr-46", kind="REGION", display_label="전남", synonyms=("전라남도",)),
@@ -168,12 +170,14 @@ class ProductionEvidenceGenerator:
                 (snapshot.versions.corpus_revision, source_id, source_revision),
             ).fetchone()
             if row is not None:
-                documents.append({
-                    "sourceId": row["source_id"],
-                    "sourceRevision": row["source_revision"],
-                    "corpusRevision": row["revision_id"],
-                    "text": row["normalized_text"],
-                })
+                documents.append(
+                    {
+                        "sourceId": row["source_id"],
+                        "sourceRevision": row["source_revision"],
+                        "corpusRevision": row["revision_id"],
+                        "text": row["normalized_text"],
+                    }
+                )
         if len(documents) != len({(e.source_id, e.source_revision) for e in evidence_set.evidence}):
             return None
         if operation not in {"RECOMMEND", "EXPLAIN", "COMPARE", "REFINE"}:
@@ -210,28 +214,32 @@ class ProductionEvidenceGenerator:
                 or evidence.end_offset != row["end_offset"]
             ):
                 continue
-            verified_facts.append({
-                "factId": row["fact_id"],
-                "placeId": row["place_id"],
-                "text": row["fact_text"],
-                "kind": row["kind"],
-                "evidenceIds": [evidence.evidence_id],
-                "supportType": row["support_type"],
-                "timeScope": row["time_scope"],
-                "relation": row["relation"],
-            })
-        data = GenerationInput.model_validate({
-            "operation": operation,
-            "approvedPlan": plan,
-            "evidenceSet": evidence_set,
-            "currentVersions": snapshot.versions,
-            "revokedSources": [
-                {"sourceId": source_id, "sourceRevision": source_revision}
-                for _source_type, source_id, source_revision in snapshot.revoked_sources
-            ],
-            "documents": documents,
-            "verifiedFacts": verified_facts,
-        })
+            verified_facts.append(
+                {
+                    "factId": row["fact_id"],
+                    "placeId": row["place_id"],
+                    "text": row["fact_text"],
+                    "kind": row["kind"],
+                    "evidenceIds": [evidence.evidence_id],
+                    "supportType": row["support_type"],
+                    "timeScope": row["time_scope"],
+                    "relation": row["relation"],
+                }
+            )
+        data = GenerationInput.model_validate(
+            {
+                "operation": operation,
+                "approvedPlan": plan,
+                "evidenceSet": evidence_set,
+                "currentVersions": snapshot.versions,
+                "revokedSources": [
+                    {"sourceId": source_id, "sourceRevision": source_revision}
+                    for _source_type, source_id, source_revision in snapshot.revoked_sources
+                ],
+                "documents": documents,
+                "verifiedFacts": verified_facts,
+            }
+        )
         result = await self._provider.generate(data, timeout_seconds=self._timeout_seconds)
         if result.fallback == GenerationFallback.PROVIDER_RATE_LIMITED:
             raise GeminiProviderError(
@@ -267,6 +275,7 @@ def create_production_plan_execute_service(
     import os
 
     from onmaru_ai.storage.postgres import PostgresCorpusStore
+
     source_env = os.environ if environ is None else environ
     dsn = source_env.get("ONMARU_AI_DB_DSN") or source_env.get("ONMARU_DB_URL")
     store = corpus_store or (PostgresCorpusStore(dsn.strip()) if dsn and dsn.strip() else None)
@@ -281,7 +290,8 @@ def create_production_plan_execute_service(
         rows = snapshot.connection.execute(
             """SELECT DISTINCT source_id AS place_id, title, region_code, category_code
                  FROM ai.documents WHERE revision_id=%s AND eligibility_status='PUBLIC'
-                 ORDER BY title, place_id""", (snapshot.versions.corpus_revision,)
+                 ORDER BY title, place_id""",
+            (snapshot.versions.corpus_revision,),
         ).fetchall()
         entries = list(DEFAULT_CATALOG_ENTRIES)
         for row in rows:
@@ -312,7 +322,11 @@ def create_production_plan_execute_service(
     from onmaru_ai.retrieval.evidence import EvidenceSelector
     from onmaru_ai.retrieval.hybrid import HybridRetrievalCoordinator
     from onmaru_ai.retrieval.lexical import LexicalSearchAdapter, PostgresLexicalChunkRepository
-    from onmaru_ai.retrieval.rerank import Reranker
+    from onmaru_ai.retrieval.rerank import (
+        Reranker,
+        RerankerConfig,
+        create_production_reranker_scorer,
+    )
     from onmaru_ai.retrieval.vector import VectorSearcher
 
     try:
@@ -325,17 +339,19 @@ def create_production_plan_execute_service(
     from onmaru_ai.providers.gemini.transport import HttpxGeminiTransport
 
     source_env = os.environ if environ is None else environ
-    generation_provider = EvidenceGenerator(GeminiAdapter(
-        GeminiConfig(
-            model_alias="plan-execute-grounded",
-            model_name=source_env.get("ONMARU_GEMINI_MODEL_NAME") or "gemini-3.5-flash-lite",
-            max_output_tokens=4096,
-            pricing=GeminiPricing(input_micros_per_million=0, output_micros_per_million=0),
-        ),
-        HttpxGeminiTransport(http_client),
-        api_key=gemini_key,
-        telemetry_sink=create_telemetry_sink(),
-    ))
+    generation_provider = EvidenceGenerator(
+        GeminiAdapter(
+            GeminiConfig(
+                model_alias="plan-execute-grounded",
+                model_name=source_env.get("ONMARU_GEMINI_MODEL_NAME") or "gemini-3.5-flash-lite",
+                max_output_tokens=4096,
+                pricing=GeminiPricing(input_micros_per_million=0, output_micros_per_million=0),
+            ),
+            HttpxGeminiTransport(http_client),
+            api_key=gemini_key,
+            telemetry_sink=create_telemetry_sink(),
+        )
+    )
     generator = ProductionEvidenceGenerator(generation_provider)
     current_versions_factory = versions_factory or active_versions
     model_dir = source_env.get("ONMARU_E5_ONNX_DIR", "").strip()
@@ -352,7 +368,10 @@ def create_production_plan_execute_service(
         lexical_searcher=LexicalSearchAdapter(PostgresLexicalChunkRepository()),
         dense_searcher=vector_searcher,
     )
-    reranker = Reranker()
+    reranker = Reranker(
+        scorer=create_production_reranker_scorer(source_env),
+        config=RerankerConfig(timeout_seconds=0.5),
+    )
     evidence_selector = EvidenceSelector()
 
     engine = OrchestrationEngine(
@@ -385,7 +404,7 @@ def create_production_plan_execute_service(
             )
 
         tp = (
-            f"00-{context.trace_id}-{'1'*16}-01"
+            f"00-{context.trace_id}-{'1' * 16}-01"
             if context is not None
             else "00-" + "0" * 32 + "-" + "0" * 16 + "-01"
         )
@@ -393,14 +412,15 @@ def create_production_plan_execute_service(
             if snapshot.versions != body.versions:
                 raise ValueError("VERSION_MISMATCH")
             orch_result = await engine.execute_run(
-                plan=body, snapshot=snapshot,
-                progress_sink=progress_sink, traceparent=tp,
+                plan=body,
+                snapshot=snapshot,
+                progress_sink=progress_sink,
+                traceparent=tp,
                 operation=context.operation if context is not None else None,
             )
 
         proposal = orch_result.proposal
         evidence = orch_result.evidence
-
 
         return ExecutionResult.model_validate(
             {
