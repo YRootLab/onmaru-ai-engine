@@ -141,6 +141,14 @@ class _OrderedProgressSink:
             }
         )
 
+    async def enter(
+        self,
+        stage: ProgressStage,
+        status: StepStatus | str = StepStatus.STARTED,
+        count: int | None = None,
+    ) -> DeliveryResult:
+        raise NotImplementedError
+
     async def close_open_stage(
         self, status: StepStatus | str = StepStatus.SKIPPED
     ) -> DeliveryResult | None:

@@ -7,12 +7,12 @@ import logging
 from dataclasses import dataclass
 from typing import Any
 
+from onmaru_ai.contracts import StepStatus
 from onmaru_ai.contracts.models import (
     ApprovedQueryPlan,
     CandidateSet,
     EvidenceSet,
     Route,
-    StepStatus,
     ValidatedProposal,
 )
 from onmaru_ai.progress import ProgressSink, ProgressStage

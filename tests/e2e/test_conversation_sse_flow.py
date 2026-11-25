@@ -8,12 +8,10 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from onmaru_ai.contracts import SafeQueryRequest
+from onmaru_ai.contracts import SafeQueryRequest, StepKey, StepStatus
 from onmaru_ai.contracts.models import (
     ApprovedQueryPlan,
     EvidenceSet,
-    StepKey,
-    StepStatus,
     ValidatedProposal,
 )
 from onmaru_ai.orchestration.engine import OrchestrationEngine
