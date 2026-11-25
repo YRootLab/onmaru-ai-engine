@@ -1,5 +1,20 @@
 # Handoff
 
+Current work (Issue #108: progress step keys, status, and candidate count - phase 1):
+- Issue: [#108](https://github.com/YRootLab/onmaru-ai-engine/issues/108), branch `feature/108-progress-step-key-and-count` from `develop`.
+- Goal: Extend progress event payloads with `stepKey` (`UNDERSTAND`, `SEARCH`, `SELECT`, `WRITE`, `CHECK`), `status` (`STARTED`, `DONE`, `SKIPPED`), and `count` (candidate count on `SEARCH DONE`, selected place count on `SELECT DONE`, `null` otherwise). Preserve existing `stage` field and backward compatibility.
+- Implemented:
+  - `src/onmaru_ai/contracts/vocabulary.py`: Added `StepKey`, `StepStatus`, and `STAGE_TO_STEP_KEY` mapping.
+  - `src/onmaru_ai/contracts/models.py`: Added `step_key`, `status`, `count` to `ProgressEvent` with before/after validators enforcing step mappings and count restrictions (only non-null on `SEARCH DONE` and `SELECT DONE`).
+  - `src/onmaru_ai/contracts/schemas/ProgressEvent.schema.json`: Regenerated JSON schema to match Pydantic model (`test_contracts.py` validates all 267 contract fixtures pass).
+  - `src/onmaru_ai/progress/__init__.py`: Updated `ProgressSink` protocol and sink classes (`_OrderedProgressSink`, `InMemoryProgressSink`, `CallbackProgressSink`) to accept `status` and `count`, maintain `_open_stage` tracking, provide `close_open_stage(status=SKIPPED)`, and log privacy-safe transitions (`stepKey`, `status`, `count`, `ordinal`).
+  - `src/onmaru_ai/orchestration/engine.py`: Emitted `STARTED` and `DONE` for all pipeline steps (`UNDERSTAND`, `SEARCH`, `SELECT`, `WRITE`, `CHECK`). SEARCH DONE supplies found candidate count; SELECT DONE supplies selected place count. Emits `SKIPPED` on empty search result and closes any open stage as `SKIPPED` on failure.
+  - `tests/progress/test_progress_step_timeline.py`: Added unit tests covering normal path progression with counts, empty search result with `SEARCH DONE count=0` and `SELECT SKIPPED`, and failure paths closing open steps as `SKIPPED`.
+- Verification:
+  - `uv run pytest tests/progress/ tests/contracts/ tests/e2e/ tests/api/` → 356 passed.
+  - `uv run pytest` → 1165 passed, 53 skipped.
+  - `uv run ruff check src/ tests/` → clean.
+
 Current follow-up (BE canary role-boundary correction, 2026-11-17):
 - Share the paired target design and implementation diagnosis with BE: 2026-10-21 system briefing and 2026-11-17 canary role-boundary report. Both are listed in `docs/ai-rag/reports/README.md` and the AI-RAG index.
 - Documentation handoff is published for review in [PR #83](https://github.com/YRootLab/onmaru-ai-engine/pull/83), branch `feature/ai-rag-canary-role-boundary-handoff`.

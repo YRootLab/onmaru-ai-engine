@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections import Counter
-from typing import Annotated, Literal, Self
+from typing import Annotated, Any, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from pydantic.alias_generators import to_camel
@@ -11,11 +11,14 @@ from pydantic.config import JsonDict
 
 from .vocabulary import (
     CLARIFICATION_QUESTIONS,
+    STAGE_TO_STEP_KEY,
     ClaimKind,
     ClarificationQuestionCode,
     ConceptCode,
     FailureStage,
     PlanReasonCode,
+    StepKey,
+    StepStatus,
 )
 
 Identifier = Annotated[
@@ -425,3 +428,33 @@ class ProgressEvent(ClosedModel):
     plan_hash: Digest
     ordinal: PositiveInt
     stage: Stage
+    step_key: StepKey | None = Field(default=None)
+    status: StepStatus | None = Field(default=None)
+    count: NonnegativeInt | None = Field(default=None)
+
+    @model_validator(mode="before")
+    @classmethod
+    def populate_step_fields(cls, data: Any) -> Any:
+        if isinstance(data, dict):
+            copy_data = dict(data)
+            stage = copy_data.get("stage")
+            if stage and "stepKey" not in copy_data and "step_key" not in copy_data:
+                copy_data["stepKey"] = STAGE_TO_STEP_KEY.get(str(stage), StepKey.UNDERSTAND)
+            if "status" not in copy_data:
+                copy_data["status"] = "STARTED"
+            if "count" not in copy_data:
+                copy_data["count"] = None
+            return copy_data
+        return data
+
+    @model_validator(mode="after")
+    def validate_count_rules(self) -> Self:
+        if (self.step_key == "SEARCH" and self.status == "DONE") or (
+            self.step_key == "SELECT" and self.status == "DONE"
+        ):
+            pass
+        else:
+            if self.count is not None:
+                object.__setattr__(self, "count", None)
+        return self
+

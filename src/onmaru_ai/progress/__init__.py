@@ -3,12 +3,20 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from enum import StrEnum
 from typing import Literal, Protocol
 
 import httpx
 
-from onmaru_ai.contracts import ProgressEvent
+from onmaru_ai.contracts import (
+    STAGE_TO_STEP_KEY,
+    ProgressEvent,
+    StepKey,
+    StepStatus,
+)
+
+logger = logging.getLogger(__name__)
 
 
 class ProgressStage(StrEnum):
@@ -30,8 +38,19 @@ class DeliveryResult(StrEnum):
 
 
 class ProgressSink(Protocol):
-    async def enter(self, stage: ProgressStage) -> DeliveryResult:
-        """Report a stage after the route has actually entered it."""
+    async def enter(
+        self,
+        stage: ProgressStage,
+        status: StepStatus | str = StepStatus.STARTED,
+        count: int | None = None,
+    ) -> DeliveryResult:
+        """Report a stage transition (STARTED, DONE, SKIPPED) with optional count."""
+
+    async def close_open_stage(
+        self,
+        status: StepStatus | str = StepStatus.SKIPPED,
+    ) -> DeliveryResult | None:
+        """Close the currently open stage if any."""
 
 
 class ProgressHttpClient(Protocol):
@@ -63,17 +82,52 @@ class _OrderedProgressSink:
                 "planHash": plan_hash,
                 "ordinal": 1,
                 "stage": ProgressStage.PREPARING_INPUT,
+                "stepKey": StepKey.UNDERSTAND,
+                "status": StepStatus.STARTED,
+                "count": None,
             }
         )
         self._run_id = run_id
         self._plan_hash = plan_hash
         self._schema_version = schema_version
         self._ordinal = 0
+        self._open_stage: ProgressStage | None = None
         # Serial delivery keeps entry order deterministic under concurrent callers.
         self._lock = asyncio.Lock()
 
-    def _next_event(self, stage: ProgressStage) -> ProgressEvent:
+    @property
+    def open_stage(self) -> ProgressStage | None:
+        return self._open_stage
+
+    def _next_event(
+        self,
+        stage: ProgressStage,
+        status: StepStatus | str = StepStatus.STARTED,
+        count: int | None = None,
+    ) -> ProgressEvent:
         self._ordinal += 1
+        step_status = StepStatus(status)
+        step_key = STAGE_TO_STEP_KEY.get(str(stage), StepKey.UNDERSTAND)
+
+        event_count: int | None = None
+        if (step_key == StepKey.SEARCH and step_status == StepStatus.DONE) or (
+            step_key == StepKey.SELECT and step_status == StepStatus.DONE
+        ):
+            event_count = count
+
+        if step_status == StepStatus.STARTED:
+            self._open_stage = stage
+        elif self._open_stage == stage:
+            self._open_stage = None
+
+        logger.debug(
+            "progress transition: stepKey=%s status=%s count=%s ordinal=%d",
+            step_key,
+            step_status,
+            event_count,
+            self._ordinal,
+        )
+
         return ProgressEvent.model_validate(
             {
                 "schemaVersion": self._schema_version,
@@ -81,8 +135,22 @@ class _OrderedProgressSink:
                 "planHash": self._plan_hash,
                 "ordinal": self._ordinal,
                 "stage": stage,
+                "stepKey": step_key,
+                "status": step_status,
+                "count": event_count,
             }
         )
+
+    async def close_open_stage(
+        self, status: StepStatus | str = StepStatus.SKIPPED
+    ) -> DeliveryResult | None:
+        if self._open_stage is not None:
+            stage = self._open_stage
+            try:
+                return await self.enter(stage, status=status)
+            except Exception:
+                return None
+        return None
 
 
 class InMemoryProgressSink(_OrderedProgressSink):
@@ -92,9 +160,14 @@ class InMemoryProgressSink(_OrderedProgressSink):
         super().__init__(run_id=run_id, plan_hash=plan_hash)
         self.events: list[ProgressEvent] = []
 
-    async def enter(self, stage: ProgressStage) -> DeliveryResult:
+    async def enter(
+        self,
+        stage: ProgressStage,
+        status: StepStatus | str = StepStatus.STARTED,
+        count: int | None = None,
+    ) -> DeliveryResult:
         async with self._lock:
-            self.events.append(self._next_event(stage))
+            self.events.append(self._next_event(stage, status=status, count=count))
         return DeliveryResult.DELIVERED
 
 
@@ -153,9 +226,14 @@ class CallbackProgressSink(_OrderedProgressSink):
         self._timeout = httpx.Timeout(attempt_timeout_seconds)
         self._retry_delay_seconds = retry_delay_seconds
 
-    async def enter(self, stage: ProgressStage) -> DeliveryResult:
+    async def enter(
+        self,
+        stage: ProgressStage,
+        status: StepStatus | str = StepStatus.STARTED,
+        count: int | None = None,
+    ) -> DeliveryResult:
         async with self._lock:
-            event = self._next_event(stage)
+            event = self._next_event(stage, status=status, count=count)
             payload = event.model_dump_json(by_alias=True).encode()
             for attempt in range(self._max_attempts):
                 try:
@@ -187,4 +265,7 @@ __all__ = [
     "InMemoryProgressSink",
     "ProgressSink",
     "ProgressStage",
+    "STAGE_TO_STEP_KEY",
+    "StepKey",
+    "StepStatus",
 ]

@@ -234,17 +234,48 @@ async def test_runtime_integration_flow_with_spring_mock(monkeypatch: pytest.Mon
     assert exec_result["proposal"] is None
     assert exec_result["evidence"] is None
 
-    # Verify progress callback events were delivered in order with ordinal 1..5
+    # Verify progress callback events were delivered in order with ordinal 1..10
     stages = [cb["stage"] for cb in received_callbacks]
+    step_keys = [cb["stepKey"] for cb in received_callbacks]
+    statuses = [cb["status"] for cb in received_callbacks]
     ordinals = [cb["ordinal"] for cb in received_callbacks]
     assert stages == [
         "PREPARING_INPUT",
+        "PREPARING_INPUT",
+        "RETRIEVING",
         "RETRIEVING",
         "SELECTING_EVIDENCE",
+        "SELECTING_EVIDENCE",
+        "GENERATING",
         "GENERATING",
         "CHECKING_OUTPUT",
+        "CHECKING_OUTPUT",
     ]
-    assert ordinals == [1, 2, 3, 4, 5]
+    assert step_keys == [
+        "UNDERSTAND",
+        "UNDERSTAND",
+        "SEARCH",
+        "SEARCH",
+        "SELECT",
+        "SELECT",
+        "WRITE",
+        "WRITE",
+        "CHECK",
+        "CHECK",
+    ]
+    assert statuses == [
+        "STARTED",
+        "DONE",
+        "STARTED",
+        "DONE",
+        "STARTED",
+        "DONE",
+        "STARTED",
+        "DONE",
+        "STARTED",
+        "DONE",
+    ]
+    assert ordinals == list(range(1, 11))
     for cb in received_callbacks:
         assert cb["schemaVersion"] == "internal.ai.progress.v1"
         assert cb["runId"] == run_id
