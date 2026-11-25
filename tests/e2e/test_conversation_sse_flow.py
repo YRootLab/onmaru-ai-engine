@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from onmaru_ai.contracts import SafeQueryRequest
+from onmaru_ai.contracts import SafeQueryRequest, StepKey, StepStatus
 from onmaru_ai.contracts.models import (
     ApprovedQueryPlan,
     EvidenceSet,
@@ -146,25 +146,40 @@ async def test_member_multiturn_conversation_and_progress_events() -> None:
     )
 
     assert res_t1.status == "SUCCESS"
-    # Verify exact progression of stages
-    stages = [event.stage for event in sink.events]
-    assert stages == [
-        ProgressStage.PREPARING_INPUT,
-        ProgressStage.RETRIEVING,
-        ProgressStage.SELECTING_EVIDENCE,
-        ProgressStage.GENERATING,
-        ProgressStage.CHECKING_OUTPUT,
+    # Verify exact progression of stages and step keys
+    assert [(event.stage, event.step_key, event.status) for event in sink.events] == [
+        (ProgressStage.PREPARING_INPUT, StepKey.UNDERSTAND, StepStatus.STARTED),
+        (ProgressStage.PREPARING_INPUT, StepKey.UNDERSTAND, StepStatus.DONE),
+        (ProgressStage.RETRIEVING, StepKey.SEARCH, StepStatus.STARTED),
+        (ProgressStage.RETRIEVING, StepKey.SEARCH, StepStatus.DONE),
+        (ProgressStage.SELECTING_EVIDENCE, StepKey.SELECT, StepStatus.STARTED),
+        (ProgressStage.SELECTING_EVIDENCE, StepKey.SELECT, StepStatus.DONE),
+        (ProgressStage.GENERATING, StepKey.WRITE, StepStatus.STARTED),
+        (ProgressStage.GENERATING, StepKey.WRITE, StepStatus.DONE),
+        (ProgressStage.CHECKING_OUTPUT, StepKey.CHECK, StepStatus.STARTED),
+        (ProgressStage.CHECKING_OUTPUT, StepKey.CHECK, StepStatus.DONE),
     ]
+    assert sink.events[3].count == 1
+    assert sink.events[5].count == 1
 
     # SSE event simulation
     sse_frames = [
-        _format_sse_event("progress", {"stage": str(s), "ordinal": i + 1})
-        for i, s in enumerate(stages)
+        _format_sse_event(
+            "progress",
+            {
+                "stage": str(ev.stage),
+                "stepKey": str(ev.step_key),
+                "status": str(ev.status),
+                "count": ev.count,
+                "ordinal": ev.ordinal,
+            },
+        )
+        for ev in sink.events
     ]
     # Add final snapshot SSE event
     sse_frames.append(_format_sse_event("snapshot", {"status": "COMPLETE", "places": ["p1"]}))
 
-    assert len(sse_frames) == 6
+    assert len(sse_frames) == 11
     assert "event: progress\n" in sse_frames[0]
     assert "event: snapshot\n" in sse_frames[-1]
 

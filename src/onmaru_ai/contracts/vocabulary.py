@@ -91,3 +91,31 @@ class FailureStage(StrEnum):
     GENERATION = "GENERATION"
     VALIDATION = "VALIDATION"
     DELIVERY = "DELIVERY"
+
+
+class StepKey(StrEnum):
+    """Client timeline step keys for progress callback."""
+
+    UNDERSTAND = "UNDERSTAND"
+    SEARCH = "SEARCH"
+    SELECT = "SELECT"
+    WRITE = "WRITE"
+    CHECK = "CHECK"
+
+
+class StepStatus(StrEnum):
+    """Step execution status for client timeline."""
+
+    STARTED = "STARTED"
+    DONE = "DONE"
+    SKIPPED = "SKIPPED"
+
+
+STAGE_TO_STEP_KEY: dict[str, StepKey] = {
+    "PREPARING_INPUT": StepKey.UNDERSTAND,
+    "RETRIEVING": StepKey.SEARCH,
+    "SELECTING_EVIDENCE": StepKey.SELECT,
+    "GENERATING": StepKey.WRITE,
+    "CHECKING_OUTPUT": StepKey.CHECK,
+}
+

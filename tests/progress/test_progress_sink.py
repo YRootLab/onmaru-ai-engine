@@ -68,6 +68,9 @@ def test_callback_retries_the_exact_same_event_and_bears_token_only_in_header() 
         "planHash": PLAN_HASH,
         "ordinal": 1,
         "stage": "RETRIEVING",
+        "stepKey": "SEARCH",
+        "status": "STARTED",
+        "count": None,
     }
     assert "authorization" not in requests[0].headers
     assert requests[0].headers["x-run-progress-token"] == "short-lived-secret"

@@ -1,4 +1,28 @@
 {
+  "$defs": {
+    "StepKey": {
+      "description": "Client timeline step keys for progress callback.",
+      "enum": [
+        "UNDERSTAND",
+        "SEARCH",
+        "SELECT",
+        "WRITE",
+        "CHECK"
+      ],
+      "title": "StepKey",
+      "type": "string"
+    },
+    "StepStatus": {
+      "description": "Step execution status for client timeline.",
+      "enum": [
+        "STARTED",
+        "DONE",
+        "SKIPPED"
+      ],
+      "title": "StepStatus",
+      "type": "string"
+    }
+  },
   "additionalProperties": false,
   "properties": {
     "schemaVersion": {
@@ -34,6 +58,41 @@
       ],
       "title": "Stage",
       "type": "string"
+    },
+    "stepKey": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/StepKey"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "status": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/StepStatus"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "count": {
+      "anyOf": [
+        {
+          "minimum": 0,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Count"
     }
   },
   "required": [
