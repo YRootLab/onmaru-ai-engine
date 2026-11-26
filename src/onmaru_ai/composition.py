@@ -421,6 +421,7 @@ def create_production_plan_execute_service(
 
         proposal = orch_result.proposal
         evidence = orch_result.evidence
+        result_reason = orch_result.result_reason
 
         return ExecutionResult.model_validate(
             {
@@ -430,6 +431,7 @@ def create_production_plan_execute_service(
                 "versions": body.versions.model_dump(by_alias=True),
                 "proposal": proposal,
                 "evidence": evidence,
+                "resultReason": result_reason,
             }
         )
 

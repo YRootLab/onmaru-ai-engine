@@ -1,5 +1,15 @@
 # Handoff
 
+Current work (Issue #110: add resultReason to ExecutionResult on empty outcomes):
+- Issue: [#110](https://github.com/YRootLab/onmaru-ai-engine/issues/110), branch `feature/110-execution-result-reason` from `develop`.
+- Goal: Return `resultReason` in `POST /internal/v1/journey/execute` (`ExecutionResult`) with `NO_CANDIDATES` when 0 candidates are retrieved, `NO_RELEVANT_CANDIDATES` when candidates exist but 0 places are selected or generated, and `null` on successful generation with places.
+- Implemented:
+  - `src/onmaru_ai/orchestration/engine.py`: Added `result_reason: str | None = None` to `OrchestrationExecutionResult`. Populated `NO_CANDIDATES` on empty candidates and `NO_RELEVANT_CANDIDATES` on empty selection/proposal.
+  - `src/onmaru_ai/api/plan_execute.py`: Added `result_reason: str | None = Field(default=None)` to `ExecutionResult`.
+  - `src/onmaru_ai/composition.py`: Forwarded `resultReason` from `orch_result.result_reason` into `ExecutionResult`.
+  - `tests/orchestration/test_engine.py`: Added unit tests verifying `NO_CANDIDATES`, `NO_RELEVANT_CANDIDATES`, and `None`.
+  - `tests/api/test_runtime_integration.py`: Verified `resultReason` in integration execution flow.
+
 Current work (Issue #108: progress step keys, status, and candidate count - phase 1):
 - Issue: [#108](https://github.com/YRootLab/onmaru-ai-engine/issues/108), branch `feature/108-progress-step-key-and-count` from `develop`.
 - Goal: Extend progress event payloads with `stepKey` (`UNDERSTAND`, `SEARCH`, `SELECT`, `WRITE`, `CHECK`), `status` (`STARTED`, `DONE`, `SKIPPED`), and `count` (candidate count on `SEARCH DONE`, selected place count on `SELECT DONE`, `null` otherwise). Preserve existing `stage` field and backward compatibility.

@@ -33,6 +33,7 @@ class OrchestrationExecutionResult:
     proposal: ValidatedProposal | None = None
     evidence: EvidenceSet | None = None
     candidate_set: CandidateSet | None = None
+    result_reason: str | None = None
 
 
 class OrchestrationEngine:
@@ -125,6 +126,7 @@ class OrchestrationEngine:
                         route=route,
                         status="SUCCESS",
                         proposal=None,
+                        result_reason="NO_CANDIDATES",
                     )
 
                 if progress_sink is not None:
@@ -153,10 +155,16 @@ class OrchestrationEngine:
                     await progress_sink.enter(ProgressStage.CHECKING_OUTPUT, StepStatus.STARTED)
                     await progress_sink.enter(ProgressStage.CHECKING_OUTPUT, StepStatus.DONE)
 
+                has_places = bool(
+                    proposal is not None and getattr(proposal, "places", None)
+                )
+                result_reason = None if has_places else "NO_RELEVANT_CANDIDATES"
+
                 return OrchestrationExecutionResult(
                     route=route,
                     status="SUCCESS",
                     proposal=proposal,
+                    result_reason=result_reason,
                 )
 
             # Routes 3-5: Retrieval-involved routes
@@ -226,6 +234,7 @@ class OrchestrationEngine:
                     proposal=None,
                     evidence=None,
                     candidate_set=cand_set,
+                    result_reason="NO_CANDIDATES",
                 )
 
             if progress_sink is not None:
@@ -289,12 +298,18 @@ class OrchestrationEngine:
                 await progress_sink.enter(ProgressStage.CHECKING_OUTPUT, StepStatus.STARTED)
                 await progress_sink.enter(ProgressStage.CHECKING_OUTPUT, StepStatus.DONE)
 
+            has_places = bool(
+                proposal is not None and getattr(proposal, "places", None)
+            )
+            result_reason = None if has_places else "NO_RELEVANT_CANDIDATES"
+
             return OrchestrationExecutionResult(
                 route=route,
                 status="SUCCESS",
                 proposal=proposal,
                 evidence=evidence_set,
                 candidate_set=cand_set,
+                result_reason=result_reason,
             )
         except Exception:
             if progress_sink is not None and hasattr(progress_sink, "close_open_stage"):

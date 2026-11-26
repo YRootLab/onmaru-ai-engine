@@ -233,6 +233,7 @@ async def test_runtime_integration_flow_with_spring_mock(monkeypatch: pytest.Mon
     assert received_lookups[0]["queryGrantId"] == grant_id
     assert exec_result["proposal"] is None
     assert exec_result["evidence"] is None
+    assert exec_result["resultReason"] == "NO_RELEVANT_CANDIDATES"
 
     # Verify progress callback events were delivered in order with ordinal 1..10
     stages = [cb["stage"] for cb in received_callbacks]

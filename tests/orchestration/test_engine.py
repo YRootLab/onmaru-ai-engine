@@ -252,8 +252,86 @@ async def test_clarify_or_scope_route_returns_clarification_status() -> None:
     assert result.route == "CLARIFY_OR_SCOPE"
     assert result.status == "CLARIFICATION_REQUIRED"
     assert result.proposal is None
+    assert result.result_reason is None
     sql_adapter.execute.assert_not_called()
     retrieval_coord.execute.assert_not_called()
     reranker.rerank.assert_not_called()
     generator.generate.assert_not_called()
+
+
+@pytest.mark.anyio
+async def test_engine_result_reason_no_candidates() -> None:
+    plan = _load_approved_plan("HYBRID")
+    retrieval_coord = MagicMock()
+    cand_set = MagicMock()
+    cand_set.candidates = []
+    retrieval_coord.execute.return_value = cand_set
+
+    engine = OrchestrationEngine(retrieval_coordinator=retrieval_coord)
+    result = await engine.execute_run(plan, snapshot=MagicMock())
+    assert result.status == "SUCCESS"
+    assert result.proposal is None
+    assert result.result_reason == "NO_CANDIDATES"
+
+
+@pytest.mark.anyio
+async def test_engine_result_reason_no_relevant_candidates() -> None:
+    plan = _load_approved_plan("HYBRID")
+    retrieval_coord = MagicMock()
+    cand = MagicMock(
+        chunk_id="c1", place_id="p1", source_id="s1", source_revision="r1", rank=1, score=0.8
+    )
+    cand_set = MagicMock()
+    cand_set.candidates = [cand]
+    retrieval_coord.execute.return_value = cand_set
+
+    evidence_selector = MagicMock()
+    evidence_selector.select_evidence.return_value = None
+
+    generator = AsyncMock()
+    generator.generate.return_value = None
+
+    engine = OrchestrationEngine(
+        retrieval_coordinator=retrieval_coord,
+        evidence_selector=evidence_selector,
+        generator=generator,
+    )
+    result = await engine.execute_run(plan, snapshot=MagicMock())
+    assert result.status == "SUCCESS"
+    assert result.proposal is None
+    assert result.result_reason == "NO_RELEVANT_CANDIDATES"
+
+
+@pytest.mark.anyio
+async def test_engine_result_reason_none_on_success_with_places() -> None:
+    plan = _load_approved_plan("HYBRID")
+    retrieval_coord = MagicMock()
+    cand = MagicMock(
+        chunk_id="c1", place_id="p1", source_id="s1", source_revision="r1", rank=1, score=0.8
+    )
+    cand_set = MagicMock()
+    cand_set.candidates = [cand]
+    retrieval_coord.execute.return_value = cand_set
+
+    evidence_selector = MagicMock()
+    ev_set = MagicMock(spec=EvidenceSet)
+    ev_set.allowed_place_ids = ["p1"]
+    ev_set.evidence = [MagicMock(place_id="p1")]
+    evidence_selector.select_evidence.return_value = ev_set
+
+    mock_proposal = MagicMock(spec=ValidatedProposal)
+    mock_proposal.places = [MagicMock(place_id="p1")]
+    generator = AsyncMock()
+    generator.generate.return_value = mock_proposal
+
+    engine = OrchestrationEngine(
+        retrieval_coordinator=retrieval_coord,
+        evidence_selector=evidence_selector,
+        generator=generator,
+    )
+    result = await engine.execute_run(plan, snapshot=MagicMock())
+    assert result.status == "SUCCESS"
+    assert result.proposal is not None
+    assert result.result_reason is None
+
 

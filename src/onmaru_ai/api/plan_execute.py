@@ -12,7 +12,7 @@ from typing import Literal
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
-from pydantic import ValidationError
+from pydantic import Field, ValidationError
 
 from onmaru_ai.config.secrets import SecretProvider
 from onmaru_ai.contracts import (
@@ -41,6 +41,7 @@ class ExecutionResult(RunArtifact):
     schema_version: Literal["ai-execute-result.v1"]
     proposal: ValidatedProposal | None
     evidence: EvidenceSet | None
+    result_reason: str | None = Field(default=None)
 
 
 class BoundaryError(Exception):
