@@ -1,7 +1,7 @@
 # Handoff
 
 Current work (Issue #110: add resultReason to ExecutionResult on empty outcomes):
-- Issue: [#110](https://github.com/YRootLab/onmaru-ai-engine/issues/110), branch `feature/110-execution-result-reason` from `develop`.
+- Issue: [#110](https://github.com/YRootLab/onmaru-ai-engine/issues/110), PR [#111](https://github.com/YRootLab/onmaru-ai-engine/pull/111), merged into `develop` (`19ed134015f8a846c94e019f350c377d61245ee1`).
 - Goal: Return `resultReason` in `POST /internal/v1/journey/execute` (`ExecutionResult`) with `NO_CANDIDATES` when 0 candidates are retrieved, `NO_RELEVANT_CANDIDATES` when candidates exist but 0 places are selected or generated, and `null` on successful generation with places.
 - Implemented:
   - `src/onmaru_ai/orchestration/engine.py`: Added `result_reason: str | None = None` to `OrchestrationExecutionResult`. Populated `NO_CANDIDATES` on empty candidates and `NO_RELEVANT_CANDIDATES` on empty selection/proposal.
@@ -9,6 +9,18 @@ Current work (Issue #110: add resultReason to ExecutionResult on empty outcomes)
   - `src/onmaru_ai/composition.py`: Forwarded `resultReason` from `orch_result.result_reason` into `ExecutionResult`.
   - `tests/orchestration/test_engine.py`: Added unit tests verifying `NO_CANDIDATES`, `NO_RELEVANT_CANDIDATES`, and `None`.
   - `tests/api/test_runtime_integration.py`: Verified `resultReason` in integration execution flow.
+- Deployment / Publishing:
+  - Published and verified immutable develop image on GHCR via workflow run `45734904100`:
+    - Image: `ghcr.io/yrootlab/onmaru-ai-engine/ai-engine:19ed134015f8a846c94e019f350c377d61245ee1`
+    - Digest: `sha256:dc4a3ba6f572e6661eb804949b163a66ae4a86b8a9d4d0d0a6d2f46d222162a0`
+    - Vulnerability scan (Trivy): 0 HIGH / 0 CRITICAL.
+- Integration status with Spring BE:
+  - BE created PR #883 (`feat/journey-run-items-and-turn-cards`) applying V061 Flyway migration (`ordered_refs`, `place_reasons`, `result_reason`) and hydration for turn-level place cards.
+  - Confirmed contract alignment: `failureStage` enum (`VALIDATION`), `retrievalStatus` (`COMPLETE`), and 1:1 `allowedPlaceIds` to `evidence` item placeId equality.
+  - BE is deploying PR #883 with `onmaru.journey.run-items.enabled=false`.
+- Next step (Option A):
+  - Execute live test verification on the deployed candidate across 3 scenarios: (1) 0 candidates, (2) 0 relevant selected places, (3) normal recommendation.
+  - Upon successful live verification, create `release/v0.1.9` from `develop`, open PR into `master`, merge, and tag `v0.1.9`. Then enable BE feature flag after FE UI integration.
 
 Current work (Issue #108: progress step keys, status, and candidate count - phase 1):
 - Issue: [#108](https://github.com/YRootLab/onmaru-ai-engine/issues/108), branch `feature/108-progress-step-key-and-count` from `develop`.
